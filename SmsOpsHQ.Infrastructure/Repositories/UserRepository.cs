@@ -38,6 +38,16 @@ public sealed class UserRepository : IUserRepository
         return entity is null ? null : MapToDomain(entity);
     }
 
+    public async Task UpdateLastLoginAtAsync(int userId, DateTime utcNow, CancellationToken cancellationToken = default)
+    {
+        UserEntity? entity = await _db.Users.FindAsync(new object[] { userId }, cancellationToken);
+        if (entity is not null)
+        {
+            entity.LastLoginAt = utcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     private static User MapToDomain(UserEntity entity)
     {
         return new User

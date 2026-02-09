@@ -1,0 +1,147 @@
+using System.Collections.ObjectModel;
+using System.Text.Json;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using SmsOpsHQ.Desktop.Services;
+
+namespace SmsOpsHQ.Desktop.ViewModels;
+
+// Represents a single thread in the inbox list.
+public sealed class InboxThreadItem
+{
+    public int ThreadId { get; set; }
+    public string CustomerName { get; set; } = "Unknown";
+    public string CustomerPhone { get; set; } = string.Empty;
+    public string LastMessageBody { get; set; } = string.Empty;
+    public string LastMessageDirection { get; set; } = string.Empty;
+    public string LastMessageTime { get; set; } = string.Empty;
+    public int UnreadCount { get; set; }
+    public string Status { get; set; } = "Open";
+    public int? CustomerId { get; set; }
+}
+
+// Inbox ViewModel: loads threads, supports search and filter.
+public sealed partial class InboxViewModel : ViewModelBase
+{
+    private readonly ApiClient _apiClient;
+    private readonly AppState _appState;
+    private readonly NavigationService _navigation;
+    private readonly SignalRClient _signalRClient;
+    private readonly XBlueService? _xblueService;
+
+    [ObservableProperty]
+    private ObservableCollection<InboxThreadItem> _threads = new();
+
+    [ObservableProperty]
+    private InboxThreadItem? _selectedThread;
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private string _selectedFilter = "open";
+
+    [ObservableProperty]
+    private int _totalThreads;
+
+    public InboxViewModel(ApiClient apiClient, AppState appState, NavigationService navigation, SignalRClient signalRClient, XBlueService? xblueService = null)
+    {
+        _apiClient = apiClient;
+        _appState = appState;
+        _navigation = navigation;
+        _signalRClient = signalRClient;
+        _xblueService = xblueService;
+
+        _signalRClient.MessageReceived += OnSignalRMessageReceived;
+    }
+
+    // Reload inbox when a real-time message arrives.
+    private void OnSignalRMessageReceived(JsonElement message, JsonElement thread)
+    {
+        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() => LoadInboxCommand.ExecuteAsync(null));
+    }
+
+    partial void OnSelectedThreadChanged(InboxThreadItem? value)
+    {
+        if (value is not null)
+            OpenThread(value);
+    }
+
+    [RelayCommand]
+    private async Task LoadInboxAsync()
+    {
+        IsBusy = true;
+        ClearError();
+
+        try
+        {
+            string? search = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText;
+            JsonElement result = await _apiClient.GetInboxAsync(_appState.CurrentStoreId, SelectedFilter, search);
+
+            ObservableCollection<InboxThreadItem> newThreads = new();
+
+            foreach (JsonElement threadJson in result.EnumerateArray())
+            {
+                InboxThreadItem item = new()
+                {
+                    ThreadId = threadJson.GetProperty("thread_id").GetInt32(),
+                    UnreadCount = threadJson.GetProperty("unread_count").GetInt32(),
+                    Status = threadJson.GetProperty("status").GetString() ?? "Open"
+                };
+
+                if (threadJson.TryGetProperty("last_message_at", out JsonElement lmaElem) && lmaElem.ValueKind == JsonValueKind.String)
+                {
+                    if (DateTime.TryParse(lmaElem.GetString(), out DateTime lma))
+                        item.LastMessageTime = lma.ToLocalTime().ToString("MMM d, h:mm tt");
+                }
+
+                if (threadJson.TryGetProperty("customer", out JsonElement custElem) && custElem.ValueKind == JsonValueKind.Object)
+                {
+                    string name = custElem.TryGetProperty("name", out JsonElement nameElem) ? nameElem.GetString() ?? "" : "";
+                    item.CustomerName = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
+                    item.CustomerPhone = custElem.TryGetProperty("phone", out JsonElement phoneElem) ? phoneElem.GetString() ?? "" : "";
+                    if (custElem.TryGetProperty("id", out JsonElement idElem) && idElem.ValueKind == JsonValueKind.Number)
+                        item.CustomerId = idElem.GetInt32();
+                }
+
+                if (threadJson.TryGetProperty("last_message", out JsonElement lmElem) && lmElem.ValueKind == JsonValueKind.Object)
+                {
+                    item.LastMessageBody = lmElem.TryGetProperty("body", out JsonElement bodyElem) ? bodyElem.GetString() ?? "" : "";
+                    item.LastMessageDirection = lmElem.TryGetProperty("direction", out JsonElement dirElem) ? dirElem.GetString() ?? "" : "";
+                }
+
+                newThreads.Add(item);
+            }
+
+            Threads = newThreads;
+            TotalThreads = newThreads.Count;
+        }
+        catch (Exception ex)
+        {
+            SetError($"Failed to load inbox: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SearchAsync()
+    {
+        await LoadInboxAsync();
+    }
+
+    [RelayCommand]
+    private async Task SetFilterAsync(string filter)
+    {
+        SelectedFilter = filter;
+        await LoadInboxAsync();
+    }
+
+    private void OpenThread(InboxThreadItem item)
+    {
+        ThreadViewModel threadVm = new(_apiClient, _appState, _navigation, _signalRClient, item.ThreadId, item.CustomerName, _xblueService);
+        _navigation.NavigateTo(threadVm);
+    }
+}

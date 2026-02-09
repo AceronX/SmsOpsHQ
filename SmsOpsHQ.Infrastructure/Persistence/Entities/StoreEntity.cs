@@ -15,5 +15,6 @@ public sealed class StoreEntity
     public DateTime CreatedAt { get; set; }
 
     // Navigation
-    public List<UserEntity> Users { get; set; } = new List<UserEntity>();
+    public List<UserEntity> Users { get; set; } = new();
+    public List<TwilioNumberEntity> TwilioNumbers { get; set; } = new();
 }

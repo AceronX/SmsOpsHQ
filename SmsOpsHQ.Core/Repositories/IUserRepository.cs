@@ -10,4 +10,7 @@ public interface IUserRepository
 
     // Find user by primary key. Returns null if not found.
     Task<User?> GetByIdAsync(int userId, CancellationToken cancellationToken = default);
+
+    // Update the user's last login timestamp.
+    Task UpdateLastLoginAtAsync(int userId, DateTime utcNow, CancellationToken cancellationToken = default);
 }

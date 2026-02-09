@@ -20,6 +20,8 @@ public sealed class AuthService : IAuthService
     {
         _userRepository = userRepository;
         _jwtSettings = jwtSettings.Value;
+        // JWT secret is centrally resolved in Program.cs (env var override or config),
+        // then propagated via PostConfigure<JwtSettings> so it arrives here already resolved.
     }
 
     public async Task<LoginResult?> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
@@ -37,6 +39,9 @@ public sealed class AuthService : IAuthService
         bool passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
         if (!passwordValid)
             return null;
+
+        // M46: Update last login timestamp.
+        await _userRepository.UpdateLastLoginAtAsync(user.UserId, DateTime.UtcNow, cancellationToken);
 
         string token = GenerateJwt(user);
 

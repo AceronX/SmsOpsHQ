@@ -17,6 +17,439 @@ namespace SmsOpsHQ.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.23");
 
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.AuditLogEntity", b =>
+                {
+                    b.Property<int>("AuditId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntityType")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IPAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AuditId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AuditLog", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.CustomerEntity", b =>
+                {
+                    b.Property<int>("CustomerId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CellPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int?>("CustomerKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HomePhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhoneE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("SinceDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TagsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("WorkPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Zip")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("CustomerId");
+
+                    b.HasIndex("CustomerKey");
+
+                    b.HasIndex("PhoneE164");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("FirstName", "LastName");
+
+                    b.ToTable("Customers", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.MessageEntity", b =>
+                {
+                    b.Property<int>("MessageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("general");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorText")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FromE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SentByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorePhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ThreadId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ToE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TwilioSid")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("MessageId");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("SentByUserId");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("ThreadId");
+
+                    b.HasIndex("TwilioSid")
+                        .IsUnique();
+
+                    b.ToTable("Messages", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.OptOutEntity", b =>
+                {
+                    b.Property<int>("OptOutId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("OptOutDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("PhoneE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("OptOutId");
+
+                    b.HasIndex("StoreId", "PhoneE164")
+                        .IsUnique();
+
+                    b.ToTable("OptOuts", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.QuarantinedMessageEntity", b =>
+                {
+                    b.Property<int>("QuarantineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FromE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QuarantineReason")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("QuarantinedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ToE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TwilioSid")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("QuarantineId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("QuarantinedMessages", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.SmsExcludedEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<int?>("ExcludedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Phone");
+
+                    b.ToTable("SMS_Excluded", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.SmsReminderEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<int?>("CustomerKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReminderType")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SentByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
+                    b.Property<int?>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorePhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TicketKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TwilioSid")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CustomerKey");
+
+                    b.HasIndex("TicketKey");
+
+                    b.ToTable("SMS_Reminders", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.SmsUnsubscribedEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("datetime('now')");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Phone");
+
+                    b.ToTable("SMS_Unsubscribed", (string)null);
+                });
+
             modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", b =>
                 {
                     b.Property<int>("StoreId")
@@ -64,6 +497,155 @@ namespace SmsOpsHQ.Infrastructure.Migrations
                     b.HasKey("StoreId");
 
                     b.ToTable("Stores", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.TemplateEntity", b =>
+                {
+                    b.Property<int>("TemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Hotkey")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("TemplateId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("Templates", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.ThreadEntity", b =>
+                {
+                    b.Property<int>("ThreadId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AssignedToUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("IdentityId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastMessageAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Open");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TwilioNumberId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UnreadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
+                    b.HasKey("ThreadId");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("IdentityId");
+
+                    b.HasIndex("LastMessageAt");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("Threads", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.TwilioNumberEntity", b =>
+                {
+                    b.Property<int>("NumberId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CapabilitiesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("FriendlyName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("MessagingServiceSid")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhoneE164")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TwilioSid")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("NumberId");
+
+                    b.HasIndex("PhoneE164")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("TwilioNumbers", (string)null);
                 });
 
             modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", b =>
@@ -118,6 +700,449 @@ namespace SmsOpsHQ.Infrastructure.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.XpdCustomerEntity", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BusPhone")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("City")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DOB")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirstName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirstTransaction")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IDIssueState")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IDNo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastTransaction")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MiddleName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResPhone")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SSN")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SyncedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Warning")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Zip")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("XPD_Customers", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.XpdCustomerPhoneEntity", b =>
+                {
+                    b.Property<int>("CustomerKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PhoneNormalized")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhoneType")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhoneOriginal")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("CustomerKey", "PhoneNormalized", "PhoneType");
+
+                    b.HasIndex("PhoneNormalized");
+
+                    b.ToTable("XPD_CustomerPhones", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.XpdItemEntity", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Brand")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CategoryCode")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Color")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Cost")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("ItemStatus")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Metal")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PrintedDetail")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SerialNo")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Size")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SyncedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TicketKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Weight")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("TicketKey");
+
+                    b.ToTable("XPD_Items", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.XpdPawnPaymentEntity", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("Cash")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("Check")
+                        .HasColumnType("REAL")
+                        .HasColumnName("Check_");
+
+                    b.Property<double?>("CreditCard")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("DebitCard")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("InterestChargePaid")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Method")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("NetDueAmount")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("NetPaymentAmount")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("NewCurrentBalance")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("NewDueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OldDueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OperatorInitials")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PawnPmtType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PaymentDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaymentStatus")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("PrincipalPaid")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("ServiceChargePaid")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("SyncedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TicketKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("TotalDueAmount")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("TicketKey");
+
+                    b.ToTable("XPD_PawnPayments", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.XpdTicketEntity", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Active")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("Amount")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("ChargesDue")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("CurrentBalance")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("CustomerKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DateClosed")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("FullTermPU")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("FulltermRenew")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("GunTicket")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HowClosed")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IssueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Item")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("LostTicket")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OperatorInitials")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaidTillDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("StandardCharges")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("StandardPU")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SyncedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TransNo")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("Active");
+
+                    b.HasIndex("CustomerKey");
+
+                    b.HasIndex("DueDate");
+
+                    b.ToTable("XPD_Tickets", (string)null);
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.AuditLogEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Store");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.CustomerEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.MessageEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", "SentByUser")
+                        .WithMany()
+                        .HasForeignKey("SentByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.ThreadEntity", "Thread")
+                        .WithMany("Messages")
+                        .HasForeignKey("ThreadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SentByUser");
+
+                    b.Navigation("Store");
+
+                    b.Navigation("Thread");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.OptOutEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.QuarantinedMessageEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ReviewedByUser");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.TemplateEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.ThreadEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", "AssignedToUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssignedToUser");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.TwilioNumberEntity", b =>
+                {
+                    b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
+                        .WithMany("TwilioNumbers")
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
             modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.UserEntity", b =>
                 {
                     b.HasOne("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", "Store")
@@ -130,7 +1155,14 @@ namespace SmsOpsHQ.Infrastructure.Migrations
 
             modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.StoreEntity", b =>
                 {
+                    b.Navigation("TwilioNumbers");
+
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("SmsOpsHQ.Infrastructure.Persistence.Entities.ThreadEntity", b =>
+                {
+                    b.Navigation("Messages");
                 });
 #pragma warning restore 612, 618
         }
