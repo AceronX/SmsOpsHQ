@@ -7,8 +7,8 @@ using SmsOpsHQ.Infrastructure.Persistence;
 
 namespace SmsOpsHQ.Infrastructure.Services;
 
-// Resolves phone numbers to XPD customer identities via the
-// XPD_CustomerPhones index table. Includes a negative cache
+// Resolves phone numbers to pawn customer identities via the
+// CustomerPhones index table. Includes a negative cache
 // (10 minute TTL) for phones not found.
 public sealed class IdentityResolver : IIdentityResolver
 {
@@ -26,7 +26,7 @@ public sealed class IdentityResolver : IIdentityResolver
         _logger = logger;
     }
 
-    // Normalize the phone and query XPD_CustomerPhones by PhoneNormalized.
+    // Normalize the phone and query CustomerPhones by PhoneNormalized.
     // Returns all matching CustomerKeys.
     public async Task<List<int>> ResolveCustomerKeysAsync(string phoneE164,
         CancellationToken cancellationToken = default)
@@ -35,7 +35,7 @@ public sealed class IdentityResolver : IIdentityResolver
         if (normalized is null)
             return new List<int>();
 
-        List<int> keys = await _db.XpdCustomerPhones
+        List<int> keys = await _db.CustomerPhones
             .AsNoTracking()
             .Where(p => p.PhoneNormalized == normalized)
             .Select(p => p.CustomerKey)

@@ -34,7 +34,7 @@ public sealed class TicketsController : ControllerBase
         if (!User.IsHqUser() && userStoreId is null)
             return Problem(statusCode: 403, detail: "No store assigned");
 
-        // Load ticket from XPD_Tickets
+        // Load ticket from Tickets table
         Ticket? ticket = await _ticketRepo.GetByKeyAsync(ticketKey, cancellationToken);
         if (ticket is null)
             return Problem(statusCode: 404, detail: "Ticket not found");

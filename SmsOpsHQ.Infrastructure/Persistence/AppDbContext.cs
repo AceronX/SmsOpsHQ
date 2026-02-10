@@ -25,14 +25,13 @@ public sealed class AppDbContext : DbContext
     public DbSet<QuarantinedMessageEntity> QuarantinedMessages => Set<QuarantinedMessageEntity>();
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
 
-    // XPD mirror tables (synced from MS Access via VBScript streaming)
-    public DbSet<XpdCustomerEntity> XpdCustomers => Set<XpdCustomerEntity>();
-    public DbSet<XpdTicketEntity> XpdTickets => Set<XpdTicketEntity>();
-    public DbSet<XpdItemEntity> XpdItems => Set<XpdItemEntity>();
-    public DbSet<XpdPawnPaymentEntity> XpdPawnPayments => Set<XpdPawnPaymentEntity>();
+    // Pawn data tables (synced from XPawn MS Access via VBScript streaming)
+    public DbSet<TicketEntity> Tickets => Set<TicketEntity>();
+    public DbSet<ItemEntity> Items => Set<ItemEntity>();
+    public DbSet<PawnPaymentEntity> PawnPayments => Set<PawnPaymentEntity>();
 
-    // XPD phone index (used by IdentityResolver, rebuilt during XPD sync)
-    public DbSet<XpdCustomerPhoneEntity> XpdCustomerPhones => Set<XpdCustomerPhoneEntity>();
+    // Phone index (used by IdentityResolver, rebuilt during sync)
+    public DbSet<CustomerPhoneEntity> CustomerPhones => Set<CustomerPhoneEntity>();
 
     // Reminder system tables
     public DbSet<SmsReminderEntity> SmsReminders => Set<SmsReminderEntity>();
@@ -53,11 +52,10 @@ public sealed class AppDbContext : DbContext
         ConfigureOptOuts(modelBuilder);
         ConfigureQuarantinedMessages(modelBuilder);
         ConfigureAuditLog(modelBuilder);
-        ConfigureXpdCustomers(modelBuilder);
-        ConfigureXpdTickets(modelBuilder);
-        ConfigureXpdItems(modelBuilder);
-        ConfigureXpdPawnPayments(modelBuilder);
-        ConfigureXpdCustomerPhones(modelBuilder);
+        ConfigureTickets(modelBuilder);
+        ConfigureItems(modelBuilder);
+        ConfigurePawnPayments(modelBuilder);
+        ConfigureCustomerPhones(modelBuilder);
         ConfigureSmsReminders(modelBuilder);
         ConfigureSmsExcluded(modelBuilder);
         ConfigureSmsUnsubscribed(modelBuilder);
@@ -206,10 +204,25 @@ public sealed class AppDbContext : DbContext
                 .IsRequired()
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+            // XPawn-synced columns
+            customer.Property(c => c.MiddleName).HasMaxLength(64);
+            customer.Property(c => c.ResPhone).HasMaxLength(32);
+            customer.Property(c => c.BusPhone).HasMaxLength(32);
+            customer.Property(c => c.EMailAddress).HasMaxLength(128);
+            customer.Property(c => c.DOB).HasMaxLength(32);
+            customer.Property(c => c.SSN).HasMaxLength(32);
+            customer.Property(c => c.IDNo).HasMaxLength(64);
+            customer.Property(c => c.IDIssueState).HasMaxLength(10);
+            customer.Property(c => c.FirstTransaction).HasMaxLength(32);
+            customer.Property(c => c.LastTransaction).HasMaxLength(32);
+            customer.Property(c => c.Warning).HasMaxLength(512);
+            customer.Property(c => c.SyncedAt).HasMaxLength(64);
+
             customer.HasIndex(c => c.StoreId);
             customer.HasIndex(c => c.PhoneE164);
-            customer.HasIndex(c => c.CustomerKey);
+            customer.HasIndex(c => c.CustomerKey).IsUnique();
             customer.HasIndex(c => new { c.FirstName, c.LastName });
+            customer.HasIndex(c => c.ResPhone);
 
             customer.HasOne(c => c.Store)
                 .WithMany()
@@ -471,70 +484,60 @@ public sealed class AppDbContext : DbContext
         });
     }
 
-    // ── XPD_Customers (Mirror) ────────────────────────────────────────
+    // (XPawn customer data has been consolidated into the Customers table — see ConfigureCustomers)
 
-    private static void ConfigureXpdCustomers(ModelBuilder modelBuilder)
+    // ── Tickets (Pawn) ───────────────────────────────────────────────
+
+    private static void ConfigureTickets(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<XpdCustomerEntity>(xc =>
+        modelBuilder.Entity<TicketEntity>(xt =>
         {
-            xc.ToTable("XPD_Customers");
-            xc.HasKey(c => c.Key);
-
-            // All columns are nullable text except Key (PK).
-            // No foreign keys — this is a mirror of the XPawn Access database.
-        });
-    }
-
-    // ── XPD_Tickets (Mirror) ───────────────────────────────────────────
-
-    private static void ConfigureXpdTickets(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<XpdTicketEntity>(xt =>
-        {
-            xt.ToTable("XPD_Tickets");
+            xt.ToTable("Tickets");
             xt.HasKey(t => t.Key);
 
             xt.HasIndex(t => t.CustomerKey);
             xt.HasIndex(t => t.Active);
+            xt.HasIndex(t => t.Type);
             xt.HasIndex(t => t.DueDate);
         });
     }
 
-    // ── XPD_Items (Mirror) ─────────────────────────────────────────────
+    // ── Items (Pawn) ─────────────────────────────────────────────────
 
-    private static void ConfigureXpdItems(ModelBuilder modelBuilder)
+    private static void ConfigureItems(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<XpdItemEntity>(xi =>
+        modelBuilder.Entity<ItemEntity>(xi =>
         {
-            xi.ToTable("XPD_Items");
+            xi.ToTable("Items");
             xi.HasKey(i => i.Key);
 
             xi.HasIndex(i => i.TicketKey);
         });
     }
 
-    // ── XPD_PawnPayments (Mirror) ──────────────────────────────────────
+    // ── PawnPayments ──────────────────────────────────────────────────
 
-    private static void ConfigureXpdPawnPayments(ModelBuilder modelBuilder)
+    private static void ConfigurePawnPayments(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<XpdPawnPaymentEntity>(xp =>
+        modelBuilder.Entity<PawnPaymentEntity>(xp =>
         {
-            xp.ToTable("XPD_PawnPayments");
+            xp.ToTable("PawnPayments");
             xp.HasKey(p => p.Key);
 
             xp.Property(p => p.Check).HasColumnName("Check_");
 
             xp.HasIndex(p => p.TicketKey);
+            xp.HasIndex(p => p.PaymentDate);
         });
     }
 
-    // ── XPD_CustomerPhones (Phone Index) ──────────────────────────────
+    // ── CustomerPhones (Phone Index) ──────────────────────────────────
 
-    private static void ConfigureXpdCustomerPhones(ModelBuilder modelBuilder)
+    private static void ConfigureCustomerPhones(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<XpdCustomerPhoneEntity>(phone =>
+        modelBuilder.Entity<CustomerPhoneEntity>(phone =>
         {
-            phone.ToTable("XPD_CustomerPhones");
+            phone.ToTable("CustomerPhones");
             phone.HasKey(p => new { p.CustomerKey, p.PhoneNormalized, p.PhoneType });
 
             phone.Property(p => p.PhoneNormalized)

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Infrastructure.Persistence;
@@ -12,7 +13,8 @@ using SmsOpsHQ.Infrastructure.Persistence.Entities;
 namespace SmsOpsHQ.Infrastructure.Services;
 
 // XPD to SQLite sync service. Streams data from XPawn MS Access database
-// via cscript.exe / stream_table.vbs and batch-upserts into SQLite mirror tables.
+// via cscript.exe / stream_table.vbs and batch-upserts into SQLite tables
+// (Customers, Tickets, Items, PawnPayments, CustomerPhones).
 public sealed class XpdSyncService : IXpdSyncService
 {
     private readonly IServiceScopeFactory _scopeFactory;
@@ -27,9 +29,12 @@ public sealed class XpdSyncService : IXpdSyncService
 
     private readonly SemaphoreSlim _syncLock = new(1, 1);
 
+    private volatile SyncRunOptions? _currentRunOverrides;
+
     private DateTime? _lastSync;
     private Dictionary<string, object> _lastSyncStats = new();
     private volatile bool _syncInProgress;
+    private string? _lastError;
 
     private SyncProgress _currentProgress = new()
     {
@@ -55,7 +60,7 @@ public sealed class XpdSyncService : IXpdSyncService
         _cscriptPath = xpdSection["CscriptPath"] ?? @"C:\Windows\SysWOW64\cscript.exe";
     }
 
-    public async Task<SyncResult> FullSyncAsync(CancellationToken cancellationToken = default)
+    public async Task<SyncResult> FullSyncAsync(SyncRunOptions? overrides = null, CancellationToken cancellationToken = default)
     {
         if (_syncInProgress)
         {
@@ -68,6 +73,8 @@ public sealed class XpdSyncService : IXpdSyncService
             return new SyncResult { Success = false, Error = "Sync already in progress" };
         }
 
+        _currentRunOverrides = overrides;
+        _lastError = null;
         try
         {
             _syncInProgress = true;
@@ -111,6 +118,7 @@ public sealed class XpdSyncService : IXpdSyncService
                 ["duration_seconds"] = durationSeconds
             };
 
+            _lastError = null;
             UpdateProgress("complete", 100, 100, $"Sync completed in {durationSeconds:F1}s");
 
             _logger.LogInformation(
@@ -138,11 +146,13 @@ public sealed class XpdSyncService : IXpdSyncService
         catch (Exception ex)
         {
             _logger.LogError(ex, "XPD sync failed");
+            _lastError = ex.Message;
             UpdateProgress("error", 0, 100, $"Error: {ex.Message}");
             return new SyncResult { Success = false, Error = ex.Message };
         }
         finally
         {
+            _currentRunOverrides = null;
             _syncInProgress = false;
             _syncLock.Release();
         }
@@ -175,12 +185,14 @@ public sealed class XpdSyncService : IXpdSyncService
             _logger.LogWarning(ex, "Failed to get SQLite counts for sync status");
         }
 
+        string? error = _lastError ?? (_currentProgress.Stage == "error" ? _currentProgress.Message : null);
         return new SyncStatus
         {
             LastSync = _lastSync,
             SqliteCounts = counts,
             LastSyncStats = _lastSyncStats,
-            SyncInProgress = _syncInProgress
+            SyncInProgress = _syncInProgress,
+            Error = error
         };
     }
 
@@ -197,60 +209,90 @@ public sealed class XpdSyncService : IXpdSyncService
     {
         string now = DateTime.UtcNow.ToString("o");
         int count = 0;
-        List<XpdCustomerEntity> batch = new(100);
+        int batchSize = 100;
+        int batchCount = 0;
 
         await foreach (JsonElement row in StreamVbscriptAsync("customers", cancellationToken))
         {
-            XpdCustomerEntity entity = new()
-            {
-                Key = row.GetInt("key"),
-                LastName = row.GetString("last_name"),
-                FirstName = row.GetString("first_name"),
-                MiddleName = row.GetString("middle_name"),
-                Address = row.GetString("address"),
-                City = row.GetString("city"),
-                State = row.GetString("state"),
-                Zip = row.GetString("zip"),
-                ResPhone = row.GetString("res_phone"),
-                BusPhone = row.GetString("bus_phone"),
-                Email = row.GetString("email"),
-                DOB = row.GetString("dob"),
-                SSN = row.GetString("ssn"),
-                IDNo = row.GetString("id_no"),
-                IDIssueState = row.GetString("id_state"),
-                Notes = row.GetString("notes"),
-                FirstTransaction = row.GetString("first_transaction"),
-                LastTransaction = row.GetString("last_transaction"),
-                Warning = row.GetString("warning"),
-                SyncedAt = now
-            };
+            int xpawnKey = row.GetInt("key");
+            string? lastName = row.GetString("last_name");
+            string? firstName = row.GetString("first_name");
+            string? middleName = row.GetString("middle_name");
+            string? address = row.GetString("address");
+            string? city = row.GetString("city");
+            string? state = row.GetString("state");
+            string? zip = row.GetString("zip");
+            string? resPhone = row.GetString("res_phone");
+            string? busPhone = row.GetString("bus_phone");
+            string? emailAddress = row.GetString("email_address");
+            string? dob = row.GetString("dob");
+            string? ssn = row.GetString("ssn");
+            string? idNo = row.GetString("id_no");
+            string? idIssueState = row.GetString("id_issue_state");
+            string? notes = row.GetString("notes");
+            string? firstTransaction = row.GetString("first_transaction");
+            string? lastTransaction = row.GetString("last_transaction");
+            string? warning = row.GetString("warning");
 
-            batch.Add(entity);
+            object[] parameters =
+            [
+                xpawnKey,
+                Param(lastName), Param(firstName), Param(middleName),
+                Param(address), Param(city), Param(state), Param(zip),
+                Param(resPhone), Param(busPhone), Param(emailAddress),
+                Param(dob), Param(ssn), Param(idNo), Param(idIssueState),
+                Param(notes), Param(firstTransaction), Param(lastTransaction),
+                Param(warning), now,
+                "", // PhoneE164 — placeholder for sync-only customers (required column)
+                1,  // StoreId — default store
+                now, now // CreatedAt, UpdatedAt
+            ];
+
+            await db.Database.ExecuteSqlRawAsync(UpsertCustomerSql, parameters, cancellationToken);
+
             count++;
-
-            if (batch.Count >= 100)
+            batchCount++;
+            if (batchCount >= batchSize)
             {
-                await UpsertCustomerBatchAsync(db, batch, cancellationToken);
-                batch.Clear();
+                batchCount = 0;
                 UpdateProgress("customers", count, count + 500, $"Synced {count:N0} customers...");
             }
         }
 
-        if (batch.Count > 0)
-            await UpsertCustomerBatchAsync(db, batch, cancellationToken);
-
         return count;
     }
+
+    // Upsert by CustomerKey: insert new XPawn customers or update existing ones.
+    // Preserves SMS-originated fields (PhoneE164, CellPhone, TagsJson, etc.) on conflict.
+    private const string UpsertCustomerSql = @"INSERT INTO Customers
+              (CustomerKey, LastName, FirstName, MiddleName,
+               Address, City, State, Zip, ResPhone, BusPhone, EMailAddress,
+               DOB, SSN, IDNo, IDIssueState, Notes,
+               FirstTransaction, LastTransaction, Warning, SyncedAt,
+               PhoneE164, StoreId, CreatedAt, UpdatedAt)
+              VALUES ({0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23})
+              ON CONFLICT(CustomerKey) DO UPDATE SET
+               LastName=excluded.LastName, FirstName=excluded.FirstName,
+               MiddleName=excluded.MiddleName, Address=excluded.Address,
+               City=excluded.City, State=excluded.State, Zip=excluded.Zip,
+               ResPhone=excluded.ResPhone, BusPhone=excluded.BusPhone,
+               EMailAddress=excluded.EMailAddress, DOB=excluded.DOB,
+               SSN=excluded.SSN, IDNo=excluded.IDNo,
+               IDIssueState=excluded.IDIssueState, Notes=excluded.Notes,
+               FirstTransaction=excluded.FirstTransaction,
+               LastTransaction=excluded.LastTransaction,
+               Warning=excluded.Warning, SyncedAt=excluded.SyncedAt,
+               UpdatedAt=excluded.UpdatedAt";
 
     private async Task<int> SyncTicketsAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         string now = DateTime.UtcNow.ToString("o");
         int count = 0;
-        List<XpdTicketEntity> batch = new(100);
+        List<TicketEntity> batch = new(100);
 
         await foreach (JsonElement row in StreamVbscriptAsync("tickets", cancellationToken))
         {
-            XpdTicketEntity entity = new()
+            TicketEntity entity = new()
             {
                 Key = row.GetInt("key"),
                 CustomerKey = row.GetInt("customer_key"),
@@ -300,11 +342,11 @@ public sealed class XpdSyncService : IXpdSyncService
     {
         string now = DateTime.UtcNow.ToString("o");
         int count = 0;
-        List<XpdItemEntity> batch = new(500);
+        List<ItemEntity> batch = new(500);
 
         await foreach (JsonElement row in StreamVbscriptAsync("items", cancellationToken))
         {
-            XpdItemEntity entity = new()
+            ItemEntity entity = new()
             {
                 Key = row.GetInt("key"),
                 TicketKey = row.GetInt("ticket_key"),
@@ -314,12 +356,12 @@ public sealed class XpdSyncService : IXpdSyncService
                 Cost = row.GetNullableDouble("cost"),
                 ItemStatus = row.GetString("item_status"),
                 Notes = row.GetString("notes"),
-                Brand = row.GetString("brand"),
+                Mfg = row.GetString("brand"),
                 Model = row.GetString("model"),
                 Color = row.GetString("color"),
                 Size = row.GetString("size"),
                 Weight = row.GetString("weight"),
-                Metal = row.GetString("metal"),
+                Karat = row.GetString("metal"),
                 SyncedAt = now
             };
 
@@ -344,11 +386,11 @@ public sealed class XpdSyncService : IXpdSyncService
     {
         string now = DateTime.UtcNow.ToString("o");
         int count = 0;
-        List<XpdPawnPaymentEntity> batch = new(500);
+        List<PawnPaymentEntity> batch = new(500);
 
         await foreach (JsonElement row in StreamVbscriptAsync("payments", cancellationToken))
         {
-            XpdPawnPaymentEntity entity = new()
+            PawnPaymentEntity entity = new()
             {
                 Key = row.GetInt("key"),
                 TicketKey = row.GetInt("ticket_key"),
@@ -394,14 +436,15 @@ public sealed class XpdSyncService : IXpdSyncService
     private async Task<int> RebuildPhoneIndexAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         // Delete all existing phone entries
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM XPD_CustomerPhones", cancellationToken);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM CustomerPhones", cancellationToken);
 
         // Load all customers to extract and normalize phones
-        List<XpdCustomerEntity> customers = await db.XpdCustomers
+        List<CustomerEntity> customers = await db.Customers
             .AsNoTracking()
-            .Select(c => new XpdCustomerEntity
+            .Where(c => c.CustomerKey != null)
+            .Select(c => new CustomerEntity
             {
-                Key = c.Key,
+                CustomerKey = c.CustomerKey,
                 ResPhone = c.ResPhone,
                 BusPhone = c.BusPhone
             })
@@ -409,20 +452,22 @@ public sealed class XpdSyncService : IXpdSyncService
 
         int total = customers.Count;
         int count = 0;
-        List<XpdCustomerPhoneEntity> batch = new(1000);
+        List<CustomerPhoneEntity> batch = new(1000);
 
         for (int i = 0; i < customers.Count; i++)
         {
-            XpdCustomerEntity customer = customers[i];
+            CustomerEntity customer = customers[i];
+
+            int customerKey = customer.CustomerKey!.Value;
 
             if (!string.IsNullOrWhiteSpace(customer.ResPhone))
             {
                 string? normalized = PhoneUtils.ExtractLast10Digits(customer.ResPhone);
                 if (normalized is not null)
                 {
-                    batch.Add(new XpdCustomerPhoneEntity
+                    batch.Add(new CustomerPhoneEntity
                     {
-                        CustomerKey = customer.Key,
+                        CustomerKey = customerKey,
                         PhoneNormalized = normalized,
                         PhoneOriginal = customer.ResPhone,
                         PhoneType = "ResPhone"
@@ -437,9 +482,9 @@ public sealed class XpdSyncService : IXpdSyncService
                 string? normalized = PhoneUtils.ExtractLast10Digits(customer.BusPhone);
                 if (normalized is not null)
                 {
-                    batch.Add(new XpdCustomerPhoneEntity
+                    batch.Add(new CustomerPhoneEntity
                     {
-                        CustomerKey = customer.Key,
+                        CustomerKey = customerKey,
                         PhoneNormalized = normalized,
                         PhoneOriginal = customer.BusPhone,
                         PhoneType = "BusPhone"
@@ -468,41 +513,17 @@ public sealed class XpdSyncService : IXpdSyncService
 
     private static object Param(object? value) => value ?? DBNull.Value;
 
-    private static async Task UpsertCustomerBatchAsync(
-        AppDbContext db, List<XpdCustomerEntity> batch, CancellationToken ct)
-    {
-        const string sql = @"INSERT OR REPLACE INTO XPD_Customers
-                  (Key, LastName, FirstName, MiddleName, Address, City, State, Zip,
-                   ResPhone, BusPhone, Email, DOB, SSN, IDNo, IDIssueState,
-                   Notes, FirstTransaction, LastTransaction, Warning, SyncedAt)
-                  VALUES ({0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19})";
-
-        foreach (XpdCustomerEntity e in batch)
-        {
-            object[] parameters =
-            [
-                e.Key, Param(e.LastName), Param(e.FirstName), Param(e.MiddleName),
-                Param(e.Address), Param(e.City), Param(e.State), Param(e.Zip),
-                Param(e.ResPhone), Param(e.BusPhone), Param(e.Email),
-                Param(e.DOB), Param(e.SSN), Param(e.IDNo), Param(e.IDIssueState),
-                Param(e.Notes), Param(e.FirstTransaction), Param(e.LastTransaction),
-                Param(e.Warning), Param(e.SyncedAt)
-            ];
-            await db.Database.ExecuteSqlRawAsync(sql, parameters, ct);
-        }
-    }
-
     private static async Task UpsertTicketBatchAsync(
-        AppDbContext db, List<XpdTicketEntity> batch, CancellationToken ct)
+        AppDbContext db, List<TicketEntity> batch, CancellationToken ct)
     {
-        const string sql = @"INSERT OR REPLACE INTO XPD_Tickets
+        const string sql = @"INSERT OR REPLACE INTO Tickets
                   (Key, CustomerKey, TransNo, Type, Active, Amount, CurrentBalance,
                    IssueDate, DueDate, DateClosed, HowClosed, Status, Notes, Item,
                    OperatorInitials, GunTicket, LostTicket, PaidTillDate, LastDate,
                    ChargesDue, StandardCharges, StandardPU, FullTermPU, FulltermRenew, SyncedAt)
                   VALUES ({0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21},{22},{23},{24})";
 
-        foreach (XpdTicketEntity e in batch)
+        foreach (TicketEntity e in batch)
         {
             object[] parameters =
             [
@@ -520,30 +541,30 @@ public sealed class XpdSyncService : IXpdSyncService
     }
 
     private static async Task UpsertItemBatchAsync(
-        AppDbContext db, List<XpdItemEntity> batch, CancellationToken ct)
+        AppDbContext db, List<ItemEntity> batch, CancellationToken ct)
     {
-        const string sql = @"INSERT OR REPLACE INTO XPD_Items
+        const string sql = @"INSERT OR REPLACE INTO Items
                   (Key, TicketKey, PrintedDetail, CategoryCode, SerialNo, Cost,
-                   ItemStatus, Notes, Brand, Model, Color, Size, Weight, Metal, SyncedAt)
+                   ItemStatus, Notes, Mfg, Model, Color, Size, Weight, Karat, SyncedAt)
                   VALUES ({0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14})";
 
-        foreach (XpdItemEntity e in batch)
+        foreach (ItemEntity e in batch)
         {
             object[] parameters =
             [
                 e.Key, e.TicketKey, Param(e.PrintedDetail), Param(e.CategoryCode),
                 Param(e.SerialNo), Param(e.Cost),
-                Param(e.ItemStatus), Param(e.Notes), Param(e.Brand), Param(e.Model),
-                Param(e.Color), Param(e.Size), Param(e.Weight), Param(e.Metal), Param(e.SyncedAt)
+                Param(e.ItemStatus), Param(e.Notes), Param(e.Mfg), Param(e.Model),
+                Param(e.Color), Param(e.Size), Param(e.Weight), Param(e.Karat), Param(e.SyncedAt)
             ];
             await db.Database.ExecuteSqlRawAsync(sql, parameters, ct);
         }
     }
 
     private static async Task UpsertPaymentBatchAsync(
-        AppDbContext db, List<XpdPawnPaymentEntity> batch, CancellationToken ct)
+        AppDbContext db, List<PawnPaymentEntity> batch, CancellationToken ct)
     {
-        const string sql = @"INSERT OR REPLACE INTO XPD_PawnPayments
+        const string sql = @"INSERT OR REPLACE INTO PawnPayments
                   (Key, TicketKey, PaymentDate, PawnPmtType, PaymentStatus,
                    TotalDueAmount, NetDueAmount, NetPaymentAmount, Cash, Check_,
                    CreditCard, DebitCard, InterestChargePaid, ServiceChargePaid,
@@ -551,7 +572,7 @@ public sealed class XpdSyncService : IXpdSyncService
                    OperatorInitials, Method, Note, SyncedAt)
                   VALUES ({0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19},{20},{21})";
 
-        foreach (XpdPawnPaymentEntity e in batch)
+        foreach (PawnPaymentEntity e in batch)
         {
             object[] parameters =
             [
@@ -570,13 +591,13 @@ public sealed class XpdSyncService : IXpdSyncService
     }
 
     private static async Task InsertPhoneBatchAsync(
-        AppDbContext db, List<XpdCustomerPhoneEntity> batch, CancellationToken ct)
+        AppDbContext db, List<CustomerPhoneEntity> batch, CancellationToken ct)
     {
-        const string sql = @"INSERT OR IGNORE INTO XPD_CustomerPhones
+        const string sql = @"INSERT OR IGNORE INTO CustomerPhones
                   (CustomerKey, PhoneNormalized, PhoneOriginal, PhoneType)
                   VALUES ({0},{1},{2},{3})";
 
-        foreach (XpdCustomerPhoneEntity e in batch)
+        foreach (CustomerPhoneEntity e in batch)
         {
             object[] parameters =
             [
@@ -593,10 +614,15 @@ public sealed class XpdSyncService : IXpdSyncService
         string queryType,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        string xpdPath = _currentRunOverrides?.XpdPath ?? _xpdPath;
+        string mdwPath = _currentRunOverrides?.MdwPath ?? _mdwPath;
+        string xpdUser = _currentRunOverrides?.XpdUser ?? _xpdUser;
+        string xpdPassword = _currentRunOverrides?.XpdPassword ?? _xpdPassword;
+
         ProcessStartInfo startInfo = new()
         {
             FileName = _cscriptPath,
-            Arguments = $"//nologo \"{_vbscriptPath}\" \"{_xpdPath}\" \"{queryType}\" \"{_mdwPath}\" \"{_xpdUser}\" \"{_xpdPassword}\"",
+            Arguments = $"//nologo \"{_vbscriptPath}\" \"{xpdPath}\" \"{queryType}\" \"{mdwPath}\" \"{xpdUser}\" \"{xpdPassword}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -612,7 +638,7 @@ public sealed class XpdSyncService : IXpdSyncService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to start VBScript process for {QueryType}", queryType);
-            yield break;
+            throw new InvalidOperationException("Failed to start sync process. Check XPD path, MDW path, and that cscript is available.", ex);
         }
 
         using StreamReader stdoutReader = process.StandardOutput;
@@ -629,10 +655,18 @@ public sealed class XpdSyncService : IXpdSyncService
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            if (line.StartsWith("{\"error\""))
+            if (line.StartsWith("{\"error\"", StringComparison.Ordinal))
             {
                 _logger.LogWarning("VBScript error: {Error}", line);
-                continue;
+                string errMsg = line;
+                try
+                {
+                    using JsonDocument doc = JsonDocument.Parse(line);
+                    if (doc.RootElement.TryGetProperty("error", out JsonElement errProp))
+                        errMsg = errProp.GetString() ?? line;
+                }
+                catch { /* use raw line */ }
+                throw new InvalidOperationException($"XPD sync failed: {errMsg}");
             }
 
             JsonElement element;
@@ -655,6 +689,9 @@ public sealed class XpdSyncService : IXpdSyncService
         {
             string stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
             _logger.LogWarning("VBScript exited with code {ExitCode}: {Stderr}", process.ExitCode, stderr);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr)
+                ? $"Sync failed (exit code {process.ExitCode}). Check XPD credentials and MDW path."
+                : $"Sync failed: {stderr.Trim()}");
         }
     }
 
@@ -665,11 +702,11 @@ public sealed class XpdSyncService : IXpdSyncService
     {
         Dictionary<string, int> counts = new();
 
-        counts["customers"] = await CountTableAsync(db, "XPD_Customers", ct);
-        counts["tickets"] = await CountTableAsync(db, "XPD_Tickets", ct);
-        counts["items"] = await CountTableAsync(db, "XPD_Items", ct);
-        counts["pawnpayments"] = await CountTableAsync(db, "XPD_PawnPayments", ct);
-        counts["customerphones"] = await CountTableAsync(db, "XPD_CustomerPhones", ct);
+        counts["customers"] = await CountTableAsync(db, "Customers", ct);
+        counts["tickets"] = await CountTableAsync(db, "Tickets", ct);
+        counts["items"] = await CountTableAsync(db, "Items", ct);
+        counts["pawnpayments"] = await CountTableAsync(db, "PawnPayments", ct);
+        counts["customerphones"] = await CountTableAsync(db, "CustomerPhones", ct);
 
         return counts;
     }
@@ -695,11 +732,11 @@ public sealed class XpdSyncService : IXpdSyncService
     {
         Dictionary<string, int> counts = new();
 
-        counts["customers"] = CountTableSync(db, "XPD_Customers");
-        counts["tickets"] = CountTableSync(db, "XPD_Tickets");
-        counts["items"] = CountTableSync(db, "XPD_Items");
-        counts["pawnpayments"] = CountTableSync(db, "XPD_PawnPayments");
-        counts["customerphones"] = CountTableSync(db, "XPD_CustomerPhones");
+        counts["customers"] = CountTableSync(db, "Customers");
+        counts["tickets"] = CountTableSync(db, "Tickets");
+        counts["items"] = CountTableSync(db, "Items");
+        counts["pawnpayments"] = CountTableSync(db, "PawnPayments");
+        counts["customerphones"] = CountTableSync(db, "CustomerPhones");
 
         return counts;
     }
@@ -723,6 +760,7 @@ public sealed class XpdSyncService : IXpdSyncService
     private void UpdateProgress(string stage, int current, int total, string message)
     {
         int percent = total > 0 ? (int)((double)current / total * 100) : 0;
+        if (percent > 100) percent = 100;
         _currentProgress = new SyncProgress
         {
             InProgress = _syncInProgress,

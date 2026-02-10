@@ -48,6 +48,26 @@ public sealed class UserRepository : IUserRepository
         }
     }
 
+    public async Task UpdateFullNameAsync(int userId, string fullName, CancellationToken cancellationToken = default)
+    {
+        UserEntity? entity = await _db.Users.FindAsync(new object[] { userId }, cancellationToken);
+        if (entity is not null)
+        {
+            entity.FullName = fullName ?? string.Empty;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    public async Task UpdatePasswordHashAsync(int userId, string passwordHash, CancellationToken cancellationToken = default)
+    {
+        UserEntity? entity = await _db.Users.FindAsync(new object[] { userId }, cancellationToken);
+        if (entity is not null)
+        {
+            entity.PasswordHash = passwordHash;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     private static User MapToDomain(UserEntity entity)
     {
         return new User

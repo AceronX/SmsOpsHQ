@@ -1,0 +1,434 @@
+{
+    "database": {
+        "name": "PawnMaster XPD",
+        "type": "Microsoft Access (.XPD)",
+        "booleanConvention": {
+            "true": -1,
+            "false": 0
+        }
+    },
+    "tables": [
+        {
+            "name": "Customers",
+            "primaryKey": "Key",
+            "indexes": [
+                "ResPhone"
+            ],
+            "columns": [
+                {
+                    "name": "Key",
+                    "type": "long",
+                    "role": "PK"
+                },
+                {
+                    "name": "LastName",
+                    "type": "text"
+                },
+                {
+                    "name": "FirstName",
+                    "type": "text"
+                },
+                {
+                    "name": "MiddleName",
+                    "type": "text"
+                },
+                {
+                    "name": "Address",
+                    "type": "text"
+                },
+                {
+                    "name": "City",
+                    "type": "text"
+                },
+                {
+                    "name": "State",
+                    "type": "text"
+                },
+                {
+                    "name": "Zip",
+                    "type": "text"
+                },
+                {
+                    "name": "ResPhone",
+                    "type": "text",
+                    "indexed": true
+                },
+                {
+                    "name": "BusPhone",
+                    "type": "text"
+                },
+                {
+                    "name": "EMailAddress",
+                    "type": "text"
+                },
+                {
+                    "name": "DOB",
+                    "type": "datetime"
+                },
+                {
+                    "name": "SSN",
+                    "type": "text"
+                },
+                {
+                    "name": "IDNo",
+                    "type": "text"
+                },
+                {
+                    "name": "IDIssueState",
+                    "type": "text"
+                },
+                {
+                    "name": "Notes",
+                    "type": "memo"
+                },
+                {
+                    "name": "FirstTransaction",
+                    "type": "datetime"
+                },
+                {
+                    "name": "LastTransaction",
+                    "type": "datetime"
+                },
+                {
+                    "name": "Warning",
+                    "type": "text"
+                }
+            ]
+        },
+        {
+            "name": "Tickets",
+            "primaryKey": "Key",
+            "foreignKeys": [
+                {
+                    "column": "CustomerKey",
+                    "references": {
+                        "table": "Customers",
+                        "column": "Key"
+                    }
+                }
+            ],
+            "indexes": [
+                "CustomerKey",
+                "Active",
+                "Type",
+                "DueDate"
+            ],
+            "columns": [
+                {
+                    "name": "Key",
+                    "type": "long",
+                    "role": "PK"
+                },
+                {
+                    "name": "CustomerKey",
+                    "type": "long",
+                    "role": "FK"
+                },
+                {
+                    "name": "TransNo",
+                    "type": "long"
+                },
+                {
+                    "name": "Type",
+                    "type": "int"
+                },
+                {
+                    "name": "Active",
+                    "type": "bool"
+                },
+                {
+                    "name": "Amount",
+                    "type": "currency"
+                },
+                {
+                    "name": "CurrentBalance",
+                    "type": "currency"
+                },
+                {
+                    "name": "IssueDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "DueDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "DateClosed",
+                    "type": "datetime"
+                },
+                {
+                    "name": "HowClosed",
+                    "type": "text"
+                },
+                {
+                    "name": "Status",
+                    "type": "text"
+                },
+                {
+                    "name": "Notes",
+                    "type": "memo"
+                },
+                {
+                    "name": "Item",
+                    "type": "text"
+                },
+                {
+                    "name": "OperatorInitials",
+                    "type": "text"
+                },
+                {
+                    "name": "GunTicket",
+                    "type": "bool"
+                },
+                {
+                    "name": "LostTicket",
+                    "type": "bool"
+                },
+                {
+                    "name": "PaidTillDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "LastDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "ChargesDue",
+                    "type": "currency"
+                },
+                {
+                    "name": "StandardCharges",
+                    "type": "currency"
+                },
+                {
+                    "name": "StandardPU",
+                    "type": "currency"
+                },
+                {
+                    "name": "FullTermPU",
+                    "type": "currency"
+                },
+                {
+                    "name": "FulltermRenew",
+                    "type": "currency"
+                }
+            ]
+        },
+        {
+            "name": "Items",
+            "primaryKey": "Key",
+            "foreignKeys": [
+                {
+                    "column": "TicketKey",
+                    "references": {
+                        "table": "Tickets",
+                        "column": "Key"
+                    }
+                }
+            ],
+            "indexes": [
+                "TicketKey"
+            ],
+            "columns": [
+                {
+                    "name": "Key",
+                    "type": "long",
+                    "role": "PK"
+                },
+                {
+                    "name": "TicketKey",
+                    "type": "long",
+                    "role": "FK"
+                },
+                {
+                    "name": "PrintedDetail",
+                    "type": "text"
+                },
+                {
+                    "name": "CategoryCode",
+                    "type": "text"
+                },
+                {
+                    "name": "SerialNo",
+                    "type": "text"
+                },
+                {
+                    "name": "Cost",
+                    "type": "currency"
+                },
+                {
+                    "name": "ItemStatus",
+                    "type": "text"
+                },
+                {
+                    "name": "Notes",
+                    "type": "memo"
+                },
+                {
+                    "name": "Mfg",
+                    "type": "text"
+                },
+                {
+                    "name": "Model",
+                    "type": "text"
+                },
+                {
+                    "name": "Color",
+                    "type": "text"
+                },
+                {
+                    "name": "Size",
+                    "type": "text"
+                },
+                {
+                    "name": "Weight",
+                    "type": "text"
+                },
+                {
+                    "name": "Karat",
+                    "type": "text"
+                }
+            ]
+        },
+        {
+            "name": "PawnPayments",
+            "primaryKey": "Key",
+            "foreignKeys": [
+                {
+                    "column": "TicketKey",
+                    "references": {
+                        "table": "Tickets",
+                        "column": "Key"
+                    }
+                }
+            ],
+            "indexes": [
+                "TicketKey",
+                "PaymentDate"
+            ],
+            "columns": [
+                {
+                    "name": "Key",
+                    "type": "long",
+                    "role": "PK"
+                },
+                {
+                    "name": "TicketKey",
+                    "type": "long",
+                    "role": "FK"
+                },
+                {
+                    "name": "PaymentDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "PawnPmtType",
+                    "type": "int"
+                },
+                {
+                    "name": "PaymentStatus",
+                    "type": "text"
+                },
+                {
+                    "name": "TotalDueAmount",
+                    "type": "currency"
+                },
+                {
+                    "name": "NetDueAmount",
+                    "type": "currency"
+                },
+                {
+                    "name": "NetPaymentAmount",
+                    "type": "currency"
+                },
+                {
+                    "name": "Cash",
+                    "type": "currency"
+                },
+                {
+                    "name": "Check",
+                    "type": "currency"
+                },
+                {
+                    "name": "CreditCard",
+                    "type": "currency"
+                },
+                {
+                    "name": "DebitCard",
+                    "type": "currency"
+                },
+                {
+                    "name": "InterestChargePaid",
+                    "type": "currency"
+                },
+                {
+                    "name": "ServiceChargePaid",
+                    "type": "currency"
+                },
+                {
+                    "name": "PrincipalPaid",
+                    "type": "currency"
+                },
+                {
+                    "name": "NewCurrentBalance",
+                    "type": "currency"
+                },
+                {
+                    "name": "NewDueDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "OldDueDate",
+                    "type": "datetime"
+                },
+                {
+                    "name": "OperatorInitials",
+                    "type": "text"
+                },
+                {
+                    "name": "Method",
+                    "type": "text"
+                },
+                {
+                    "name": "Note",
+                    "type": "text"
+                }
+            ]
+        }
+    ],
+    "relationships": [
+        {
+            "from": {
+                "table": "Tickets",
+                "column": "CustomerKey"
+            },
+            "to": {
+                "table": "Customers",
+                "column": "Key"
+            },
+            "type": "many-to-one"
+        },
+        {
+            "from": {
+                "table": "Items",
+                "column": "TicketKey"
+            },
+            "to": {
+                "table": "Tickets",
+                "column": "Key"
+            },
+            "type": "many-to-one"
+        },
+        {
+            "from": {
+                "table": "PawnPayments",
+                "column": "TicketKey"
+            },
+            "to": {
+                "table": "Tickets",
+                "column": "Key"
+            },
+            "type": "many-to-one"
+        }
+    ]
+}

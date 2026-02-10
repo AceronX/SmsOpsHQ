@@ -7,6 +7,7 @@ using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Entities;
 using SmsOpsHQ.Core.Repositories;
 using SmsOpsHQ.Core.Services;
+using SmsOpsHQ.Core.Utilities;
 
 namespace SmsOpsHQ.Infrastructure.Services;
 
@@ -88,5 +89,37 @@ public sealed class AuthService : IAuthService
 
         JwtSecurityTokenHandler handler = new JwtSecurityTokenHandler();
         return handler.WriteToken(tokenDescriptor);
+    }
+
+    public async Task<bool> UpdateProfileAsync(int userId, string fullName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return false;
+
+        await _userRepository.UpdateFullNameAsync(userId, fullName.Trim(), cancellationToken);
+        return true;
+    }
+
+    public async Task<string?> ChangePasswordAsync(int userId, string oldPassword, string newPassword, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(oldPassword))
+            return "Current password is required.";
+        if (string.IsNullOrWhiteSpace(newPassword))
+            return "New password is required.";
+
+        User? user = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (user is null)
+            return "User not found.";
+
+        if (!BCrypt.Net.BCrypt.Verify(oldPassword, user.PasswordHash))
+            return "Current password is incorrect.";
+
+        PasswordValidationResult validation = PasswordValidator.Validate(newPassword);
+        if (!validation.IsValid)
+            return validation.ErrorMessage ?? "Invalid new password.";
+
+        string newHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        await _userRepository.UpdatePasswordHashAsync(userId, newHash, cancellationToken);
+        return null;
     }
 }

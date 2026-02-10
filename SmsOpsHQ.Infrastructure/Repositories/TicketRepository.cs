@@ -8,8 +8,7 @@ using SmsOpsHQ.Infrastructure.Persistence;
 namespace SmsOpsHQ.Infrastructure.Repositories;
 
 // EF Core + raw SQL implementation of ITicketRepository.
-// Queries XPD mirror tables (XPD_Tickets, XPD_Items) that may or may not
-// have corresponding EF entities yet. Uses raw SQL via ADO.NET for these tables.
+// Queries Tickets and Items tables using raw SQL via ADO.NET.
 public sealed class TicketRepository : ITicketRepository
 {
     private readonly AppDbContext _db;
@@ -47,7 +46,7 @@ public sealed class TicketRepository : ITicketRepository
                        IssueDate, DueDate, DateClosed, HowClosed, Status, Notes, Item,
                        OperatorInitials, GunTicket, LostTicket, PaidTillDate, LastDate,
                        ChargesDue, StandardCharges, StandardPU, FullTermPU, FulltermRenew
-                FROM XPD_Tickets
+                FROM Tickets
                 WHERE CustomerKey IN ({placeholders})
                 ORDER BY IssueDate DESC";
 
@@ -67,7 +66,7 @@ public sealed class TicketRepository : ITicketRepository
         }
         catch (Exception)
         {
-            // XPD_Tickets table may not exist until M22 migration runs.
+            // Tickets table may not exist until migration runs.
             // Return empty list gracefully.
         }
 
@@ -90,7 +89,7 @@ public sealed class TicketRepository : ITicketRepository
                        IssueDate, DueDate, DateClosed, HowClosed, Status, Notes, Item,
                        OperatorInitials, GunTicket, LostTicket, PaidTillDate, LastDate,
                        ChargesDue, StandardCharges, StandardPU, FullTermPU, FulltermRenew
-                FROM XPD_Tickets
+                FROM Tickets
                 WHERE Key = @key";
 
             DbParameter param = command.CreateParameter();
@@ -106,7 +105,7 @@ public sealed class TicketRepository : ITicketRepository
         }
         catch (Exception)
         {
-            // XPD_Tickets table may not exist yet.
+            // Tickets table may not exist yet.
         }
 
         return null;

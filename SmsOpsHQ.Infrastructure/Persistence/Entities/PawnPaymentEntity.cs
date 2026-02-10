@@ -1,8 +1,7 @@
 namespace SmsOpsHQ.Infrastructure.Persistence.Entities;
 
-// EF Core entity mapping to the XPD_PawnPayments mirror table.
-// Synced from XPawn MS Access database via VBScript streaming.
-public sealed class XpdPawnPaymentEntity
+// EF Core entity for the PawnPayments table (payments synced from XPawn).
+public sealed class PawnPaymentEntity
 {
     public int Key { get; set; }
     public int TicketKey { get; set; }

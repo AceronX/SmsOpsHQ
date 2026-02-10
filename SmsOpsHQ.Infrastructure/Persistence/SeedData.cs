@@ -20,8 +20,8 @@ public static class SeedData
             .GetRequiredService<ILoggerFactory>()
             .CreateLogger("SmsOpsHQ.Infrastructure.SeedData");
 
-        // Apply any pending migrations automatically in development.
-        await db.Database.MigrateAsync();
+        // Create the database and schema from the model if it doesn't exist yet.
+        await db.Database.EnsureCreatedAsync();
 
         bool adminExists = await db.Users
             .AnyAsync(u => u.Username == DefaultAdminUsername);

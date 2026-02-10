@@ -19,26 +19,395 @@
 
             <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}">
 
-                <!-- Database -->
-                <TabItem Header="Database">
-                    <Border Padding="24,20" Background="{StaticResource Bg}">
-                        <StackPanel MaxWidth="500" HorizontalAlignment="Left">
-                            <TextBlock Text="Database Connection" FontSize="15" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,14"/>
-                            <Button Content="Test Connection" Command="{Binding TestDatabaseCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    HorizontalAlignment="Left" Margin="0,0,0,14"/>
-                            <Border Background="{StaticResource Surface}" CornerRadius="6"
-                                    Padding="14,12" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                <!-- Credentials -->
+                <TabItem Header="Credentials" Loaded="CredentialsTab_Loaded">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="280"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*" MinWidth="280"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Left: Profile card -->
+                            <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource Surface}"
+                                    CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                    Padding="24,20" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding DatabaseStatus}" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,4"/>
-                                    <TextBlock Text="{Binding DatabaseDetails}" FontSize="12"
-                                               Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="16" Foreground="{StaticResource Primary}"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Profile" FontSize="16" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="This name appears in the app and in the sidebar."
+                                               FontSize="12" Foreground="{StaticResource TextMuted}"
+                                               Margin="0,0,0,16"/>
+                                    <TextBlock Text="Display name" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding CredentialFullName, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="12,10" FontSize="14"/>
                                 </StackPanel>
                             </Border>
-                        </StackPanel>
-                    </Border>
+
+                            <!-- Right: Password card -->
+                            <Border Grid.Row="0" Grid.Column="2" Background="{StaticResource Surface}"
+                                    CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                    Padding="24,20" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <TextBlock Text="&#xE72E;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="16" Foreground="{StaticResource Primary}"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Password" FontSize="16" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Leave blank to keep your current password."
+                                               FontSize="12" Foreground="{StaticResource TextMuted}"
+                                               Margin="0,0,0,4"/>
+                                    <TextBlock Text="Min 8 characters, uppercase, lowercase, and a number."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}"
+                                               Margin="0,0,0,16"/>
+
+                                    <TextBlock Text="Current password" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <PasswordBox x:Name="CredentialOldPassword" Grid.Column="0"
+                                                         Style="{StaticResource PasswordFieldPasswordBox}"
+                                                         Padding="12,10,4,10" FontSize="14"
+                                                         PasswordChanged="CredentialPassword_PasswordChanged"
+                                                         Visibility="{Binding ShowOldPassword, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+                                            <TextBox x:Name="CredentialOldPasswordTextBox" Grid.Column="0"
+                                                     Style="{StaticResource PasswordFieldTextBox}"
+                                                     Text="{Binding OldPassword, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="12,10,4,10" FontSize="14"
+                                                     Visibility="{Binding ShowOldPassword, Converter={StaticResource BoolToVisibility}}"/>
+                                            <Button Grid.Column="1" Click="ToggleCredentialOldPassword_Click"
+                                                    Style="{StaticResource PasswordEyeButton}"
+                                                    VerticalAlignment="Stretch" ToolTip="Show / hide password">
+                                                <TextBlock x:Name="CredentialOldPasswordEyeIcon" Text="&#xE7B3;"
+                                                           FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+
+                                    <TextBlock Text="New password" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <PasswordBox x:Name="CredentialNewPassword" Grid.Column="0"
+                                                         Style="{StaticResource PasswordFieldPasswordBox}"
+                                                         Padding="12,10,4,10" FontSize="14"
+                                                         PasswordChanged="CredentialPassword_PasswordChanged"
+                                                         Visibility="{Binding ShowNewPassword, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+                                            <TextBox x:Name="CredentialNewPasswordTextBox" Grid.Column="0"
+                                                     Style="{StaticResource PasswordFieldTextBox}"
+                                                     Text="{Binding NewPassword, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="12,10,4,10" FontSize="14"
+                                                     Visibility="{Binding ShowNewPassword, Converter={StaticResource BoolToVisibility}}"/>
+                                            <Button Grid.Column="1" Click="ToggleCredentialNewPassword_Click"
+                                                    Style="{StaticResource PasswordEyeButton}"
+                                                    VerticalAlignment="Stretch" ToolTip="Show / hide password">
+                                                <TextBlock x:Name="CredentialNewPasswordEyeIcon" Text="&#xE7B3;"
+                                                           FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+
+                                    <TextBlock Text="Confirm new password" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,0">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <PasswordBox x:Name="CredentialConfirmPassword" Grid.Column="0"
+                                                         Style="{StaticResource PasswordFieldPasswordBox}"
+                                                         Padding="12,10,4,10" FontSize="14"
+                                                         PasswordChanged="CredentialPassword_PasswordChanged"
+                                                         Visibility="{Binding ShowConfirmPassword, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+                                            <TextBox x:Name="CredentialConfirmPasswordTextBox" Grid.Column="0"
+                                                     Style="{StaticResource PasswordFieldTextBox}"
+                                                     Text="{Binding ConfirmNewPassword, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="12,10,4,10" FontSize="14"
+                                                     Visibility="{Binding ShowConfirmPassword, Converter={StaticResource BoolToVisibility}}"/>
+                                            <Button Grid.Column="1" Click="ToggleCredentialConfirmPassword_Click"
+                                                    Style="{StaticResource PasswordEyeButton}"
+                                                    VerticalAlignment="Stretch" ToolTip="Show / hide password">
+                                                <TextBlock x:Name="CredentialConfirmPasswordEyeIcon" Text="&#xE7B3;"
+                                                           FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Alerts: full width -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,0,0,8">
+                                <Border Background="{StaticResource ErrorLight}" CornerRadius="8" Padding="14,10"
+                                        Margin="0,0,0,6"
+                                        Visibility="{Binding CredentialErrorMessage, Converter={StaticResource StringToVisibility}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE783;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="14" Foreground="{StaticResource Error}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="{Binding CredentialErrorMessage}" Foreground="{StaticResource Error}"
+                                                   FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Background="{StaticResource SuccessLight}" CornerRadius="8" Padding="14,10"
+                                        Visibility="{Binding CredentialSuccessMessage, Converter={StaticResource StringToVisibility}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="14" Foreground="{StaticResource Success}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="{Binding CredentialSuccessMessage}" Foreground="{StaticResource Success}"
+                                                   FontSize="13" FontWeight="Medium" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Save button: full width -->
+                            <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                                    Command="{Binding SaveCredentialsCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                    Padding="24,12" FontSize="14" FontWeight="SemiBold"
+                                    HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74D;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Save changes" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Database -->
+                <TabItem Header="Database" Loaded="DatabaseTab_Loaded">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="300"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*" MinWidth="300"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Left: Connection card -->
+                            <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource Surface}"
+                                    CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                    Padding="24,20" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <TextBlock Text="&#xE8C1;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="16" Foreground="{StaticResource Primary}"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Database connection" FontSize="16" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Verify the API can reach the SQLite database and pawn data tables."
+                                               FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,16"/>
+                                    <Button Command="{Binding TestDatabaseCommand}"
+                                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                            Style="{StaticResource PrimaryButton}"
+                                            Padding="16,10" HorizontalAlignment="Left" Margin="0,0,0,14">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE72E;" FontFamily="{StaticResource IconFont}"
+                                                       FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Test DB Connection" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Border Background="{StaticResource Surface}" CornerRadius="6"
+                                            Padding="14,12" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DatabaseStatus}" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{Binding DatabaseDetails}" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{StaticResource SuccessLight}" CornerRadius="6" Padding="10,8"
+                                            Margin="0,8,0,0"
+                                            Visibility="{Binding DatabaseSuccessMessage, Converter={StaticResource StringToVisibility}}">
+                                        <TextBlock Text="{Binding DatabaseSuccessMessage}" FontSize="12"
+                                                   Foreground="{StaticResource Success}" TextWrapping="Wrap"/>
+                                    </Border>
+                                    <Border Background="{StaticResource ErrorLight}" CornerRadius="6" Padding="10,8"
+                                            Margin="0,6,0,0"
+                                            Visibility="{Binding DatabaseErrorMessage, Converter={StaticResource StringToVisibility}}">
+                                        <TextBlock Text="{Binding DatabaseErrorMessage}" FontSize="12"
+                                                   Foreground="{StaticResource Error}" TextWrapping="Wrap"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Right: XPD sync card -->
+                            <Border Grid.Row="0" Grid.Column="2" Background="{StaticResource Surface}"
+                                    CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                    Padding="24,20" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <TextBlock Text="&#xE895;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="16" Foreground="{StaticResource Primary}"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="XPD → SQLite sync" FontSize="16" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Pull data from XPD (Access) into the app database. Set file path and credentials below."
+                                               FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,18"/>
+
+                                    <TextBlock Text="Paths" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
+                                    <TextBlock Text="SQLite database" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}"
+                                                 Padding="10,8" Margin="0,0,8,0" IsReadOnly="True"
+                                                 Background="{StaticResource Divider}" FontSize="12"/>
+                                        <Button Grid.Column="1" Content="Browse" Click="BrowseDatabasePath_Click"
+                                                Style="{StaticResource GhostButton}" Padding="10,6" MinWidth="60"/>
+                                    </Grid>
+
+                                    <TextBlock Text="XPD file (.XPD)" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding XpdFilePath, UpdateSourceTrigger=PropertyChanged}"
+                                                 Padding="10,8" Margin="0,0,8,0" FontSize="12"/>
+                                        <Button Grid.Column="1" Content="Browse" Click="BrowseXpdPath_Click"
+                                                Style="{StaticResource GhostButton}" Padding="10,6" MinWidth="60"/>
+                                    </Grid>
+
+                                    <Border Height="1" Background="{StaticResource Divider}" Margin="0,4,0,14"/>
+                                    <TextBlock Text="XPD credentials (required for sync)" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
+                                    <TextBlock Text="User" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <TextBox Text="{Binding XpdUser, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="10,8" Margin="0,0,0,10" FontSize="12"/>
+                                    <TextBlock Text="Password" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <PasswordBox x:Name="XpdPasswordBox" Grid.Column="0"
+                                                         Style="{StaticResource PasswordFieldPasswordBox}"
+                                                         Padding="10,8,4,8" FontSize="12"
+                                                         PasswordChanged="XpdPasswordBox_PasswordChanged"
+                                                         Visibility="{Binding ShowXpdPassword, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+                                            <TextBox x:Name="XpdPasswordTextBox" Grid.Column="0"
+                                                     Style="{StaticResource PasswordFieldTextBox}"
+                                                     Text="{Binding XpdPassword, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="10,8,4,8" FontSize="12"
+                                                     Visibility="{Binding ShowXpdPassword, Converter={StaticResource BoolToVisibility}}"/>
+                                            <Button Grid.Column="1" Click="ToggleXpdPasswordVisibility_Click"
+                                                    Style="{StaticResource PasswordEyeButton}"
+                                                    VerticalAlignment="Stretch" ToolTip="Show / hide password">
+                                                <TextBlock x:Name="XpdPasswordEyeIcon" Text="&#xE7B3;"
+                                                           FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Text="MDW path (required)" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding XpdMdwPath, UpdateSourceTrigger=PropertyChanged}"
+                                                 Padding="10,8" Margin="0,0,8,0" FontSize="12"/>
+                                        <Button Grid.Column="1" Content="Browse" Click="BrowseMdwPath_Click"
+                                                Style="{StaticResource GhostButton}" Padding="10,6" MinWidth="60"/>
+                                    </Grid>
+
+                                    <Border Background="#EFF6FF" CornerRadius="6" Padding="12,10" Margin="0,0,0,10"
+                                            Visibility="{Binding SyncInProgress, Converter={StaticResource BoolToVisibility}}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding SyncProgressMessage}" FontSize="12"
+                                                       Foreground="{StaticResource Primary}" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                            <ProgressBar Value="{Binding SyncProgressPercent}" Minimum="0" Maximum="100"
+                                                         Height="6" Foreground="{StaticResource Primary}"
+                                                         Background="{StaticResource Divider}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="#F0F9FF" CornerRadius="6" Padding="10,8" Margin="0,0,0,12">
+                                        <TextBlock Text="{Binding LastSyncInfo}" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                                    </Border>
+                                    <Button Command="{Binding TriggerXpdSyncCommand}"
+                                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                                            Style="{StaticResource PrimaryButton}"
+                                            Padding="20,11" FontSize="13" FontWeight="SemiBold"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xE895;" FontFamily="{StaticResource IconFont}"
+                                                       FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Run sync now" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Full-width note -->
+                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                       Text="SQLite path is from the API. XPD file, MDW path, and credentials are required for sync and are sent with each run. appsettings (and appsettings.Development) can override server defaults."
+                                       FontSize="11" Foreground="{StaticResource TextMuted}"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        </Grid>
+                    </ScrollViewer>
                 </TabItem>
 
                 <!-- Phone Numbers -->
@@ -163,38 +532,6 @@
                     </Border>
                 </TabItem>
 
-                <!-- Presets -->
-                <TabItem Header="Presets">
-                    <Border Padding="24,20" Background="{StaticResource Bg}">
-                        <StackPanel MaxWidth="500" HorizontalAlignment="Left">
-                            <TextBlock Text="Message Presets" FontSize="15" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"/>
-                            <TextBlock Text="Manage message templates from the Templates section in the sidebar."
-                                       FontSize="13" Foreground="{StaticResource TextSecondary}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-                </TabItem>
-
-                <!-- General -->
-                <TabItem Header="General">
-                    <Border Padding="24,20" Background="{StaticResource Bg}">
-                        <StackPanel MaxWidth="500" HorizontalAlignment="Left">
-                            <TextBlock Text="General Settings" FontSize="15" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"/>
-                            <TextBlock Text="{Binding AppVersion}" FontSize="13"
-                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,16"/>
-
-                            <TextBlock Text="XPD Sync" FontSize="13" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"/>
-                            <Button Content="Trigger Full Sync" Command="{Binding TriggerSyncCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    HorizontalAlignment="Left" Margin="0,0,0,10"/>
-                            <TextBlock Text="{Binding SyncStatus}" FontSize="12"
-                                       Foreground="{StaticResource TextSecondary}"/>
-                        </StackPanel>
-                    </Border>
-                </TabItem>
             </TabControl>
         </Grid>
     </Border>

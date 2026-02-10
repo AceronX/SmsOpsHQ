@@ -25,17 +25,17 @@ public class IdentityResolverTests : IDisposable
         _db.Database.OpenConnection();
         _db.Database.EnsureCreated();
 
-        // Seed XPD_CustomerPhones with test data.
+        // Seed CustomerPhones with test data.
         // Phone 5559876543 -> CustomerKeys 100 and 200
-        _db.XpdCustomerPhones.AddRange(
-            new XpdCustomerPhoneEntity
+        _db.CustomerPhones.AddRange(
+            new CustomerPhoneEntity
             {
                 CustomerKey = 100,
                 PhoneNormalized = "5559876543",
                 PhoneOriginal = "+15559876543",
                 PhoneType = "Cell"
             },
-            new XpdCustomerPhoneEntity
+            new CustomerPhoneEntity
             {
                 CustomerKey = 200,
                 PhoneNormalized = "5559876543",
@@ -43,7 +43,7 @@ public class IdentityResolverTests : IDisposable
                 PhoneType = "Home"
             },
             // Phone 5551111111 -> CustomerKey 300
-            new XpdCustomerPhoneEntity
+            new CustomerPhoneEntity
             {
                 CustomerKey = 300,
                 PhoneNormalized = "5551111111",
@@ -171,7 +171,7 @@ public class IdentityResolverTests : IDisposable
         Assert.Null(first);
 
         // Now add the phone to the DB after it was cached as missing
-        _db.XpdCustomerPhones.Add(new XpdCustomerPhoneEntity
+        _db.CustomerPhones.Add(new CustomerPhoneEntity
         {
             CustomerKey = 999,
             PhoneNormalized = "5550000000",

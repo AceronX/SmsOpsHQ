@@ -1,10 +1,10 @@
 namespace SmsOpsHQ.Core.Services;
 
-// Contract for resolving phone numbers to XPD customer identities.
+// Contract for resolving phone numbers to pawn customer identities.
 public interface IIdentityResolver
 {
-    // Resolve a phone number to a list of XPD customer keys.
-    // Normalizes the phone and queries XPD_CustomerPhones by PhoneNormalized.
+    // Resolve a phone number to a list of customer keys.
+    // Normalizes the phone and queries CustomerPhones by PhoneNormalized.
     Task<List<int>> ResolveCustomerKeysAsync(string phoneE164,
         CancellationToken cancellationToken = default);
 

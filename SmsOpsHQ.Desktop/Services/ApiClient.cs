@@ -50,6 +50,20 @@ public sealed class ApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<LoginResult>(JsonOptions);
     }
 
+    public async Task UpdateProfileAsync(string fullName)
+    {
+        var request = new { fullName };
+        HttpResponseMessage response = await _httpClient.PutAsJsonAsync("/api/auth/profile", request, JsonOptions);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task ChangePasswordAsync(string oldPassword, string newPassword)
+    {
+        var request = new { oldPassword, newPassword };
+        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/auth/change-password", request, JsonOptions);
+        response.EnsureSuccessStatusCode();
+    }
+
     // ── Messages ─────────────────────────────────────────────────────
 
     public async Task<JsonElement> SendMessageAsync(SendMessageRequest request)
@@ -148,8 +162,13 @@ public sealed class ApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
     }
 
-    public async Task<JsonElement> TestSqliteAsync() =>
-        await GetJsonAsync("/api/test-sqlite");
+    public async Task<JsonElement> TestSqliteAsync(string? path = null)
+    {
+        string url = string.IsNullOrWhiteSpace(path)
+            ? "/api/test-sqlite"
+            : "/api/test-sqlite?path=" + Uri.EscapeDataString(path.Trim());
+        return await GetJsonAsync(url);
+    }
 
     // ── Templates ────────────────────────────────────────────────────
 
@@ -289,15 +308,32 @@ public sealed class ApiClient : IDisposable
 
     // ── Sync ─────────────────────────────────────────────────────────
 
+    public async Task<JsonElement> GetSyncConfigAsync() =>
+        await GetJsonAsync("/api/sync/config");
+
     public async Task<JsonElement> GetSyncStatusAsync() =>
         await GetJsonAsync("/api/sync/status");
 
     public async Task<JsonElement> GetSyncProgressAsync() =>
         await GetJsonAsync("/api/sync/progress");
 
-    public async Task<JsonElement> TriggerSyncAsync()
+    public async Task<JsonElement> TriggerSyncAsync(string? xpdPath = null, string? mdwPath = null, string? xpdUser = null, string? xpdPassword = null)
     {
-        HttpResponseMessage response = await _httpClient.PostAsync("/api/sync/full", null);
+        object? body = null;
+        if (!string.IsNullOrWhiteSpace(xpdPath) || !string.IsNullOrWhiteSpace(mdwPath) ||
+            !string.IsNullOrWhiteSpace(xpdUser) || !string.IsNullOrWhiteSpace(xpdPassword))
+        {
+            body = new
+            {
+                xpdPath = xpdPath ?? "",
+                mdwPath = mdwPath ?? "",
+                xpdUser = xpdUser ?? "",
+                xpdPassword = xpdPassword ?? ""
+            };
+        }
+        HttpResponseMessage response = body is null
+            ? await _httpClient.PostAsync("/api/sync/full", null)
+            : await _httpClient.PostAsJsonAsync("/api/sync/full", body, JsonOptions);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
     }

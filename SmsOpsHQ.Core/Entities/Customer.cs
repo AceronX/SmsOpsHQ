@@ -1,6 +1,7 @@
 namespace SmsOpsHQ.Core.Entities;
 
-// Local cache of customer data. Maps to the Customers table.
+// Unified customer data. Maps to the Customers table.
+// Contains both SMS-originated fields and XPawn-synced pawn data.
 public sealed class Customer
 {
     public int CustomerId { get; set; }
@@ -11,7 +12,7 @@ public sealed class Customer
     // Primary contact phone in E.164 format
     public string PhoneE164 { get; set; } = string.Empty;
 
-    // XPD primary key linking to XPD_Customers.Key
+    // XPawn primary key (unique per customer in XPawn system)
     public int? CustomerKey { get; set; }
 
     public string? CellPhone { get; set; }
@@ -37,4 +38,18 @@ public sealed class Customer
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    // ── XPawn-synced fields (null for SMS-only customers) ──────────────
+    public string? MiddleName { get; set; }
+    public string? ResPhone { get; set; }
+    public string? BusPhone { get; set; }
+    public string? EMailAddress { get; set; }
+    public string? DOB { get; set; }
+    public string? SSN { get; set; }
+    public string? IDNo { get; set; }
+    public string? IDIssueState { get; set; }
+    public string? FirstTransaction { get; set; }
+    public string? LastTransaction { get; set; }
+    public string? Warning { get; set; }
+    public string? SyncedAt { get; set; }
 }

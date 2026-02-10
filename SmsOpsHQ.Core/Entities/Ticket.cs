@@ -1,13 +1,13 @@
 namespace SmsOpsHQ.Core.Entities;
 
-// Domain representation of a pawn ticket from the XPD mirror data.
+// Domain representation of a pawn ticket synced from XPawn.
 // Used by ITicketRepository, PawnCalculator, and customer context endpoints.
 public sealed class Ticket
 {
-    // XPD primary key
+    // Pawn system primary key
     public int Key { get; set; }
 
-    // FK to XPD customer
+    // FK to Customer
     public int CustomerKey { get; set; }
 
     public int? TransNo { get; set; }
@@ -21,7 +21,7 @@ public sealed class Ticket
     public double? Amount { get; set; }
     public double? CurrentBalance { get; set; }
 
-    // Dates stored as ISO-8601 strings from XPD
+    // Dates stored as ISO-8601 strings from XPawn
     public string? IssueDate { get; set; }
     public string? DueDate { get; set; }
     public string? DateClosed { get; set; }

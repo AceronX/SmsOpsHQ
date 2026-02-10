@@ -1,9 +1,9 @@
 namespace SmsOpsHQ.Infrastructure.Persistence.Entities;
 
-// EF Core entity mapping to the XPD_CustomerPhones table (phone index).
+// EF Core entity for the CustomerPhones table (phone index).
 // Used by IdentityResolver for phone-to-CustomerKey lookups.
-// The full table is rebuilt during XPD sync (Phase 3).
-public sealed class XpdCustomerPhoneEntity
+// Rebuilt during sync.
+public sealed class CustomerPhoneEntity
 {
     public int CustomerKey { get; set; }
     public string PhoneNormalized { get; set; } = string.Empty;

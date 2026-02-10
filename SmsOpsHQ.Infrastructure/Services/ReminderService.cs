@@ -229,13 +229,13 @@ public sealed class ReminderService : IReminderService
         BatchReminderResult results = new();
 
         // Load active tickets with customer phone info. Request extra rows to account for skips.
-        var tickets = await _db.XpdTickets
+        var tickets = await _db.Tickets
             .AsNoTracking()
             .Where(t => t.Active == 1 && t.Type != 0
                          && t.DueDate != null && t.DueDate != "")
-            .Join(_db.XpdCustomers.AsNoTracking(),
+            .Join(_db.Customers.AsNoTracking(),
                 t => t.CustomerKey,
-                c => c.Key,
+                c => c.CustomerKey,
                 (t, c) => new
                 {
                     t.Key,
@@ -490,11 +490,11 @@ public sealed class ReminderService : IReminderService
             .Select(r => new
             {
                 Reminder = r,
-                Customer = _db.XpdCustomers.AsNoTracking()
-                    .Where(c => c.Key == r.CustomerKey)
+                Customer = _db.Customers.AsNoTracking()
+                    .Where(c => c.CustomerKey == r.CustomerKey)
                     .Select(c => new { c.FirstName, c.LastName })
                     .FirstOrDefault(),
-                TransNo = _db.XpdTickets.AsNoTracking()
+                TransNo = _db.Tickets.AsNoTracking()
                     .Where(t => t.Key == r.TicketKey)
                     .Select(t => t.TransNo)
                     .FirstOrDefault()

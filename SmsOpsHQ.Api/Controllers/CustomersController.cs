@@ -217,11 +217,11 @@ public sealed class CustomersController : ControllerBase
             if (connection.State != ConnectionState.Open)
                 await connection.OpenAsync(cancellationToken);
 
-            // Customer notes from XPD_Customers
+            // Customer notes from Customers (XPawn-synced data)
             if (customerEntity.CustomerKey is not null)
             {
                 using DbCommand cmd = connection.CreateCommand();
-                cmd.CommandText = "SELECT Notes FROM XPD_Customers WHERE Key = @key";
+                cmd.CommandText = "SELECT Notes FROM Customers WHERE CustomerKey = @key";
                 DbParameter keyParam = cmd.CreateParameter();
                 keyParam.ParameterName = "@key";
                 keyParam.Value = customerEntity.CustomerKey.Value;
@@ -286,11 +286,11 @@ public sealed class CustomersController : ControllerBase
 
             using DbCommand command = connection.CreateCommand();
             command.CommandText = @"
-                SELECT c.Key, c.FirstName, c.LastName, c.ResPhone, c.BusPhone,
+                SELECT c.CustomerKey AS Key, c.FirstName, c.LastName, c.ResPhone, c.BusPhone,
                        t.Key AS TicketKey, t.TransNo, t.DueDate, t.CurrentBalance,
                        t.Amount
-                FROM XPD_Tickets t
-                JOIN XPD_Customers c ON t.CustomerKey = c.Key
+                FROM Tickets t
+                JOIN Customers c ON t.CustomerKey = c.CustomerKey
                 WHERE CAST(t.Active AS INTEGER) = 1
                   AND t.DueDate IS NOT NULL
                   AND t.DueDate < datetime('now')
@@ -327,7 +327,7 @@ public sealed class CustomersController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error querying late customers from XPD tables");
+            _logger.LogWarning(ex, "Error querying late customers");
         }
 
         return Ok(results);
@@ -350,10 +350,10 @@ public sealed class CustomersController : ControllerBase
 
             using DbCommand command = connection.CreateCommand();
             command.CommandText = @"
-                SELECT c.Key, c.FirstName, c.LastName, c.ResPhone, c.BusPhone,
+                SELECT c.CustomerKey AS Key, c.FirstName, c.LastName, c.ResPhone, c.BusPhone,
                        t.Key AS TicketKey, t.TransNo, t.DateClosed, t.Amount
-                FROM XPD_Tickets t
-                JOIN XPD_Customers c ON t.CustomerKey = c.Key
+                FROM Tickets t
+                JOIN Customers c ON t.CustomerKey = c.CustomerKey
                 WHERE t.HowClosed = 'PFX-'
                   AND t.DateClosed IS NOT NULL
                   AND t.DateClosed >= datetime('now', @daysAgo)
@@ -384,7 +384,7 @@ public sealed class CustomersController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error querying PFX customers from XPD tables");
+            _logger.LogWarning(ex, "Error querying PFX customers");
         }
 
         return Ok(results);
@@ -425,7 +425,7 @@ public sealed class CustomersController : ControllerBase
 
         int primaryCustomerKey = customerKeys[0];
 
-        // Step 2: Load customer info from XPD_Customers
+        // Step 2: Load customer info from Customers table
         object? customerData = null;
         try
         {
@@ -436,9 +436,9 @@ public sealed class CustomersController : ControllerBase
             using DbCommand cmd = connection.CreateCommand();
             cmd.CommandText = @"
                 SELECT FirstName, LastName, MiddleName, Address, City, State, Zip,
-                       ResPhone, BusPhone, Email, Notes, FirstTransaction, LastTransaction,
+                       ResPhone, BusPhone, EMailAddress, Notes, FirstTransaction, LastTransaction,
                        DOB, SSN, IDNo, IDIssueState, Warning
-                FROM XPD_Customers WHERE Key = @key";
+                FROM Customers WHERE CustomerKey = @key";
 
             DbParameter keyParam = cmd.CreateParameter();
             keyParam.ParameterName = "@key";
@@ -464,7 +464,7 @@ public sealed class CustomersController : ControllerBase
                     zip = ReadStringOrEmpty("Zip"),
                     res_phone = ReadStringOrEmpty("ResPhone"),
                     bus_phone = ReadStringOrEmpty("BusPhone"),
-                    email = ReadStringOrEmpty("Email"),
+                    email = ReadStringOrEmpty("EMailAddress"),
                     notes = ReadStringOrEmpty("Notes"),
                     first_transaction = ReadStringOrEmpty("FirstTransaction"),
                     last_transaction = ReadStringOrEmpty("LastTransaction"),
@@ -589,32 +589,56 @@ public sealed class CustomersController : ControllerBase
         });
     }
 
-    // GET /api/test-sqlite
-    // Tests SQLite/XPD table connectivity by counting rows.
+    // GET /api/test-sqlite?path=...
+    // Tests SQLite/XPD table connectivity by counting rows. If path is provided, tests that database; otherwise uses the configured default.
     [HttpGet("test-sqlite")]
-    public async Task<IActionResult> TestSqliteConnection(CancellationToken cancellationToken)
+    public async Task<IActionResult> TestSqliteConnection(
+        [FromQuery] string? path,
+        CancellationToken cancellationToken)
     {
         try
         {
-            DbConnection connection = _db.Database.GetDbConnection();
-            if (connection.State != ConnectionState.Open)
-                await connection.OpenAsync(cancellationToken);
+            DbConnection connection;
+            bool ownsConnection = false;
 
-            int customers = await CountTable(connection, "XPD_Customers", cancellationToken);
-            int tickets = await CountTable(connection, "XPD_Tickets", cancellationToken);
-            int activeTickets = await CountTableWhere(connection, "XPD_Tickets", "Active = 1", cancellationToken);
-            int items = await CountTable(connection, "XPD_Items", cancellationToken);
-            int payments = await CountTable(connection, "XPD_PawnPayments", cancellationToken);
-
-            return Ok(new
+            if (!string.IsNullOrWhiteSpace(path))
             {
-                success = true,
-                customers,
-                tickets,
-                active_tickets = activeTickets,
-                items,
-                payments
-            });
+                string fullPath = path.Trim();
+                var sqliteConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={fullPath}");
+                await sqliteConn.OpenAsync(cancellationToken);
+                connection = sqliteConn;
+                ownsConnection = true;
+            }
+            else
+            {
+                connection = _db.Database.GetDbConnection();
+                if (connection.State != ConnectionState.Open)
+                    await connection.OpenAsync(cancellationToken);
+            }
+
+            try
+            {
+                int customers = await CountTable(connection, "Customers", cancellationToken);
+                int tickets = await CountTable(connection, "Tickets", cancellationToken);
+                int activeTickets = await CountTableWhere(connection, "Tickets", "Active = 1", cancellationToken);
+                int items = await CountTable(connection, "Items", cancellationToken);
+                int payments = await CountTable(connection, "PawnPayments", cancellationToken);
+
+                return Ok(new
+                {
+                    success = true,
+                    customers,
+                    tickets,
+                    active_tickets = activeTickets,
+                    items,
+                    payments
+                });
+            }
+            finally
+            {
+                if (ownsConnection)
+                    await connection.DisposeAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -623,7 +647,7 @@ public sealed class CustomersController : ControllerBase
     }
 
     // POST /api/customers/append-note-xpd
-    // Appends a timestamped note to a customer's Notes field in XPD_Customers.
+    // Appends a timestamped note to a customer's Notes field in Customers.
     [HttpPost("customers/append-note-xpd")]
     public async Task<IActionResult> AppendNoteToXpd(
         [FromBody] AppendNoteXpdRequest request,
@@ -641,7 +665,7 @@ public sealed class CustomersController : ControllerBase
             string currentNotes = "";
             using (DbCommand readCmd = connection.CreateCommand())
             {
-                readCmd.CommandText = "SELECT Notes FROM XPD_Customers WHERE Key = @key";
+                readCmd.CommandText = "SELECT Notes FROM Customers WHERE CustomerKey = @key";
                 DbParameter keyParam = readCmd.CreateParameter();
                 keyParam.ParameterName = "@key";
                 keyParam.Value = request.CustomerKey;
@@ -649,7 +673,7 @@ public sealed class CustomersController : ControllerBase
 
                 object? result = await readCmd.ExecuteScalarAsync(cancellationToken);
                 if (result is null || result == DBNull.Value)
-                    return Problem(statusCode: 404, detail: $"Customer Key {request.CustomerKey} not found in XPD tables");
+                    return Problem(statusCode: 404, detail: $"Customer Key {request.CustomerKey} not found");
 
                 currentNotes = result as string ?? "";
             }
@@ -659,10 +683,10 @@ public sealed class CustomersController : ControllerBase
             string separator = string.IsNullOrWhiteSpace(currentNotes) ? "" : "\n---\n";
             string updatedNotes = $"{currentNotes}{separator}[{timestamp} - {username}] {request.Note}";
 
-            // Update XPD_Customers
+            // Update Customers
             using (DbCommand updateCmd = connection.CreateCommand())
             {
-                updateCmd.CommandText = "UPDATE XPD_Customers SET Notes = @notes WHERE Key = @key";
+                updateCmd.CommandText = "UPDATE Customers SET Notes = @notes WHERE CustomerKey = @key";
 
                 DbParameter notesParam = updateCmd.CreateParameter();
                 notesParam.ParameterName = "@notes";
@@ -700,7 +724,7 @@ public sealed class CustomersController : ControllerBase
         }
     }
 
-    // Reads item descriptions for a given ticket from XPD_Items.
+    // Reads item descriptions for a given ticket from Items table.
     private async Task<string> GetTicketItemsTextAsync(int ticketKey, CancellationToken cancellationToken)
     {
         try
@@ -710,7 +734,7 @@ public sealed class CustomersController : ControllerBase
                 await connection.OpenAsync(cancellationToken);
 
             using DbCommand cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT PrintedDetail FROM XPD_Items WHERE TicketKey = @key";
+            cmd.CommandText = "SELECT PrintedDetail FROM Items WHERE TicketKey = @key";
 
             DbParameter param = cmd.CreateParameter();
             param.ParameterName = "@key";
@@ -740,7 +764,7 @@ public sealed class CustomersController : ControllerBase
     // Whitelist of allowed table names to prevent SQL injection.
     private static readonly HashSet<string> AllowedTableNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "XPD_Customers", "XPD_Tickets", "XPD_Items", "XPD_PawnPayments"
+        "Customers", "Tickets", "Items", "PawnPayments"
     };
 
     private static async Task<int> CountTable(DbConnection connection, string tableName, CancellationToken ct)

@@ -53,4 +53,19 @@ public sealed partial class AppState : ObservableObject
 
     // Whether the current user has HQ-level access.
     public bool IsHqUser => CurrentUser?.Role is "HQAdmin" or "HQViewer";
+
+    // Updates the current user's display name (e.g. after profile save).
+    public void SetCurrentUserFullName(string fullName)
+    {
+        if (CurrentUser is null) return;
+        CurrentUser = new UserDto
+        {
+            UserId = CurrentUser.UserId,
+            Username = CurrentUser.Username,
+            FullName = fullName,
+            StoreId = CurrentUser.StoreId,
+            Role = CurrentUser.Role,
+            StorePhone = CurrentUser.StorePhone
+        };
+    }
 }

@@ -116,7 +116,20 @@ public sealed class CustomerRepository : ICustomerRepository
             TagsJson = entity.TagsJson,
             Notes = entity.Notes,
             CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
+            UpdatedAt = entity.UpdatedAt,
+            // XPawn-synced fields
+            MiddleName = entity.MiddleName,
+            ResPhone = entity.ResPhone,
+            BusPhone = entity.BusPhone,
+            EMailAddress = entity.EMailAddress,
+            DOB = entity.DOB,
+            SSN = entity.SSN,
+            IDNo = entity.IDNo,
+            IDIssueState = entity.IDIssueState,
+            FirstTransaction = entity.FirstTransaction,
+            LastTransaction = entity.LastTransaction,
+            Warning = entity.Warning,
+            SyncedAt = entity.SyncedAt
         };
     }
 }

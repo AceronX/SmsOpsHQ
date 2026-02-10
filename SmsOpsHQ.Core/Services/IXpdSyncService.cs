@@ -1,13 +1,14 @@
+using SmsOpsHQ.Core.DTOs;
+
 namespace SmsOpsHQ.Core.Services;
 
-// Contract for syncing XPD (MS Access) data to the local SQLite mirror tables.
+// Contract for syncing XPD (MS Access) pawn data to the local SQLite database.
 // The sync streams data via VBScript (cscript.exe) and batch-upserts into
-// XPD_Customers, XPD_Tickets, XPD_Items, XPD_PawnPayments, then rebuilds
-// the XPD_CustomerPhones index.
+// Customers, Tickets, Items, PawnPayments, then rebuilds the CustomerPhones index.
 public interface IXpdSyncService
 {
-    // Perform a full sync of all XPD tables. Returns a result with counts and timing.
-    Task<SyncResult> FullSyncAsync(CancellationToken cancellationToken = default);
+    // Perform a full sync of all pawn tables. Optional overrides for this run (XPD path, MDW, credentials).
+    Task<SyncResult> FullSyncAsync(SyncRunOptions? overrides = null, CancellationToken cancellationToken = default);
 
     // Get progress of a currently-running sync (stage, count, percent).
     SyncProgress GetProgress();
@@ -15,7 +16,7 @@ public interface IXpdSyncService
     // Get overall sync status (last sync time, stats, whether currently running).
     SyncStatus GetSyncStatus();
 
-    // Get row counts for all SQLite XPD mirror tables.
+    // Get row counts for all synced SQLite tables.
     Task<Dictionary<string, int>> GetSqliteCountsAsync(CancellationToken cancellationToken = default);
 }
 

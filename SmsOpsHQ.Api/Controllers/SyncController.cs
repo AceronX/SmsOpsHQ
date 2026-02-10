@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmsOpsHQ.Api.Extensions;
+using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Services;
 
 namespace SmsOpsHQ.Api.Controllers;
@@ -11,18 +12,49 @@ namespace SmsOpsHQ.Api.Controllers;
 public sealed class SyncController : ControllerBase
 {
     private readonly IXpdSyncService _syncService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<SyncController> _logger;
 
-    public SyncController(IXpdSyncService syncService, ILogger<SyncController> logger)
+    public SyncController(IXpdSyncService syncService, IConfiguration configuration, ILogger<SyncController> logger)
     {
         _syncService = syncService;
+        _configuration = configuration;
         _logger = logger;
     }
 
-    // POST /api/sync/full
-    // Triggers a full XPD-to-SQLite sync in the background.
+    [HttpGet("config")]
+    public IActionResult GetSyncConfig()
+    {
+        string? sqlitePath = _configuration.GetSection("Database")["SqlitePath"];
+        if (string.IsNullOrWhiteSpace(sqlitePath))
+        {
+            string? connectionString = _configuration.GetConnectionString("DefaultConnection");
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                const string prefix = "Data Source=";
+                if (connectionString.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    sqlitePath = connectionString.TrimStart().Substring(prefix.Length).Trim();
+                else
+                    sqlitePath = connectionString;
+            }
+        }
+        else
+        {
+            sqlitePath = sqlitePath.Trim();
+        }
+
+        IConfigurationSection xpd = _configuration.GetSection("Xpd");
+        return Ok(new
+        {
+            sqlite_path = sqlitePath ?? "",
+            xpd_path = xpd["DatabasePath"] ?? "",
+            mdw_path = xpd["MdwPath"] ?? "",
+            xpd_user = xpd["User"] ?? ""
+        });
+    }
+
     [HttpPost("full")]
-    public IActionResult TriggerFullSync()
+    public IActionResult TriggerFullSync([FromBody] SyncRunOptions? options = null)
     {
         if (!User.IsHqUser())
             return Problem(statusCode: 403, detail: "Only HQ users can trigger sync");
@@ -37,12 +69,11 @@ public sealed class SyncController : ControllerBase
             });
         }
 
-        // Fire and forget -- the sync runs in the background
         _ = Task.Run(async () =>
         {
             try
             {
-                SyncResult result = await _syncService.FullSyncAsync();
+                SyncResult result = await _syncService.FullSyncAsync(options);
                 _logger.LogInformation("Background sync completed: {Success}", result.Success);
             }
             catch (Exception ex)
@@ -58,10 +89,8 @@ public sealed class SyncController : ControllerBase
         });
     }
 
-    // POST /api/sync/full-blocking
-    // Triggers a full XPD-to-SQLite sync and waits for it to complete.
     [HttpPost("full-blocking")]
-    public async Task<IActionResult> TriggerFullSyncBlocking(CancellationToken cancellationToken)
+    public async Task<IActionResult> TriggerFullSyncBlocking([FromBody] SyncRunOptions? options = null, CancellationToken cancellationToken = default)
     {
         if (!User.IsHqUser())
             return Problem(statusCode: 403, detail: "Only HQ users can trigger sync");
@@ -76,7 +105,7 @@ public sealed class SyncController : ControllerBase
             });
         }
 
-        SyncResult result = await _syncService.FullSyncAsync(cancellationToken);
+        SyncResult result = await _syncService.FullSyncAsync(options, cancellationToken);
 
         return Ok(new
         {

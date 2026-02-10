@@ -222,12 +222,12 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
 
         AutoReminderTypeResult result = new();
 
-        var tickets = await db.XpdTickets
+        var tickets = await db.Tickets
             .AsNoTracking()
             .Where(t => t.Active == 1 && t.Type != 0 && t.DueDate == targetDateStr)
-            .Join(db.XpdCustomers.AsNoTracking(),
+            .Join(db.Customers.AsNoTracking(),
                 t => t.CustomerKey,
-                c => c.Key,
+                c => c.CustomerKey,
                 (t, c) => new
                 {
                     t.Key,

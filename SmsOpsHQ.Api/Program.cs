@@ -35,8 +35,11 @@ try
             .WriteTo.File("logs/smsops-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 30);
     });
 
-    string connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? throw new InvalidOperationException("Missing ConnectionStrings:DefaultConnection in configuration.");
+    string? sqlitePath = builder.Configuration.GetSection("Database")["SqlitePath"];
+    string connectionString = !string.IsNullOrWhiteSpace(sqlitePath)
+        ? "Data Source=" + sqlitePath.Trim()
+        : builder.Configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Set Database:SqlitePath or ConnectionStrings:DefaultConnection in appsettings.");
 
     // Infrastructure: DbContext, repositories, auth service, JWT options.
     builder.Services.AddInfrastructure(connectionString, builder.Configuration);

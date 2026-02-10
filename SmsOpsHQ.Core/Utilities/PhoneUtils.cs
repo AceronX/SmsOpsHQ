@@ -13,7 +13,7 @@ public static class PhoneUtils
     }
 
     // Extracts the last 10 digits from a phone number string.
-    // Used for matching (e.g. XPD_CustomerPhones.PhoneNormalized).
+    // Used for matching (e.g. CustomerPhones.PhoneNormalized).
     // Returns null if fewer than 10 digits are present.
     public static string? ExtractLast10Digits(string? phone)
     {
