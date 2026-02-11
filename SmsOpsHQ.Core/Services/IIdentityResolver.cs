@@ -3,8 +3,7 @@ namespace SmsOpsHQ.Core.Services;
 // Contract for resolving phone numbers to pawn customer identities.
 public interface IIdentityResolver
 {
-    // Resolve a phone number to a list of customer keys.
-    // Normalizes the phone and queries CustomerPhones by PhoneNormalized.
+    // Resolve a phone number to a list of customer keys. Uses CustomerPhones index (fast lookup).
     Task<List<int>> ResolveCustomerKeysAsync(string phoneE164,
         CancellationToken cancellationToken = default);
 

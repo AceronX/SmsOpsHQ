@@ -235,7 +235,7 @@
                                 </Border.Effect>
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                        <TextBlock Text="&#xE8C1;" FontFamily="{StaticResource IconFont}"
+                                        <TextBlock Text="&#xE7BE;" FontFamily="{StaticResource IconFont}"
                                                    FontSize="16" Foreground="{StaticResource Primary}"
                                                    VerticalAlignment="Center" Margin="0,0,10,0"/>
                                         <TextBlock Text="Database connection" FontSize="16" FontWeight="SemiBold"

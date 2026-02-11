@@ -241,7 +241,9 @@ All endpoints require JWT Bearer auth except login, health, and root.
 
 **Quarantine:** `GET /api/quarantine/list`, `POST /api/quarantine/{id}/resolve`
 
-**Sync:** `POST /api/sync/trigger`, `GET /api/sync/status`
+**Sync:** `POST /api/sync/full`, `GET /api/sync/status`, `GET /api/sync/progress`
+
+See [docs/XPD_SYNC_SCHEMA.md](docs/XPD_SYNC_SCHEMA.md) for XPD vs app tables (Customers, Tickets, Items, PawnPayments from XPD; CustomerPhones is an index built from customer phones).
 
 **Health:** `GET /health`
 

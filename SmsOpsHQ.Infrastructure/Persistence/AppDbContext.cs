@@ -3,7 +3,9 @@ using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 namespace SmsOpsHQ.Infrastructure.Persistence;
 
-// EF Core database context for the SmsOps HQ operational SQLite database.
+// EF Core database context for the SmsOps HQ SQLite database.
+// Tables: Stores, Users, TwilioNumbers; Customers, Tickets, Items, PawnPayments, CustomerPhones; Threads, Messages, Templates; OptOuts, QuarantinedMessages; SmsReminders, SmsExcluded, SmsUnsubscribed.
+// See docs/XPD_SYNC_SCHEMA.md for XPD-synced vs app-built tables.
 public sealed class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)
@@ -11,29 +13,28 @@ public sealed class AppDbContext : DbContext
     {
     }
 
-    // Phase 1 tables
+    // Multi-tenant and auth
     public DbSet<StoreEntity> Stores => Set<StoreEntity>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
-
-    // Phase 2 tables (Core Messaging)
     public DbSet<TwilioNumberEntity> TwilioNumbers => Set<TwilioNumberEntity>();
-    public DbSet<CustomerEntity> Customers => Set<CustomerEntity>();
-    public DbSet<ThreadEntity> Threads => Set<ThreadEntity>();
-    public DbSet<MessageEntity> Messages => Set<MessageEntity>();
-    public DbSet<TemplateEntity> Templates => Set<TemplateEntity>();
-    public DbSet<OptOutEntity> OptOuts => Set<OptOutEntity>();
-    public DbSet<QuarantinedMessageEntity> QuarantinedMessages => Set<QuarantinedMessageEntity>();
-    public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
 
-    // Pawn data tables (synced from XPawn MS Access via VBScript streaming)
+    // XPD-synced pawn data (Customers, Tickets, Items, PawnPayments) + phone index
+    public DbSet<CustomerEntity> Customers => Set<CustomerEntity>();
     public DbSet<TicketEntity> Tickets => Set<TicketEntity>();
     public DbSet<ItemEntity> Items => Set<ItemEntity>();
     public DbSet<PawnPaymentEntity> PawnPayments => Set<PawnPaymentEntity>();
-
-    // Phone index (used by IdentityResolver, rebuilt during sync)
     public DbSet<CustomerPhoneEntity> CustomerPhones => Set<CustomerPhoneEntity>();
 
-    // Reminder system tables
+    // Messaging (inbox, threads, templates)
+    public DbSet<ThreadEntity> Threads => Set<ThreadEntity>();
+    public DbSet<MessageEntity> Messages => Set<MessageEntity>();
+    public DbSet<TemplateEntity> Templates => Set<TemplateEntity>();
+
+    // Compliance and ops
+    public DbSet<OptOutEntity> OptOuts => Set<OptOutEntity>();
+    public DbSet<QuarantinedMessageEntity> QuarantinedMessages => Set<QuarantinedMessageEntity>();
+
+    // Reminder system
     public DbSet<SmsReminderEntity> SmsReminders => Set<SmsReminderEntity>();
     public DbSet<SmsExcludedEntity> SmsExcluded => Set<SmsExcludedEntity>();
     public DbSet<SmsUnsubscribedEntity> SmsUnsubscribed => Set<SmsUnsubscribedEntity>();
@@ -51,7 +52,6 @@ public sealed class AppDbContext : DbContext
         ConfigureTemplates(modelBuilder);
         ConfigureOptOuts(modelBuilder);
         ConfigureQuarantinedMessages(modelBuilder);
-        ConfigureAuditLog(modelBuilder);
         ConfigureTickets(modelBuilder);
         ConfigureItems(modelBuilder);
         ConfigurePawnPayments(modelBuilder);
@@ -448,45 +448,7 @@ public sealed class AppDbContext : DbContext
         });
     }
 
-    // ── AuditLog ──────────────────────────────────────────────────────
-
-    private static void ConfigureAuditLog(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<AuditLogEntity>(audit =>
-        {
-            audit.ToTable("AuditLog");
-            audit.HasKey(a => a.AuditId);
-
-            audit.Property(a => a.Action)
-                .HasMaxLength(64)
-                .IsRequired();
-
-            audit.Property(a => a.EntityType).HasMaxLength(64);
-            audit.Property(a => a.IPAddress).HasMaxLength(64);
-
-            audit.Property(a => a.CreatedAt)
-                .IsRequired()
-                .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-            audit.HasIndex(a => a.CreatedAt);
-
-            audit.HasOne(a => a.User)
-                .WithMany()
-                .HasForeignKey(a => a.UserId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .IsRequired(false);
-
-            audit.HasOne(a => a.Store)
-                .WithMany()
-                .HasForeignKey(a => a.StoreId)
-                .OnDelete(DeleteBehavior.SetNull)
-                .IsRequired(false);
-        });
-    }
-
-    // (XPawn customer data has been consolidated into the Customers table — see ConfigureCustomers)
-
-    // ── Tickets (Pawn) ───────────────────────────────────────────────
+    // ── Tickets (XPD) ──────────────────────────────────────────────────
 
     private static void ConfigureTickets(ModelBuilder modelBuilder)
     {
@@ -523,15 +485,13 @@ public sealed class AppDbContext : DbContext
         {
             xp.ToTable("PawnPayments");
             xp.HasKey(p => p.Key);
-
             xp.Property(p => p.Check).HasColumnName("Check_");
-
             xp.HasIndex(p => p.TicketKey);
             xp.HasIndex(p => p.PaymentDate);
         });
     }
 
-    // ── CustomerPhones (Phone Index) ──────────────────────────────────
+    // ── CustomerPhones (phone index for fast lookup) ──────────────────
 
     private static void ConfigureCustomerPhones(ModelBuilder modelBuilder)
     {

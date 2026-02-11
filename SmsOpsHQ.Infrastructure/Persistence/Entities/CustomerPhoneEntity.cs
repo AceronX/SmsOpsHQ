@@ -1,8 +1,7 @@
 namespace SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 // EF Core entity for the CustomerPhones table (phone index).
-// Used by IdentityResolver for phone-to-CustomerKey lookups.
-// Rebuilt during sync.
+// Used by IdentityResolver for fast phone-to-CustomerKey lookups. Rebuilt during sync from Customers (ResPhone, BusPhone).
 public sealed class CustomerPhoneEntity
 {
     public int CustomerKey { get; set; }

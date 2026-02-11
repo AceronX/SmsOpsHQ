@@ -1,6 +1,8 @@
 namespace SmsOpsHQ.Infrastructure.Persistence.Entities;
 
-// EF Core entity for the PawnPayments table (payments synced from XPawn).
+// EF Core entity for the PawnPayments table (synced from XPD).
+// Column names match the actual XPD PawnPayments table (verified by database inspection).
+// "Check" is stored as "Check_" in SQLite because CHECK is a reserved word.
 public sealed class PawnPaymentEntity
 {
     public int Key { get; set; }

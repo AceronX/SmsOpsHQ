@@ -3,10 +3,12 @@ using SmsOpsHQ.Core.DTOs;
 namespace SmsOpsHQ.Core.Services;
 
 // Contract for syncing XPD (MS Access) pawn data to the local SQLite database.
-// The sync streams data via VBScript (cscript.exe) and batch-upserts into
-// Customers, Tickets, Items, PawnPayments, then rebuilds the CustomerPhones index.
+// The sync exports via VBScript (cscript.exe), batch-upserts into Customers, Tickets, Items, PawnPayments, then rebuilds the CustomerPhones index for fast lookup.
 public interface IXpdSyncService
 {
+    // Mark sync as starting and set initial progress (0%) so the UI shows progress immediately. Returns false if sync already in progress.
+    bool TryMarkSyncStarting();
+
     // Perform a full sync of all pawn tables. Optional overrides for this run (XPD path, MDW, credentials).
     Task<SyncResult> FullSyncAsync(SyncRunOptions? overrides = null, CancellationToken cancellationToken = default);
 

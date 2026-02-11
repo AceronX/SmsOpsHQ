@@ -15,9 +15,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Scripts\stream_table.vbs">
+    <None Update="Scripts\export_xpd_to_sql.vbs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>stream_table.vbs</Link>
+      <Link>export_xpd_to_sql.vbs</Link>
     </None>
   </ItemGroup>
   <ItemGroup>

@@ -1,7 +1,6 @@
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -15,9 +14,8 @@ using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 namespace SmsOpsHQ.Infrastructure.Services;
 
-// XPD to SQLite sync service. Streams data from XPawn MS Access database
-// via cscript.exe / stream_table.vbs and batch-upserts into SQLite tables
-// (Customers, Tickets, Items, PawnPayments, CustomerPhones).
+// XPD to SQLite sync service. Uses export_xpd_to_sql.vbs to export Access
+// to a SQL file, then executes it (Customers, Tickets, Items, PawnPayments), then rebuilds CustomerPhones index.
 public sealed class XpdSyncService : IXpdSyncService
 {
     private readonly IServiceScopeFactory _scopeFactory;
@@ -27,7 +25,7 @@ public sealed class XpdSyncService : IXpdSyncService
     private readonly string _mdwPath;
     private readonly string _xpdUser;
     private readonly string _xpdPassword;
-    private readonly string _vbscriptPath;
+    private readonly string _exportScriptPath;
     private readonly string _cscriptPath;
 
     private readonly SemaphoreSlim _syncLock = new(1, 1);
@@ -39,6 +37,7 @@ public sealed class XpdSyncService : IXpdSyncService
     private volatile bool _syncInProgress;
     private string? _lastError;
 
+    private readonly object _progressLock = new();
     private SyncProgress _currentProgress = new()
     {
         Stage = string.Empty,
@@ -59,20 +58,32 @@ public sealed class XpdSyncService : IXpdSyncService
         _mdwPath = xpdSection["MdwPath"] ?? @"C:\xpawndata\XcelData.mdw";
         _xpdUser = xpdSection["User"] ?? "developer";
         _xpdPassword = xpdSection["Password"] ?? "Hollerith89";
-        string vbscriptRaw = xpdSection["VbscriptPath"] ?? "stream_table.vbs";
-        _vbscriptPath = Path.IsPathRooted(vbscriptRaw)
-            ? vbscriptRaw
-            : Path.Combine(AppContext.BaseDirectory, vbscriptRaw);
+        string exportRaw = xpdSection["ExportScriptPath"] ?? "export_xpd_to_sql.vbs";
+        _exportScriptPath = Path.IsPathRooted(exportRaw)
+            ? exportRaw
+            : Path.Combine(AppContext.BaseDirectory, exportRaw);
         _cscriptPath = xpdSection["CscriptPath"] ?? @"C:\Windows\SysWOW64\cscript.exe";
+    }
+
+    public bool TryMarkSyncStarting()
+    {
+        bool lockAcquired = _syncLock.Wait(0);
+        if (!lockAcquired)
+            return false;
+        try
+        {
+            _syncInProgress = true;
+            UpdateProgress("init", 0, 100, "Starting sync...", 0, 0);
+            return true;
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
     }
 
     public async Task<SyncResult> FullSyncAsync(SyncRunOptions? overrides = null, CancellationToken cancellationToken = default)
     {
-        if (_syncInProgress)
-        {
-            return new SyncResult { Success = false, Error = "Sync already in progress" };
-        }
-
         bool lockAcquired = await _syncLock.WaitAsync(TimeSpan.Zero, cancellationToken);
         if (!lockAcquired)
         {
@@ -85,7 +96,7 @@ public sealed class XpdSyncService : IXpdSyncService
         {
             _syncInProgress = true;
             DateTime startTime = DateTime.UtcNow;
-            UpdateProgress("init", 0, 5, "Initializing sync...");
+            UpdateProgress("init", 0, 5, "Initializing sync...", 0, 2);
 
             using IServiceScope scope = _scopeFactory.CreateScope();
             AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -105,20 +116,11 @@ public sealed class XpdSyncService : IXpdSyncService
                 await pragma.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            // Sync each table sequentially inside transactions
-            UpdateProgress("customers", 0, 100, "Syncing customers...");
-            int customersSynced = await SyncCustomersAsync(conn, cancellationToken);
+            if (!File.Exists(_exportScriptPath))
+                throw new InvalidOperationException($"Export script not found: {_exportScriptPath}. Ensure export_xpd_to_sql.vbs is deployed.");
 
-            UpdateProgress("tickets", 0, 100, "Syncing tickets...");
-            int ticketsSynced = await SyncTicketsAsync(conn, cancellationToken);
-
-            UpdateProgress("items", 0, 100, "Syncing items...");
-            int itemsSynced = await SyncItemsAsync(conn, cancellationToken);
-
-            UpdateProgress("payments", 0, 100, "Syncing payments...");
-            int paymentsSynced = await SyncPaymentsAsync(conn, cancellationToken);
-
-            UpdateProgress("phone_index", 0, 100, "Rebuilding phone index...");
+            (int customersSynced, int ticketsSynced, int itemsSynced, int paymentsSynced) = await RunSqlExportSyncAsync(conn, cancellationToken);
+            UpdateProgress("phone_index", 0, 1, "Rebuilding phone index...", 80, 80);
             int phoneIndexCount = await RebuildPhoneIndexAsync(conn, db, cancellationToken);
 
             Dictionary<string, int> sqliteAfter = await GetCountsFromDbAsync(db, cancellationToken);
@@ -138,7 +140,8 @@ public sealed class XpdSyncService : IXpdSyncService
             };
 
             _lastError = null;
-            UpdateProgress("complete", 100, 100, $"Sync completed in {durationSeconds:F1}s");
+            string completeMsg = $"Sync completed in {durationSeconds:F1}s. Customers: {customersSynced:N0}, Tickets: {ticketsSynced:N0}, Items: {itemsSynced:N0}, Payments: {paymentsSynced:N0}, Phones: {phoneIndexCount:N0}";
+            UpdateProgress("complete", 100, 100, completeMsg, 100, 100);
 
             _logger.LogInformation(
                 "XPD sync completed in {Duration:F1}s: {Customers} customers, {Tickets} tickets, {Items} items, {Payments} payments, {Phones} phone entries",
@@ -166,7 +169,8 @@ public sealed class XpdSyncService : IXpdSyncService
         {
             _logger.LogError(ex, "XPD sync failed");
             _lastError = ex.Message;
-            UpdateProgress("error", 0, 100, $"Error: {ex.Message}");
+            string safeMessage = SanitizeProgressMessage(ex.Message);
+            UpdateProgress("error", 0, 100, string.IsNullOrEmpty(safeMessage) ? "Sync failed." : "Error: " + safeMessage);
             return new SyncResult { Success = false, Error = ex.Message };
         }
         finally
@@ -179,15 +183,18 @@ public sealed class XpdSyncService : IXpdSyncService
 
     public SyncProgress GetProgress()
     {
-        return new SyncProgress
+        lock (_progressLock)
         {
-            InProgress = _syncInProgress,
-            Stage = _currentProgress.Stage,
-            Current = _currentProgress.Current,
-            Total = _currentProgress.Total,
-            Percent = _currentProgress.Percent,
-            Message = _currentProgress.Message
-        };
+            return new SyncProgress
+            {
+                InProgress = _syncInProgress,
+                Stage = _currentProgress.Stage,
+                Current = _currentProgress.Current,
+                Total = _currentProgress.Total,
+                Percent = _currentProgress.Percent,
+                Message = _currentProgress.Message
+            };
+        }
     }
 
     public SyncStatus GetSyncStatus()
@@ -222,343 +229,121 @@ public sealed class XpdSyncService : IXpdSyncService
         return await GetCountsFromDbAsync(db, cancellationToken);
     }
 
-    // ── Sync Methods (Raw SqliteCommand + Transactions for speed) ─────
-    // Each table sync: BEGIN TRANSACTION → prepared INSERT → COMMIT.
-    // This gives ~50,000+ rows/sec vs ~60 rows/sec without transactions.
-
-    private async Task<int> SyncCustomersAsync(SqliteConnection conn, CancellationToken ct)
+    // ── SQL export sync (one script, one file, one transaction) ──
+    private async Task<(int Customers, int Tickets, int Items, int Payments)> RunSqlExportSyncAsync(
+        SqliteConnection conn, CancellationToken ct)
     {
-        string now = DateTime.UtcNow.ToString("o");
-        int count = 0;
+        string xpdPath = _currentRunOverrides?.XpdPath ?? _xpdPath;
+        string mdwPath = _currentRunOverrides?.MdwPath ?? _mdwPath;
+        string xpdUser = _currentRunOverrides?.XpdUser ?? _xpdUser;
+        string xpdPassword = _currentRunOverrides?.XpdPassword ?? _xpdPassword;
 
-        using SqliteTransaction txn = conn.BeginTransaction();
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.Transaction = txn;
-        cmd.CommandText = @"INSERT INTO Customers
-            (CustomerKey, LastName, FirstName, MiddleName,
-             Address, City, State, Zip, ResPhone, BusPhone, EMailAddress,
-             DOB, SSN, IDNo, IDIssueState, Notes,
-             FirstTransaction, LastTransaction, Warning, SyncedAt,
-             PhoneE164, StoreId, CreatedAt, UpdatedAt)
-            VALUES ($key,$lastName,$firstName,$middleName,
-             $address,$city,$state,$zip,$resPhone,$busPhone,$email,
-             $dob,$ssn,$idNo,$idIssueState,$notes,
-             $firstTxn,$lastTxn,$warning,$syncedAt,
-             $phoneE164,$storeId,$createdAt,$updatedAt)
-            ON CONFLICT(CustomerKey) DO UPDATE SET
-             LastName=excluded.LastName, FirstName=excluded.FirstName,
-             MiddleName=excluded.MiddleName, Address=excluded.Address,
-             City=excluded.City, State=excluded.State, Zip=excluded.Zip,
-             ResPhone=excluded.ResPhone, BusPhone=excluded.BusPhone,
-             EMailAddress=excluded.EMailAddress, DOB=excluded.DOB,
-             SSN=excluded.SSN, IDNo=excluded.IDNo,
-             IDIssueState=excluded.IDIssueState, Notes=excluded.Notes,
-             FirstTransaction=excluded.FirstTransaction,
-             LastTransaction=excluded.LastTransaction,
-             Warning=excluded.Warning, SyncedAt=excluded.SyncedAt,
-             UpdatedAt=excluded.UpdatedAt";
-
-        // Pre-add all parameters once (prepared statement pattern)
-        SqliteParameter pKey = cmd.Parameters.Add("$key", SqliteType.Integer);
-        SqliteParameter pLastName = cmd.Parameters.Add("$lastName", SqliteType.Text);
-        SqliteParameter pFirstName = cmd.Parameters.Add("$firstName", SqliteType.Text);
-        SqliteParameter pMiddleName = cmd.Parameters.Add("$middleName", SqliteType.Text);
-        SqliteParameter pAddress = cmd.Parameters.Add("$address", SqliteType.Text);
-        SqliteParameter pCity = cmd.Parameters.Add("$city", SqliteType.Text);
-        SqliteParameter pState = cmd.Parameters.Add("$state", SqliteType.Text);
-        SqliteParameter pZip = cmd.Parameters.Add("$zip", SqliteType.Text);
-        SqliteParameter pResPhone = cmd.Parameters.Add("$resPhone", SqliteType.Text);
-        SqliteParameter pBusPhone = cmd.Parameters.Add("$busPhone", SqliteType.Text);
-        SqliteParameter pEmail = cmd.Parameters.Add("$email", SqliteType.Text);
-        SqliteParameter pDob = cmd.Parameters.Add("$dob", SqliteType.Text);
-        SqliteParameter pSsn = cmd.Parameters.Add("$ssn", SqliteType.Text);
-        SqliteParameter pIdNo = cmd.Parameters.Add("$idNo", SqliteType.Text);
-        SqliteParameter pIdIssueState = cmd.Parameters.Add("$idIssueState", SqliteType.Text);
-        SqliteParameter pNotes = cmd.Parameters.Add("$notes", SqliteType.Text);
-        SqliteParameter pFirstTxn = cmd.Parameters.Add("$firstTxn", SqliteType.Text);
-        SqliteParameter pLastTxn = cmd.Parameters.Add("$lastTxn", SqliteType.Text);
-        SqliteParameter pWarning = cmd.Parameters.Add("$warning", SqliteType.Text);
-        SqliteParameter pSyncedAt = cmd.Parameters.Add("$syncedAt", SqliteType.Text);
-        SqliteParameter pPhoneE164 = cmd.Parameters.Add("$phoneE164", SqliteType.Text);
-        SqliteParameter pStoreId = cmd.Parameters.Add("$storeId", SqliteType.Integer);
-        SqliteParameter pCreatedAt = cmd.Parameters.Add("$createdAt", SqliteType.Text);
-        SqliteParameter pUpdatedAt = cmd.Parameters.Add("$updatedAt", SqliteType.Text);
-        cmd.Prepare();
-
-        await foreach (JsonElement row in StreamVbscriptAsync("customers", ct))
+        string tempFile = Path.Combine(Path.GetTempPath(), "smsops_sync_" + Guid.NewGuid().ToString("N") + ".sql");
+        try
         {
-            pKey.Value = row.GetInt("key");
-            pLastName.Value = (object?)row.GetString("last_name") ?? DBNull.Value;
-            pFirstName.Value = (object?)row.GetString("first_name") ?? DBNull.Value;
-            pMiddleName.Value = (object?)row.GetString("middle_name") ?? DBNull.Value;
-            pAddress.Value = (object?)row.GetString("address") ?? DBNull.Value;
-            pCity.Value = (object?)row.GetString("city") ?? DBNull.Value;
-            pState.Value = (object?)row.GetString("state") ?? DBNull.Value;
-            pZip.Value = (object?)row.GetString("zip") ?? DBNull.Value;
-            pResPhone.Value = (object?)row.GetString("res_phone") ?? DBNull.Value;
-            pBusPhone.Value = (object?)row.GetString("bus_phone") ?? DBNull.Value;
-            pEmail.Value = (object?)row.GetString("email_address") ?? DBNull.Value;
-            pDob.Value = (object?)row.GetString("dob") ?? DBNull.Value;
-            pSsn.Value = (object?)row.GetString("ssn") ?? DBNull.Value;
-            pIdNo.Value = (object?)row.GetString("id_no") ?? DBNull.Value;
-            pIdIssueState.Value = (object?)row.GetString("id_issue_state") ?? DBNull.Value;
-            pNotes.Value = (object?)row.GetString("notes") ?? DBNull.Value;
-            pFirstTxn.Value = (object?)row.GetString("first_transaction") ?? DBNull.Value;
-            pLastTxn.Value = (object?)row.GetString("last_transaction") ?? DBNull.Value;
-            pWarning.Value = (object?)row.GetString("warning") ?? DBNull.Value;
-            pSyncedAt.Value = now;
-            pPhoneE164.Value = "";
-            pStoreId.Value = 1;
-            pCreatedAt.Value = now;
-            pUpdatedAt.Value = now;
+            UpdateProgress("export", 0, 100, "Exporting from Access...", 0, 10);
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = _cscriptPath,
+                Arguments = $"//nologo \"{_exportScriptPath}\" \"{xpdPath}\" \"{mdwPath}\" \"{xpdUser}\" \"{xpdPassword}\" \"{tempFile}\"",
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            string stderr = await process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+            if (!string.IsNullOrWhiteSpace(stderr))
+                _logger.LogInformation("VBScript output: {Stderr}", stderr.Trim());
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? "Export script failed." : stderr.Trim());
+            }
 
+            if (!File.Exists(tempFile))
+                throw new InvalidOperationException("Export script did not produce SQL file.");
+
+            UpdateProgress("import", 0, 1, "Reading SQL file...", 10, 10);
+            string[] lines = await File.ReadAllLinesAsync(tempFile, ct);
+            int totalLines = lines.Length;
+            int customers = 0, tickets = 0, items = 0, payments = 0;
+            const int progressInterval = 500;
+
+            using SqliteTransaction txn = conn.BeginTransaction();
+            using SqliteCommand cmd = conn.CreateCommand();
+            cmd.Transaction = txn;
+            // Recreate PawnPayments with columns matching the actual XPD schema (verified by database inspection).
+            // "Check" is a reserved word in SQLite, so stored as "Check_".
+            cmd.CommandText = "DROP TABLE IF EXISTS PawnPayments;";
             await cmd.ExecuteNonQueryAsync(ct);
-            count++;
+            cmd.CommandText = @"CREATE TABLE PawnPayments (
+                Key INTEGER PRIMARY KEY,
+                TicketKey INTEGER,
+                PaymentDate TEXT,
+                PawnPmtType INTEGER,
+                PaymentStatus TEXT,
+                TotalDueAmount REAL,
+                NetDueAmount REAL,
+                NetPaymentAmount REAL,
+                Cash REAL,
+                Check_ REAL,
+                CreditCard REAL,
+                DebitCard REAL,
+                InterestChargePaid REAL,
+                ServiceChargePaid REAL,
+                PrincipalPaid REAL,
+                NewCurrentBalance REAL,
+                NewDueDate TEXT,
+                OldDueDate TEXT,
+                OperatorInitials TEXT,
+                Method TEXT,
+                Note TEXT,
+                SyncedAt TEXT
+            );";
+            await cmd.ExecuteNonQueryAsync(ct);
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_PawnPayments_TicketKey ON PawnPayments (TicketKey);";
+            await cmd.ExecuteNonQueryAsync(ct);
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_PawnPayments_PaymentDate ON PawnPayments (PaymentDate);";
+            await cmd.ExecuteNonQueryAsync(ct);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string s = lines[i].Trim();
+                if (string.IsNullOrEmpty(s) || s.Equals("BEGIN TRANSACTION;", StringComparison.OrdinalIgnoreCase) || s.Equals("COMMIT;", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (s.StartsWith("INSERT INTO Customers", StringComparison.OrdinalIgnoreCase)) customers++;
+                else if (s.StartsWith("INSERT OR REPLACE INTO Tickets", StringComparison.OrdinalIgnoreCase)) tickets++;
+                else if (s.StartsWith("INSERT OR REPLACE INTO Items", StringComparison.OrdinalIgnoreCase)) items++;
+                else if (s.StartsWith("INSERT OR REPLACE INTO PawnPayments", StringComparison.OrdinalIgnoreCase)) payments++;
+                cmd.CommandText = s;
+                await cmd.ExecuteNonQueryAsync(ct);
 
-            if (count % 500 == 0)
-                UpdateProgress("customers", count, count + 500, $"Synced {count:N0} customers...");
+                int processed = i + 1;
+                if (processed % progressInterval == 0 || processed == totalLines)
+                {
+                    string msg = $"Importing... {processed:N0} of {totalLines:N0} rows (Customers: {customers:N0}, Tickets: {tickets:N0}, Items: {items:N0}, Payments: {payments:N0})";
+                    UpdateProgress("import", processed, totalLines, msg, 10, 80);
+                }
+            }
+            await txn.CommitAsync(ct);
+
+            if (payments == 0 && (customers > 0 || tickets > 0))
+                _logger.LogWarning("PawnPayments sync produced 0 rows while Customers={Customers}, Tickets={Tickets}, Items={Items}. Check VBScript stderr above for errors.", customers, tickets, items);
+
+            return (customers, tickets, items, payments);
         }
-
-        await txn.CommitAsync(ct);
-        return count;
-    }
-
-    private async Task<int> SyncTicketsAsync(SqliteConnection conn, CancellationToken ct)
-    {
-        string now = DateTime.UtcNow.ToString("o");
-        int count = 0;
-
-        using SqliteTransaction txn = conn.BeginTransaction();
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.Transaction = txn;
-        cmd.CommandText = @"INSERT OR REPLACE INTO Tickets
-            (Key, CustomerKey, TransNo, Type, Active, Amount, CurrentBalance,
-             IssueDate, DueDate, DateClosed, HowClosed, Status, Notes, Item,
-             OperatorInitials, GunTicket, LostTicket, PaidTillDate, LastDate,
-             ChargesDue, StandardCharges, StandardPU, FullTermPU, FulltermRenew, SyncedAt)
-            VALUES ($key,$custKey,$transNo,$type,$active,$amount,$curBal,
-             $issueDate,$dueDate,$dateClosed,$howClosed,$status,$notes,$item,
-             $opInit,$gunTicket,$lostTicket,$paidTill,$lastDate,
-             $chargesDue,$stdCharges,$stdPU,$ftPU,$ftRenew,$syncedAt)";
-
-        SqliteParameter pKey = cmd.Parameters.Add("$key", SqliteType.Integer);
-        SqliteParameter pCustKey = cmd.Parameters.Add("$custKey", SqliteType.Integer);
-        SqliteParameter pTransNo = cmd.Parameters.Add("$transNo", SqliteType.Integer);
-        SqliteParameter pType = cmd.Parameters.Add("$type", SqliteType.Integer);
-        SqliteParameter pActive = cmd.Parameters.Add("$active", SqliteType.Integer);
-        SqliteParameter pAmount = cmd.Parameters.Add("$amount", SqliteType.Real);
-        SqliteParameter pCurBal = cmd.Parameters.Add("$curBal", SqliteType.Real);
-        SqliteParameter pIssueDate = cmd.Parameters.Add("$issueDate", SqliteType.Text);
-        SqliteParameter pDueDate = cmd.Parameters.Add("$dueDate", SqliteType.Text);
-        SqliteParameter pDateClosed = cmd.Parameters.Add("$dateClosed", SqliteType.Text);
-        SqliteParameter pHowClosed = cmd.Parameters.Add("$howClosed", SqliteType.Text);
-        SqliteParameter pStatus = cmd.Parameters.Add("$status", SqliteType.Text);
-        SqliteParameter pNotes = cmd.Parameters.Add("$notes", SqliteType.Text);
-        SqliteParameter pItem = cmd.Parameters.Add("$item", SqliteType.Text);
-        SqliteParameter pOpInit = cmd.Parameters.Add("$opInit", SqliteType.Text);
-        SqliteParameter pGunTicket = cmd.Parameters.Add("$gunTicket", SqliteType.Integer);
-        SqliteParameter pLostTicket = cmd.Parameters.Add("$lostTicket", SqliteType.Integer);
-        SqliteParameter pPaidTill = cmd.Parameters.Add("$paidTill", SqliteType.Text);
-        SqliteParameter pLastDate = cmd.Parameters.Add("$lastDate", SqliteType.Text);
-        SqliteParameter pChargesDue = cmd.Parameters.Add("$chargesDue", SqliteType.Real);
-        SqliteParameter pStdCharges = cmd.Parameters.Add("$stdCharges", SqliteType.Real);
-        SqliteParameter pStdPU = cmd.Parameters.Add("$stdPU", SqliteType.Real);
-        SqliteParameter pFtPU = cmd.Parameters.Add("$ftPU", SqliteType.Real);
-        SqliteParameter pFtRenew = cmd.Parameters.Add("$ftRenew", SqliteType.Real);
-        SqliteParameter pSyncedAt = cmd.Parameters.Add("$syncedAt", SqliteType.Text);
-        cmd.Prepare();
-
-        await foreach (JsonElement row in StreamVbscriptAsync("tickets", ct))
+        finally
         {
-            pKey.Value = row.GetInt("key");
-            pCustKey.Value = row.GetInt("customer_key");
-            pTransNo.Value = NullableVal(row.GetNullableInt("trans_no"));
-            pType.Value = NullableVal(row.GetNullableInt("type"));
-            pActive.Value = NullableVal(row.GetNullableInt("active"));
-            pAmount.Value = NullableVal(row.GetNullableDouble("amount"));
-            pCurBal.Value = NullableVal(row.GetNullableDouble("current_balance"));
-            pIssueDate.Value = NullableVal(row.GetString("issue_date"));
-            pDueDate.Value = NullableVal(row.GetString("due_date"));
-            pDateClosed.Value = NullableVal(row.GetString("date_closed"));
-            pHowClosed.Value = NullableVal(row.GetString("how_closed"));
-            pStatus.Value = NullableVal(row.GetString("status"));
-            pNotes.Value = NullableVal(row.GetString("notes"));
-            pItem.Value = NullableVal(row.GetString("item"));
-            pOpInit.Value = NullableVal(row.GetString("operator_initials"));
-            pGunTicket.Value = NullableVal(row.GetNullableInt("gun_ticket"));
-            pLostTicket.Value = NullableVal(row.GetNullableInt("lost_ticket"));
-            pPaidTill.Value = NullableVal(row.GetString("paid_till_date"));
-            pLastDate.Value = NullableVal(row.GetString("last_date"));
-            pChargesDue.Value = NullableVal(row.GetNullableDouble("charges_due"));
-            pStdCharges.Value = NullableVal(row.GetNullableDouble("standard_charges"));
-            pStdPU.Value = NullableVal(row.GetNullableDouble("standard_pu"));
-            pFtPU.Value = NullableVal(row.GetNullableDouble("fullterm_pu"));
-            pFtRenew.Value = NullableVal(row.GetNullableDouble("fullterm_renew"));
-            pSyncedAt.Value = now;
-
-            await cmd.ExecuteNonQueryAsync(ct);
-            count++;
-
-            if (count % 500 == 0)
-                UpdateProgress("tickets", count, count + 500, $"Synced {count:N0} tickets...");
+            try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { /* best effort */ }
         }
-
-        await txn.CommitAsync(ct);
-        return count;
-    }
-
-    private async Task<int> SyncItemsAsync(SqliteConnection conn, CancellationToken ct)
-    {
-        string now = DateTime.UtcNow.ToString("o");
-        int count = 0;
-
-        using SqliteTransaction txn = conn.BeginTransaction();
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.Transaction = txn;
-        cmd.CommandText = @"INSERT OR REPLACE INTO Items
-            (Key, TicketKey, PrintedDetail, CategoryCode, SerialNo, Cost,
-             ItemStatus, Notes, Mfg, Model, Color, Size, Weight, Karat, SyncedAt)
-            VALUES ($key,$ticketKey,$printed,$catCode,$serial,$cost,
-             $itemStatus,$notes,$mfg,$model,$color,$size,$weight,$karat,$syncedAt)";
-
-        SqliteParameter pKey = cmd.Parameters.Add("$key", SqliteType.Integer);
-        SqliteParameter pTicketKey = cmd.Parameters.Add("$ticketKey", SqliteType.Integer);
-        SqliteParameter pPrinted = cmd.Parameters.Add("$printed", SqliteType.Text);
-        SqliteParameter pCatCode = cmd.Parameters.Add("$catCode", SqliteType.Text);
-        SqliteParameter pSerial = cmd.Parameters.Add("$serial", SqliteType.Text);
-        SqliteParameter pCost = cmd.Parameters.Add("$cost", SqliteType.Real);
-        SqliteParameter pItemStatus = cmd.Parameters.Add("$itemStatus", SqliteType.Text);
-        SqliteParameter pNotes = cmd.Parameters.Add("$notes", SqliteType.Text);
-        SqliteParameter pMfg = cmd.Parameters.Add("$mfg", SqliteType.Text);
-        SqliteParameter pModel = cmd.Parameters.Add("$model", SqliteType.Text);
-        SqliteParameter pColor = cmd.Parameters.Add("$color", SqliteType.Text);
-        SqliteParameter pSize = cmd.Parameters.Add("$size", SqliteType.Text);
-        SqliteParameter pWeight = cmd.Parameters.Add("$weight", SqliteType.Text);
-        SqliteParameter pKarat = cmd.Parameters.Add("$karat", SqliteType.Text);
-        SqliteParameter pSyncedAt = cmd.Parameters.Add("$syncedAt", SqliteType.Text);
-        cmd.Prepare();
-
-        await foreach (JsonElement row in StreamVbscriptAsync("items", ct))
-        {
-            pKey.Value = row.GetInt("key");
-            pTicketKey.Value = row.GetInt("ticket_key");
-            pPrinted.Value = NullableVal(row.GetString("printed_detail"));
-            pCatCode.Value = NullableVal(row.GetString("category_code"));
-            pSerial.Value = NullableVal(row.GetString("serial_no"));
-            pCost.Value = NullableVal(row.GetNullableDouble("cost"));
-            pItemStatus.Value = NullableVal(row.GetString("item_status"));
-            pNotes.Value = NullableVal(row.GetString("notes"));
-            pMfg.Value = NullableVal(row.GetString("brand"));
-            pModel.Value = NullableVal(row.GetString("model"));
-            pColor.Value = NullableVal(row.GetString("color"));
-            pSize.Value = NullableVal(row.GetString("size"));
-            pWeight.Value = NullableVal(row.GetString("weight"));
-            pKarat.Value = NullableVal(row.GetString("metal"));
-            pSyncedAt.Value = now;
-
-            await cmd.ExecuteNonQueryAsync(ct);
-            count++;
-
-            if (count % 1000 == 0)
-                UpdateProgress("items", count, count + 1000, $"Synced {count:N0} items...");
-        }
-
-        await txn.CommitAsync(ct);
-        return count;
-    }
-
-    private async Task<int> SyncPaymentsAsync(SqliteConnection conn, CancellationToken ct)
-    {
-        string now = DateTime.UtcNow.ToString("o");
-        int count = 0;
-
-        using SqliteTransaction txn = conn.BeginTransaction();
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.Transaction = txn;
-        cmd.CommandText = @"INSERT OR REPLACE INTO PawnPayments
-            (Key, TicketKey, PaymentDate, PawnPmtType, PaymentStatus,
-             TotalDueAmount, NetDueAmount, NetPaymentAmount, Cash, Check_,
-             CreditCard, DebitCard, InterestChargePaid, ServiceChargePaid,
-             PrincipalPaid, NewCurrentBalance, NewDueDate, OldDueDate,
-             OperatorInitials, Method, Note, SyncedAt)
-            VALUES ($key,$ticketKey,$payDate,$pmtType,$payStatus,
-             $totalDue,$netDue,$netPay,$cash,$check,
-             $creditCard,$debitCard,$intPaid,$svcPaid,
-             $princPaid,$newCurBal,$newDueDate,$oldDueDate,
-             $opInit,$method,$note,$syncedAt)";
-
-        SqliteParameter pKey = cmd.Parameters.Add("$key", SqliteType.Integer);
-        SqliteParameter pTicketKey = cmd.Parameters.Add("$ticketKey", SqliteType.Integer);
-        SqliteParameter pPayDate = cmd.Parameters.Add("$payDate", SqliteType.Text);
-        SqliteParameter pPmtType = cmd.Parameters.Add("$pmtType", SqliteType.Integer);
-        SqliteParameter pPayStatus = cmd.Parameters.Add("$payStatus", SqliteType.Text);
-        SqliteParameter pTotalDue = cmd.Parameters.Add("$totalDue", SqliteType.Real);
-        SqliteParameter pNetDue = cmd.Parameters.Add("$netDue", SqliteType.Real);
-        SqliteParameter pNetPay = cmd.Parameters.Add("$netPay", SqliteType.Real);
-        SqliteParameter pCash = cmd.Parameters.Add("$cash", SqliteType.Real);
-        SqliteParameter pCheck = cmd.Parameters.Add("$check", SqliteType.Real);
-        SqliteParameter pCreditCard = cmd.Parameters.Add("$creditCard", SqliteType.Real);
-        SqliteParameter pDebitCard = cmd.Parameters.Add("$debitCard", SqliteType.Real);
-        SqliteParameter pIntPaid = cmd.Parameters.Add("$intPaid", SqliteType.Real);
-        SqliteParameter pSvcPaid = cmd.Parameters.Add("$svcPaid", SqliteType.Real);
-        SqliteParameter pPrincPaid = cmd.Parameters.Add("$princPaid", SqliteType.Real);
-        SqliteParameter pNewCurBal = cmd.Parameters.Add("$newCurBal", SqliteType.Real);
-        SqliteParameter pNewDueDate = cmd.Parameters.Add("$newDueDate", SqliteType.Text);
-        SqliteParameter pOldDueDate = cmd.Parameters.Add("$oldDueDate", SqliteType.Text);
-        SqliteParameter pOpInit = cmd.Parameters.Add("$opInit", SqliteType.Text);
-        SqliteParameter pMethod = cmd.Parameters.Add("$method", SqliteType.Text);
-        SqliteParameter pNote = cmd.Parameters.Add("$note", SqliteType.Text);
-        SqliteParameter pSyncedAt = cmd.Parameters.Add("$syncedAt", SqliteType.Text);
-        cmd.Prepare();
-
-        await foreach (JsonElement row in StreamVbscriptAsync("payments", ct))
-        {
-            pKey.Value = row.GetInt("key");
-            pTicketKey.Value = row.GetInt("ticket_key");
-            pPayDate.Value = NullableVal(row.GetString("payment_date"));
-            pPmtType.Value = NullableVal(row.GetNullableInt("pawn_pmt_type"));
-            pPayStatus.Value = NullableVal(row.GetString("payment_status"));
-            pTotalDue.Value = NullableVal(row.GetNullableDouble("total_due_amount"));
-            pNetDue.Value = NullableVal(row.GetNullableDouble("net_due_amount"));
-            pNetPay.Value = NullableVal(row.GetNullableDouble("net_payment_amount"));
-            pCash.Value = NullableVal(row.GetNullableDouble("cash"));
-            pCheck.Value = NullableVal(row.GetNullableDouble("check"));
-            pCreditCard.Value = NullableVal(row.GetNullableDouble("credit_card"));
-            pDebitCard.Value = NullableVal(row.GetNullableDouble("debit_card"));
-            pIntPaid.Value = NullableVal(row.GetNullableDouble("interest_charge_paid"));
-            pSvcPaid.Value = NullableVal(row.GetNullableDouble("service_charge_paid"));
-            pPrincPaid.Value = NullableVal(row.GetNullableDouble("principal_paid"));
-            pNewCurBal.Value = NullableVal(row.GetNullableDouble("new_current_balance"));
-            pNewDueDate.Value = NullableVal(row.GetString("new_due_date"));
-            pOldDueDate.Value = NullableVal(row.GetString("old_due_date"));
-            pOpInit.Value = NullableVal(row.GetString("operator_initials"));
-            pMethod.Value = NullableVal(row.GetString("method"));
-            pNote.Value = NullableVal(row.GetString("note"));
-            pSyncedAt.Value = now;
-
-            await cmd.ExecuteNonQueryAsync(ct);
-            count++;
-
-            if (count % 1000 == 0)
-                UpdateProgress("payments", count, count + 1000, $"Synced {count:N0} payments...");
-        }
-
-        await txn.CommitAsync(ct);
-        return count;
     }
 
     private async Task<int> RebuildPhoneIndexAsync(SqliteConnection conn, AppDbContext db, CancellationToken ct)
     {
-        // Load all customers to extract and normalize phones
         List<CustomerEntity> customers = await db.Customers
             .AsNoTracking()
             .Where(c => c.CustomerKey != null)
-            .Select(c => new CustomerEntity
-            {
-                CustomerKey = c.CustomerKey,
-                ResPhone = c.ResPhone,
-                BusPhone = c.BusPhone
-            })
+            .Select(c => new CustomerEntity { CustomerKey = c.CustomerKey, ResPhone = c.ResPhone, BusPhone = c.BusPhone })
             .ToListAsync(ct);
 
         int total = customers.Count;
@@ -566,7 +351,6 @@ public sealed class XpdSyncService : IXpdSyncService
 
         using SqliteTransaction txn = conn.BeginTransaction();
 
-        // Clear existing phone index
         using (SqliteCommand delCmd = conn.CreateCommand())
         {
             delCmd.Transaction = txn;
@@ -576,10 +360,7 @@ public sealed class XpdSyncService : IXpdSyncService
 
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.Transaction = txn;
-        cmd.CommandText = @"INSERT OR IGNORE INTO CustomerPhones
-            (CustomerKey, PhoneNormalized, PhoneOriginal, PhoneType)
-            VALUES ($custKey,$phoneNorm,$phoneOrig,$phoneType)";
-
+        cmd.CommandText = @"INSERT OR IGNORE INTO CustomerPhones (CustomerKey, PhoneNormalized, PhoneOriginal, PhoneType) VALUES ($custKey,$phoneNorm,$phoneOrig,$phoneType)";
         SqliteParameter pCustKey = cmd.Parameters.Add("$custKey", SqliteType.Integer);
         SqliteParameter pPhoneNorm = cmd.Parameters.Add("$phoneNorm", SqliteType.Text);
         SqliteParameter pPhoneOrig = cmd.Parameters.Add("$phoneOrig", SqliteType.Text);
@@ -588,134 +369,44 @@ public sealed class XpdSyncService : IXpdSyncService
 
         for (int i = 0; i < customers.Count; i++)
         {
-            CustomerEntity customer = customers[i];
-            int customerKey = customer.CustomerKey!.Value;
+            CustomerEntity c = customers[i];
+            int customerKey = c.CustomerKey!.Value;
 
-            if (!string.IsNullOrWhiteSpace(customer.ResPhone))
+            if (!string.IsNullOrWhiteSpace(c.ResPhone))
             {
-                string? normalized = PhoneUtils.ExtractLast10Digits(customer.ResPhone);
-                if (normalized is not null)
+                string? norm = PhoneUtils.ExtractLast10Digits(c.ResPhone);
+                if (norm is not null)
                 {
                     pCustKey.Value = customerKey;
-                    pPhoneNorm.Value = normalized;
-                    pPhoneOrig.Value = (object)customer.ResPhone ?? DBNull.Value;
+                    pPhoneNorm.Value = norm;
+                    pPhoneOrig.Value = (object?)c.ResPhone ?? DBNull.Value;
                     pPhoneType.Value = "ResPhone";
                     await cmd.ExecuteNonQueryAsync(ct);
                     count++;
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(customer.BusPhone)
-                && customer.BusPhone != customer.ResPhone)
+            if (!string.IsNullOrWhiteSpace(c.BusPhone) && c.BusPhone != c.ResPhone)
             {
-                string? normalized = PhoneUtils.ExtractLast10Digits(customer.BusPhone);
-                if (normalized is not null)
+                string? norm = PhoneUtils.ExtractLast10Digits(c.BusPhone);
+                if (norm is not null)
                 {
                     pCustKey.Value = customerKey;
-                    pPhoneNorm.Value = normalized;
-                    pPhoneOrig.Value = (object)customer.BusPhone ?? DBNull.Value;
+                    pPhoneNorm.Value = norm;
+                    pPhoneOrig.Value = (object?)c.BusPhone ?? DBNull.Value;
                     pPhoneType.Value = "BusPhone";
                     await cmd.ExecuteNonQueryAsync(ct);
                     count++;
                 }
             }
 
-            if ((i + 1) % 1000 == 0)
-                UpdateProgress("phone_index", i + 1, total, $"Indexed {i + 1:N0}/{total:N0} customers...");
+            int done = i + 1;
+            if (done % 1000 == 0 || done == total)
+                UpdateProgress("phone_index", done, total, $"Rebuilding phone index... {done:N0} of {total:N0} customers", 80, 100);
         }
 
         await txn.CommitAsync(ct);
         return count;
-    }
-
-    // Null helper: returns DBNull.Value for null, otherwise the value itself.
-    private static object NullableVal(object? value) => value ?? DBNull.Value;
-
-    // ── VBScript Streaming ────────────────────────────────────────────
-
-    private async IAsyncEnumerable<JsonElement> StreamVbscriptAsync(
-        string queryType,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        string xpdPath = _currentRunOverrides?.XpdPath ?? _xpdPath;
-        string mdwPath = _currentRunOverrides?.MdwPath ?? _mdwPath;
-        string xpdUser = _currentRunOverrides?.XpdUser ?? _xpdUser;
-        string xpdPassword = _currentRunOverrides?.XpdPassword ?? _xpdPassword;
-
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = _cscriptPath,
-            Arguments = $"//nologo \"{_vbscriptPath}\" \"{xpdPath}\" \"{queryType}\" \"{mdwPath}\" \"{xpdUser}\" \"{xpdPassword}\"",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using Process process = new() { StartInfo = startInfo };
-
-        try
-        {
-            process.Start();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to start VBScript process for {QueryType}", queryType);
-            throw new InvalidOperationException("Failed to start sync process. Check XPD path, MDW path, and that cscript is available.", ex);
-        }
-
-        using StreamReader stdoutReader = process.StandardOutput;
-
-        while (!stdoutReader.EndOfStream)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                try { process.Kill(); } catch { /* best effort */ }
-                yield break;
-            }
-
-            string? line = await stdoutReader.ReadLineAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            if (line.StartsWith("{\"error\"", StringComparison.Ordinal))
-            {
-                _logger.LogWarning("VBScript error: {Error}", line);
-                string errMsg = line;
-                try
-                {
-                    using JsonDocument doc = JsonDocument.Parse(line);
-                    if (doc.RootElement.TryGetProperty("error", out JsonElement errProp))
-                        errMsg = errProp.GetString() ?? line;
-                }
-                catch { /* use raw line */ }
-                throw new InvalidOperationException($"XPD sync failed: {errMsg}");
-            }
-
-            JsonElement element;
-            try
-            {
-                element = JsonSerializer.Deserialize<JsonElement>(line);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "JSON parse error on line: {Line}", line.Length > 100 ? line[..100] : line);
-                continue;
-            }
-
-            yield return element;
-        }
-
-        await process.WaitForExitAsync(cancellationToken);
-
-        if (process.ExitCode != 0)
-        {
-            string stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-            _logger.LogWarning("VBScript exited with code {ExitCode}: {Stderr}", process.ExitCode, stderr);
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr)
-                ? $"Sync failed (exit code {process.ExitCode}). Check XPD credentials and MDW path."
-                : $"Sync failed: {stderr.Trim()}");
-        }
     }
 
     // ── Count Helpers ─────────────────────────────────────────────────
@@ -780,79 +471,41 @@ public sealed class XpdSyncService : IXpdSyncService
         }
     }
 
-    private void UpdateProgress(string stage, int current, int total, string message)
+    private void UpdateProgress(string stage, int current, int total, string message, int? percentMin = null, int? percentMax = null)
     {
-        int percent = total > 0 ? (int)((double)current / total * 100) : 0;
+        int percent;
+        if (percentMin is int min && percentMax is int max && max > min)
+        {
+            percent = total > 0 ? min + (int)((double)current / total * (max - min)) : min;
+        }
+        else
+        {
+            percent = total > 0 ? (int)((double)current / total * 100) : 0;
+        }
         if (percent > 100) percent = 100;
-        _currentProgress = new SyncProgress
-        {
-            InProgress = _syncInProgress,
-            Stage = stage,
-            Current = current,
-            Total = total,
-            Percent = percent,
-            Message = message
-        };
-    }
-}
 
-// Extension methods for reading JSON properties from VBScript output.
-internal static class JsonElementExtensions
-{
-    public static int GetInt(this JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out JsonElement value))
-            return 0;
-
-        return value.ValueKind switch
+        string safeMessage = SanitizeProgressMessage(message);
+        lock (_progressLock)
         {
-            JsonValueKind.Number => value.GetInt32(),
-            JsonValueKind.String when int.TryParse(value.GetString(), out int parsed) => parsed,
-            _ => 0
-        };
+            _currentProgress = new SyncProgress
+            {
+                InProgress = _syncInProgress,
+                Stage = stage,
+                Current = current,
+                Total = total,
+                Percent = percent,
+                Message = safeMessage
+            };
+        }
     }
 
-    public static int? GetNullableInt(this JsonElement element, string propertyName)
+    /// <summary>Sanitize progress message for JSON/UI: single line, reasonable length.</summary>
+    private static string SanitizeProgressMessage(string? message)
     {
-        if (!element.TryGetProperty(propertyName, out JsonElement value))
-            return null;
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.Null => null,
-            JsonValueKind.Number => value.GetInt32(),
-            JsonValueKind.String when int.TryParse(value.GetString(), out int parsed) => parsed,
-            _ => null
-        };
-    }
-
-    public static double? GetNullableDouble(this JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out JsonElement value))
-            return null;
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.Null => null,
-            JsonValueKind.Number => value.GetDouble(),
-            JsonValueKind.String when double.TryParse(value.GetString(),
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double parsed) => parsed,
-            _ => null
-        };
-    }
-
-    public static string? GetString(this JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out JsonElement value))
-            return null;
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.Null => null,
-            JsonValueKind.String => value.GetString(),
-            _ => value.ToString()
-        };
+        if (string.IsNullOrEmpty(message)) return string.Empty;
+        const int maxLen = 500;
+        string oneLine = message.Replace("\r", " ").Replace("\n", " ").Trim();
+        if (oneLine.Length <= maxLen) return oneLine;
+        return oneLine.Substring(0, maxLen) + "...";
     }
 }

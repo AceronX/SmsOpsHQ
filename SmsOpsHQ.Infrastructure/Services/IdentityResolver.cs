@@ -7,9 +7,8 @@ using SmsOpsHQ.Infrastructure.Persistence;
 
 namespace SmsOpsHQ.Infrastructure.Services;
 
-// Resolves phone numbers to pawn customer identities via the
-// CustomerPhones index table. Includes a negative cache
-// (10 minute TTL) for phones not found.
+// Resolves phone numbers to pawn customer identities via the CustomerPhones index (fast indexed lookup).
+// Includes a negative cache (10 min TTL) for phones not found.
 public sealed class IdentityResolver : IIdentityResolver
 {
     private readonly AppDbContext _db;
@@ -26,8 +25,7 @@ public sealed class IdentityResolver : IIdentityResolver
         _logger = logger;
     }
 
-    // Normalize the phone and query CustomerPhones by PhoneNormalized.
-    // Returns all matching CustomerKeys.
+    // Normalize the phone and query CustomerPhones by PhoneNormalized (indexed — fast).
     public async Task<List<int>> ResolveCustomerKeysAsync(string phoneE164,
         CancellationToken cancellationToken = default)
     {
@@ -48,7 +46,6 @@ public sealed class IdentityResolver : IIdentityResolver
 
     // Resolve a phone number to a single canonical identity ID.
     // Returns MIN(CustomerKey) from the resolved keys, or null if not found.
-    // Uses a negative cache to avoid repeated lookups for unknown phones.
     public async Task<int?> ResolveIdentityIdAsync(int storeId, string phoneE164,
         CancellationToken cancellationToken = default)
     {
@@ -58,7 +55,6 @@ public sealed class IdentityResolver : IIdentityResolver
 
         string cacheKey = NegativeCachePrefix + normalized;
 
-        // Check negative cache -- if this phone was recently not found, skip the query
         if (_cache.TryGetValue(cacheKey, out _))
         {
             _logger.LogDebug("Identity negative cache hit for {Phone}", normalized);
@@ -69,13 +65,11 @@ public sealed class IdentityResolver : IIdentityResolver
 
         if (keys.Count == 0)
         {
-            // Cache the miss for 10 minutes to avoid hammering the DB
             _cache.Set(cacheKey, true, NegativeCacheTtl);
             _logger.LogDebug("Identity not found for {Phone}, cached negative result", normalized);
             return null;
         }
 
-        // Return the minimum key as the canonical identity
         int minKey = keys.Min();
         _logger.LogDebug("Identity resolved for {Phone}: CustomerKey={Key} (from {Count} keys)",
             normalized, minKey, keys.Count);

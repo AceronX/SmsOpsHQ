@@ -59,8 +59,7 @@ public sealed class SyncController : ControllerBase
         if (!User.IsHqUser())
             return Problem(statusCode: 403, detail: "Only HQ users can trigger sync");
 
-        SyncProgress progress = _syncService.GetProgress();
-        if (progress.InProgress)
+        if (!_syncService.TryMarkSyncStarting())
         {
             return Ok(new
             {
@@ -116,14 +115,14 @@ public sealed class SyncController : ControllerBase
             duration_seconds = result.DurationSeconds,
             sqlite_before = result.SqliteBefore,
             sqlite_after = result.SqliteAfter,
-            synced = new
-            {
-                customers = result.Synced.Customers,
-                tickets = result.Synced.Tickets,
-                items = result.Synced.Items,
-                payments = result.Synced.Payments,
-                phone_index = result.Synced.PhoneIndex
-            }
+                synced = new
+                {
+                    customers = result.Synced.Customers,
+                    tickets = result.Synced.Tickets,
+                    items = result.Synced.Items,
+                    payments = result.Synced.Payments,
+                    phone_index = result.Synced.PhoneIndex
+                }
         });
     }
 

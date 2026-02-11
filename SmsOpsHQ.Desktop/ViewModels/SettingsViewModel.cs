@@ -422,13 +422,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 if (!string.IsNullOrEmpty(s))
                     lastSync = s;
             }
-            int c = 0, t = 0;
+            int c = 0, t = 0, items = 0, payments = 0;
             if (status.TryGetProperty("sqlite_counts", out JsonElement sc))
             {
                 c = sc.TryGetProperty("customers", out JsonElement ce) ? ce.GetInt32() : 0;
                 t = sc.TryGetProperty("tickets", out JsonElement te) ? te.GetInt32() : 0;
+                items = sc.TryGetProperty("items", out JsonElement ie) ? ie.GetInt32() : 0;
+                payments = sc.TryGetProperty("pawnpayments", out JsonElement pe) ? pe.GetInt32() : 0;
             }
-            LastSyncInfo = $"Last sync: {lastSync} — Customers: {c:N0}, Tickets: {t:N0}";
+            LastSyncInfo = $"Last sync: {lastSync} — Customers: {c:N0}, Tickets: {t:N0}, Items: {items:N0}, PawnPayments: {payments:N0}";
         }
         catch { /* best effort */ }
     }
