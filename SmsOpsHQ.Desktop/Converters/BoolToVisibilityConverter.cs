@@ -30,11 +30,15 @@ public sealed class StringToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-// Converts an int > 0 to Visibility.Visible.
+// Converts an int to Visibility. Default: Visible when count > 0. Parameter "WhenZero": Visible when count == 0.
 public sealed class CountToVisibilityConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value is int count && count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not int count) return Visibility.Collapsed;
+        bool whenZero = parameter is string s && s.Equals("WhenZero", StringComparison.OrdinalIgnoreCase);
+        return whenZero ? (count == 0 ? Visibility.Visible : Visibility.Collapsed) : (count > 0 ? Visibility.Visible : Visibility.Collapsed);
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();

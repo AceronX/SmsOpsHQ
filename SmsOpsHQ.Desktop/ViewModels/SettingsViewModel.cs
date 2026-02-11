@@ -112,6 +112,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _twilioToken = string.Empty;
 
+    [ObservableProperty]
+    private bool _showTwilioToken;
+
     // Tab 4: Reminders
     [ObservableProperty]
     private bool _schedulerRunning;

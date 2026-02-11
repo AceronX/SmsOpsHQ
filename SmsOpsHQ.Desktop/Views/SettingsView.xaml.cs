@@ -164,4 +164,43 @@ public partial class SettingsView : UserControl
             CredentialConfirmPasswordEyeIcon.Text = "\uE740";
         }
     }
+
+    private void TwilioTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            vm.ShowTwilioToken = false;
+            TwilioTokenPasswordBox.Password = vm.TwilioToken ?? string.Empty;
+        }
+        TwilioTokenEyeIcon.Text = "\uE7B3";
+    }
+
+    private void TwilioTokenPassword_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox box && DataContext is SettingsViewModel vm)
+            vm.TwilioToken = box.Password;
+    }
+
+    private void ToggleTwilioTokenVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        if (vm.ShowTwilioToken)
+        {
+            TwilioTokenPasswordBox.Password = vm.TwilioToken ?? string.Empty;
+            vm.ShowTwilioToken = false;
+            TwilioTokenEyeIcon.Text = "\uE7B3";
+        }
+        else
+        {
+            vm.TwilioToken = TwilioTokenPasswordBox.Password ?? string.Empty;
+            vm.ShowTwilioToken = true;
+            TwilioTokenEyeIcon.Text = "\uE740";
+        }
+    }
+
+    private void RemindersTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+            vm.LoadSchedulerStatusCommand.Execute(null);
+    }
 }
