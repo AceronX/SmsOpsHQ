@@ -45,11 +45,11 @@ public class AuthServiceTests : IDisposable
         string adminHash = BCrypt.Net.BCrypt.HashPassword("password");
         _db.Users.Add(new UserEntity
         {
-            FullName = "Test Admin",
             Username = "admin",
             PasswordHash = adminHash,
             Role = "HQAdmin",
             StoreId = null,
+            TwilioNumberId = null,
             IsActive = true
         });
 
@@ -57,11 +57,11 @@ public class AuthServiceTests : IDisposable
         string storeUserHash = BCrypt.Net.BCrypt.HashPassword("storepass");
         _db.Users.Add(new UserEntity
         {
-            FullName = "Store Manager",
             Username = "storemanager",
             PasswordHash = storeUserHash,
             Role = "StoreManager",
             StoreId = testStore.StoreId,
+            TwilioNumberId = null,
             IsActive = true
         });
 
@@ -69,11 +69,11 @@ public class AuthServiceTests : IDisposable
         string inactiveHash = BCrypt.Net.BCrypt.HashPassword("inactive");
         _db.Users.Add(new UserEntity
         {
-            FullName = "Inactive User",
             Username = "inactive",
             PasswordHash = inactiveHash,
             Role = "HQViewer",
             StoreId = null,
+            TwilioNumberId = null,
             IsActive = false
         });
 
@@ -112,7 +112,6 @@ public class AuthServiceTests : IDisposable
         Assert.Equal("Bearer", result.TokenType);
         Assert.Equal(3600, result.ExpiresIn);
         Assert.Equal("admin", result.User.Username);
-        Assert.Equal("Test Admin", result.User.FullName);
         Assert.Equal("HQAdmin", result.User.Role);
         Assert.Null(result.User.StoreId);
     }
@@ -126,7 +125,6 @@ public class AuthServiceTests : IDisposable
 
         Assert.NotNull(result);
         Assert.Equal("storemanager", result.User.Username);
-        Assert.Equal("Store Manager", result.User.FullName);
         Assert.Equal("StoreManager", result.User.Role);
         Assert.NotNull(result.User.StoreId);
         Assert.True(result.User.StoreId > 0);

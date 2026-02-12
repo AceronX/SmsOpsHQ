@@ -73,7 +73,7 @@
                         </Button>
 
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="{Binding AppState.CurrentUser.FullName}"
+                            <TextBlock Text="{Binding AppState.CurrentUser.Username}"
                                        FontSize="12" FontWeight="SemiBold"
                                        Foreground="{StaticResource SidebarTextActive}"
                                        TextTrimming="CharacterEllipsis"/>

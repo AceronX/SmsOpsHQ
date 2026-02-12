@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Desktop.Services;
@@ -18,18 +19,27 @@ public sealed class TwilioNumberItem
     public bool IsActive { get; set; }
 }
 
+// Store option for dropdown (Settings > Phone Numbers).
+public sealed class StoreItem
+{
+    public int StoreId { get; set; }
+    public string StoreName { get; set; } = string.Empty;
+    public int DefaultNumberId { get; set; } = 0; // 0 means no Twilio number set
+}
+
 // Settings ViewModel with 6 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP.
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
     private readonly AppState _appState;
+    private readonly TwilioConfigService _twilioConfig;
 
     [ObservableProperty]
     private int _selectedTabIndex;
 
     // Tab 0: Credentials
     [ObservableProperty]
-    private string _credentialFullName = string.Empty;
+    private string _username = string.Empty;
 
     [ObservableProperty]
     private string _oldPassword = string.Empty;
@@ -98,12 +108,30 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _syncProgressPercent;
 
-    // Tab 2: Phone Numbers
+    // Tab 2: Phone Numbers — store selection + Twilio numbers
+    [ObservableProperty]
+    private ObservableCollection<StoreItem> _availableStores = new();
+
+    [ObservableProperty]
+    private int _selectedStoreId;
+
+    [ObservableProperty]
+    private string _storeSaveMessage = string.Empty;
+
     [ObservableProperty]
     private ObservableCollection<TwilioNumberItem> _phoneNumbers = new();
 
     [ObservableProperty]
     private string _newPhoneNumber = string.Empty;
+
+    [ObservableProperty]
+    private string _newStoreName = string.Empty;
+
+    /// <summary>True when the current user is HQ (can create stores).</summary>
+    public bool IsHqUser => _appState.IsHqUser;
+
+    /// <summary>Current store name for read-only display (no combobox).</summary>
+    public string CurrentStoreDisplay => string.IsNullOrWhiteSpace(_appState.CurrentStoreName) ? "—" : _appState.CurrentStoreName;
 
     // Tab 3: Twilio
     [ObservableProperty]
@@ -135,17 +163,26 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _xblueEnabled;
 
-    public SettingsViewModel(ApiClient apiClient, AppState appState)
+    public SettingsViewModel(ApiClient apiClient, AppState appState, TwilioConfigService twilioConfig)
     {
         _apiClient = apiClient;
         _appState = appState;
-        CredentialFullName = _appState.CurrentUser?.FullName ?? string.Empty;
+        _twilioConfig = twilioConfig;
+        SelectedStoreId = _appState.CurrentStoreId;
+        LoadTwilioConfigFromFile();
+    }
+
+    private void LoadTwilioConfigFromFile()
+    {
+        var (sid, token) = _twilioConfig.Load();
+        TwilioSid = sid ?? string.Empty;
+        TwilioToken = token ?? string.Empty;
     }
 
     [RelayCommand]
     private async Task LoadCredentialsAsync()
     {
-        CredentialFullName = _appState.CurrentUser?.FullName ?? string.Empty;
+        Username = _appState.CurrentUser?.Username ?? string.Empty;
         OldPassword = string.Empty;
         NewPassword = string.Empty;
         ConfirmNewPassword = string.Empty;
@@ -159,13 +196,18 @@ public sealed partial class SettingsViewModel : ViewModelBase
         CredentialErrorMessage = string.Empty;
         CredentialSuccessMessage = string.Empty;
 
-        bool updateName = !string.IsNullOrWhiteSpace(CredentialFullName) &&
-                          _appState.CurrentUser is not null &&
-                          CredentialFullName.Trim() != (_appState.CurrentUser.FullName ?? string.Empty).Trim();
-
         bool changePassword = !string.IsNullOrWhiteSpace(OldPassword) ||
                               !string.IsNullOrWhiteSpace(NewPassword) ||
                               !string.IsNullOrWhiteSpace(ConfirmNewPassword);
+        
+        bool changeUsername = !string.IsNullOrWhiteSpace(Username) && 
+                              Username.Trim() != (_appState.CurrentUser?.Username ?? string.Empty);
+
+        if (!changePassword && !changeUsername)
+        {
+            CredentialSuccessMessage = "No changes to save.";
+            return;
+        }
 
         if (changePassword)
         {
@@ -192,19 +234,32 @@ public sealed partial class SettingsViewModel : ViewModelBase
             }
         }
 
-        if (!updateName && !changePassword)
+        if (changeUsername && string.IsNullOrWhiteSpace(Username.Trim()))
         {
-            CredentialSuccessMessage = "No changes to save.";
+            CredentialErrorMessage = "Username cannot be empty.";
             return;
         }
 
         IsBusy = true;
         try
         {
-            if (updateName)
+            if (changeUsername)
             {
-                await _apiClient.UpdateProfileAsync(CredentialFullName.Trim());
-                _appState.SetCurrentUserFullName(CredentialFullName.Trim());
+                await _apiClient.UpdateProfileAsync(Username.Trim(), null, null);
+                // Update AppState
+                if (_appState.CurrentUser is not null)
+                {
+                    _appState.UpdateCurrentUser(_appState.CurrentUser.StoreId, _appState.CurrentUser.TwilioNumberId);
+                    _appState.CurrentUser = new UserDto
+                    {
+                        UserId = _appState.CurrentUser.UserId,
+                        Username = Username.Trim(),
+                        StoreId = _appState.CurrentUser.StoreId,
+                        StoreName = _appState.CurrentUser.StoreName,
+                        TwilioNumberId = _appState.CurrentUser.TwilioNumberId,
+                        Role = _appState.CurrentUser.Role
+                    };
+                }
             }
 
             if (changePassword)
@@ -439,11 +494,129 @@ public sealed partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task LoadStoresAsync()
+    {
+        try
+        {
+            JsonElement result = await _apiClient.GetStoresAsync();
+            var list = new ObservableCollection<StoreItem>();
+            foreach (JsonElement s in result.EnumerateArray())
+            {
+                int id = s.TryGetProperty("store_id", out JsonElement idE) ? idE.GetInt32() : 0;
+                string name = s.TryGetProperty("store_name", out JsonElement nameE) ? nameE.GetString() ?? $"Store {id}" : $"Store {id}";
+                int defaultNumId = 0;
+                if (s.TryGetProperty("default_number_id", out JsonElement dnE) && dnE.ValueKind == JsonValueKind.Number)
+                    defaultNumId = dnE.GetInt32();
+                list.Add(new StoreItem { StoreId = id, StoreName = name, DefaultNumberId = defaultNumId });
+            }
+            AvailableStores = list;
+            if (SelectedStoreId == 0 && list.Count > 0)
+                SelectedStoreId = list[0].StoreId;
+            else
+                SelectedStoreId = _appState.CurrentStoreId;
+        }
+        catch (Exception ex)
+        {
+            SetError($"Load stores failed: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveStoreSelectionAsync()
+    {
+        StoreItem? selected = AvailableStores.FirstOrDefault(s => s.StoreId == SelectedStoreId);
+        if (selected is null || SelectedStoreId <= 0) return;
+
+        try
+        {
+            // Update user's store and Twilio number ID in database
+            // Explicitly convert to int? to ensure it's not treated as "not provided"
+            int? storeIdToUpdate = SelectedStoreId > 0 ? SelectedStoreId : null;
+            int? twilioNumberId = selected.DefaultNumberId > 0 ? selected.DefaultNumberId : _appState.CurrentTwilioNumberId;
+
+            await _apiClient.UpdateProfileAsync(null, storeIdToUpdate, twilioNumberId);
+
+            // Update AppState for current session
+            _appState.SetCurrentStore(SelectedStoreId, selected.StoreName, selected.DefaultNumberId);
+
+            // Update CurrentUser in AppState to reflect the new StoreId and TwilioNumberId
+            if (_appState.CurrentUser is not null)
+            {
+                _appState.UpdateCurrentUser(storeIdToUpdate, twilioNumberId);
+            }
+
+            StoreSaveMessage = "Store updated successfully.";
+            ClearError();
+            await LoadPhoneNumbersAsync();
+        }
+        catch (Exception ex)
+        {
+            SetError($"Failed to update store: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddStoreAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewStoreName))
+        {
+            SetError("Enter a store name.");
+            return;
+        }
+        await AddStoreByNameAsync(NewStoreName);
+        NewStoreName = string.Empty;
+    }
+
+    /// <summary>Create a new store by name. Called from AddStoreDialog.</summary>
+    public async Task AddStoreByNameAsync(string storeName)
+    {
+        if (string.IsNullOrWhiteSpace(storeName))
+        {
+            SetError("Enter a store name.");
+            return;
+        }
+
+        try
+        {
+            JsonElement result = await _apiClient.CreateStoreAsync(storeName.Trim());
+            int newId = result.TryGetProperty("store_id", out JsonElement idE) ? idE.GetInt32() : 0;
+            string newName = result.TryGetProperty("store_name", out JsonElement nameE) ? nameE.GetString() ?? storeName.Trim() : storeName.Trim();
+            ClearError();
+            _appState.SetCurrentStore(newId, newName, 0);
+            OnPropertyChanged(nameof(CurrentStoreDisplay));
+            await LoadStoresAsync();
+            SelectedStoreId = newId;
+            await LoadPhoneNumbersAsync();
+            StoreSaveMessage = $"Store \"{newName}\" created. You're now using it.";
+        }
+        catch (Exception ex)
+        {
+            SetError(ex.Message.Contains("403") ? "Only HQ users can create stores." : $"Add store failed: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
     private async Task LoadPhoneNumbersAsync()
     {
         try
         {
-            JsonElement result = await _apiClient.GetTwilioNumbersAsync(_appState.CurrentStoreId);
+            // Use SelectedStoreId if available, otherwise fall back to CurrentStoreId
+            int storeIdToUse = SelectedStoreId > 0 ? SelectedStoreId : _appState.CurrentStoreId;
+            
+            // If still no store ID, try to get from AvailableStores
+            if (storeIdToUse <= 0 && AvailableStores.Count > 0)
+            {
+                storeIdToUse = AvailableStores[0].StoreId;
+                SelectedStoreId = storeIdToUse;
+            }
+            
+            if (storeIdToUse <= 0)
+            {
+                PhoneNumbers = new ObservableCollection<TwilioNumberItem>();
+                return;
+            }
+
+            JsonElement result = await _apiClient.GetTwilioNumbersAsync(storeIdToUse);
             ObservableCollection<TwilioNumberItem> items = new();
 
             foreach (JsonElement n in result.EnumerateArray())
@@ -473,7 +646,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
         try
         {
-            await _apiClient.AddNumberAsync(_appState.CurrentStoreId, NewPhoneNumber);
+            int storeIdToUse = SelectedStoreId > 0 ? SelectedStoreId : _appState.CurrentStoreId;
+            if (storeIdToUse <= 0)
+            {
+                SetError("No store selected. Please select a store first.");
+                return;
+            }
+
+            await _apiClient.AddNumberAsync(storeIdToUse, NewPhoneNumber);
             NewPhoneNumber = string.Empty;
             await LoadPhoneNumbersAsync();
         }
@@ -488,8 +668,31 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         try
         {
-            await _apiClient.SetDefaultNumberAsync(_appState.CurrentStoreId, numberId);
+            int storeIdToUse = SelectedStoreId > 0 ? SelectedStoreId : _appState.CurrentStoreId;
+            if (storeIdToUse <= 0)
+            {
+                SetError("No store selected. Please select a store first.");
+                return;
+            }
+
+            await _apiClient.SetDefaultNumberAsync(storeIdToUse, numberId);
+            
+            // Update user's TwilioNumberId in database
+            int? userStoreId = _appState.CurrentUser?.StoreId;
+            await _apiClient.UpdateProfileAsync(null, userStoreId, numberId);
+            
+            // Update AppState so the app uses this number for SMS, VIP, etc.
+            _appState.CurrentTwilioNumberId = numberId;
+            
+            // Update CurrentUser in AppState
+            if (_appState.CurrentUser is not null)
+            {
+                _appState.UpdateCurrentUser(_appState.CurrentUser.StoreId, numberId);
+            }
+            
+            // Reload phone numbers to refresh the UI (show updated default badge)
             await LoadPhoneNumbersAsync();
+            ClearError();
         }
         catch (Exception ex)
         {
@@ -502,7 +705,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         try
         {
-            await _apiClient.DeleteNumberAsync(_appState.CurrentStoreId, numberId);
+            int storeIdToUse = SelectedStoreId > 0 ? SelectedStoreId : _appState.CurrentStoreId;
+            if (storeIdToUse <= 0)
+            {
+                SetError("No store selected. Please select a store first.");
+                return;
+            }
+
+            await _apiClient.DeleteNumberAsync(storeIdToUse, numberId);
             await LoadPhoneNumbersAsync();
         }
         catch (Exception ex)
@@ -512,11 +722,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task SaveTwilioConfigAsync()
+    private void SaveTwilioConfigAsync()
     {
         try
         {
-            await _apiClient.UpdateTwilioConfigAsync(_appState.CurrentStoreId, TwilioSid, TwilioToken);
+            _twilioConfig.Save(TwilioSid, TwilioToken);
         }
         catch (Exception ex)
         {

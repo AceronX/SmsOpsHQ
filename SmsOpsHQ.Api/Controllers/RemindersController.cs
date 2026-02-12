@@ -215,15 +215,6 @@ public sealed class RemindersController : ControllerBase
         return Ok(new { phone, is_excluded = isExcluded });
     }
 
-    // ── 17. POST /api/reminders/sync-twilio ──────────────────────────
-    // Placeholder: Twilio sync is a separate service (M30).
-
-    [HttpPost("sync-twilio")]
-    public IActionResult SyncTwilio()
-    {
-        // Twilio sync service will be implemented in M30.
-        return Ok(new { message = "Twilio sync not yet implemented" });
-    }
 }
 
 // ── API Request DTOs ────────────────────────────────────────────────

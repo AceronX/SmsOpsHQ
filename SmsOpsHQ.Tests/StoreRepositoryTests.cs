@@ -135,7 +135,7 @@ public class StoreRepositoryTests : IDisposable
         {
             StoreName = "No Default Store",
             IsActive = true,
-            DefaultNumberId = null
+            DefaultNumberId = 0
         };
         _db.Stores.Add(store2);
         _db.SaveChanges();

@@ -14,6 +14,10 @@ public interface IThreadRepository
     Task<List<Thread>> GetInboxAsync(int storeId, string? filter, string? search,
         int? twilioNumberId, CancellationToken cancellationToken = default);
 
+    // Get inbox threads with customer data in one query (avoids N+1). Supports search by customer name/phone.
+    Task<List<(Thread thread, Customer? customer)>> GetInboxWithCustomersAsync(int storeId, string? filter, string? search,
+        int? twilioNumberId, CancellationToken cancellationToken = default);
+
     // Get a single thread with store isolation.
     Task<Thread?> GetByIdAsync(int storeId, int threadId,
         CancellationToken cancellationToken = default);

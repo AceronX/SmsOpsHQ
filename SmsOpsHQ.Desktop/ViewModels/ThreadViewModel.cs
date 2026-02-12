@@ -257,7 +257,8 @@ public sealed partial class ThreadViewModel : ViewModelBase
                 StoreId = _appState.CurrentStoreId,
                 ToPhone = CustomerPhone,
                 Body = ComposeText,
-                ThreadId = ThreadId
+                ThreadId = ThreadId,
+                TwilioNumberId = _appState.CurrentTwilioNumberId
             };
 
             await _apiClient.SendMessageAsync(request);

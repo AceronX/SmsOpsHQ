@@ -11,7 +11,7 @@ namespace SmsOpsHQ.Api.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/stores/{storeId}")]
+[Route("api/stores")]
 public sealed class StoresController : ControllerBase
 {
     private readonly IStoreRepository _storeRepo;
@@ -23,9 +23,54 @@ public sealed class StoresController : ControllerBase
         _db = db;
     }
 
+    // GET /api/stores
+    // Lists stores the current user can access. HQ users see all active stores; store users see only their store.
+    [HttpGet]
+    public async Task<IActionResult> GetStores(CancellationToken cancellationToken = default)
+    {
+        var allStores = await _storeRepo.GetAllAsync(cancellationToken);
+
+        var toItem = (Core.Entities.Store s) => new { store_id = s.StoreId, store_name = s.StoreName, default_number_id = s.DefaultNumberId };
+
+        if (User.IsHqUser())
+        {
+            var list = allStores.Select(toItem).ToList();
+            return Ok(list);
+        }
+
+        int? userStoreId = User.GetStoreId();
+        if (userStoreId is null)
+            return Ok(Array.Empty<object>());
+
+        var store = allStores.FirstOrDefault(s => s.StoreId == userStoreId.Value);
+        if (store is null)
+            return Ok(Array.Empty<object>());
+
+        return Ok(new[] { toItem(store) });
+    }
+
+    // POST /api/stores — create a new store (HQ users only).
+    [HttpPost]
+    public async Task<IActionResult> CreateStore(
+        [FromBody] CreateStoreRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!User.IsHqUser())
+            return Problem(statusCode: 403, detail: "Only HQ users can create stores.");
+
+        if (string.IsNullOrWhiteSpace(request?.StoreName))
+            return Problem(statusCode: 400, detail: "Store name is required.");
+
+        Core.Entities.Store created = await _storeRepo.CreateAsync(request.StoreName.Trim(), cancellationToken);
+        return CreatedAtAction(
+            nameof(GetStores),
+            null,
+            new { store_id = created.StoreId, store_name = created.StoreName, default_number_id = created.DefaultNumberId });
+    }
+
     // GET /api/stores/{storeId}/numbers
     // Lists all Twilio numbers for a store, marking which is the default.
-    [HttpGet("numbers")]
+    [HttpGet("{storeId}/numbers")]
     public async Task<IActionResult> GetStoreNumbers(
         int storeId,
         CancellationToken cancellationToken)
@@ -59,7 +104,7 @@ public sealed class StoresController : ControllerBase
 
     // POST /api/stores/{storeId}/numbers
     // Adds a new Twilio number to the store.
-    [HttpPost("numbers")]
+    [HttpPost("{storeId}/numbers")]
     public async Task<IActionResult> AddStoreNumber(
         int storeId,
         [FromBody] AddNumberRequest request,
@@ -99,7 +144,7 @@ public sealed class StoresController : ControllerBase
 
     // POST /api/stores/{storeId}/default-number
     // Sets the default outbound number by number ID.
-    [HttpPost("default-number")]
+    [HttpPost("{storeId}/default-number")]
     public async Task<IActionResult> SetDefaultNumberById(
         int storeId,
         [FromBody] SetDefaultNumberByIdRequest request,
@@ -126,7 +171,7 @@ public sealed class StoresController : ControllerBase
 
     // PUT /api/stores/{storeId}/numbers/{numberId}
     // Updates (replaces) a phone number.
-    [HttpPut("numbers/{numberId}")]
+    [HttpPut("{storeId}/numbers/{numberId}")]
     public async Task<IActionResult> UpdateStoreNumber(
         int storeId,
         int numberId,
@@ -164,7 +209,7 @@ public sealed class StoresController : ControllerBase
 
     // DELETE /api/stores/{storeId}/numbers/{numberId}
     // Deletes a Twilio number. Cannot delete the default number.
-    [HttpDelete("numbers/{numberId}")]
+    [HttpDelete("{storeId}/numbers/{numberId}")]
     public async Task<IActionResult> DeleteStoreNumber(
         int storeId,
         int numberId,
@@ -191,60 +236,14 @@ public sealed class StoresController : ControllerBase
         return Ok(new { success = true, deleted = deletedPhone });
     }
 
-    // POST /api/stores/{storeId}/default_number (by phone string)
-    // Sets the default outbound number by phone E.164.
-    [HttpPost("default_number")]
-    public async Task<IActionResult> SetDefaultNumberByPhone(
-        int storeId,
-        [FromBody] SetDefaultNumberByPhoneRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!User.CanAccessStore(storeId))
-            return Problem(statusCode: 403, detail: "Not authorized");
-
-        StoreEntity? store = await _db.Stores
-            .FirstOrDefaultAsync(s => s.StoreId == storeId, cancellationToken);
-        if (store is null)
-            return Problem(statusCode: 404, detail: "Store not found");
-
-        TwilioNumberEntity? number = await _db.TwilioNumbers
-            .FirstOrDefaultAsync(n => n.StoreId == storeId && n.PhoneE164 == request.Phone, cancellationToken);
-        if (number is null)
-            return Problem(statusCode: 404, detail: "Number not associated with this store");
-
-        store.DefaultNumberId = number.NumberId;
-        await _db.SaveChangesAsync(cancellationToken);
-
-        return Ok(new { status = "updated", new_default = request.Phone });
-    }
-
-    // PUT /api/stores/{storeId}/twilio_config
-    // Updates Twilio account credentials for a store.
-    [HttpPut("twilio_config")]
-    public async Task<IActionResult> UpdateTwilioConfig(
-        int storeId,
-        [FromBody] TwilioConfigRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!User.CanAccessStore(storeId))
-            return Problem(statusCode: 403, detail: "Not authorized");
-
-        StoreEntity? store = await _db.Stores
-            .FirstOrDefaultAsync(s => s.StoreId == storeId, cancellationToken);
-        if (store is null)
-            return Problem(statusCode: 404, detail: "Store not found");
-
-        // TwilioAccountSid and TwilioAuthToken are not on the StoreEntity yet
-        // (they may be in a separate config table or appsettings).
-        // For now, this endpoint acknowledges the update.
-        // In a full implementation, these would be stored in a StoreConfig table.
-        await _db.SaveChangesAsync(cancellationToken);
-
-        return Ok(new { status = "updated" });
-    }
 }
 
 // Request DTOs for StoresController
+public sealed class CreateStoreRequest
+{
+    public string StoreName { get; set; } = string.Empty;
+}
+
 public sealed class AddNumberRequest
 {
     public string Phone { get; set; } = string.Empty;
@@ -258,15 +257,4 @@ public sealed class SetDefaultNumberByIdRequest
 public sealed class UpdateNumberRequest
 {
     public string Phone { get; set; } = string.Empty;
-}
-
-public sealed class SetDefaultNumberByPhoneRequest
-{
-    public string Phone { get; set; } = string.Empty;
-}
-
-public sealed class TwilioConfigRequest
-{
-    public string? Sid { get; set; }
-    public string? Token { get; set; }
 }

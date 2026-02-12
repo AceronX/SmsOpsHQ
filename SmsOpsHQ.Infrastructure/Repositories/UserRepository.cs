@@ -20,6 +20,7 @@ public sealed class UserRepository : IUserRepository
     {
         UserEntity? entity = await _db.Users
             .AsNoTracking()
+            .Include(u => u.Store)
             .FirstOrDefaultAsync(
                 u => u.Username.ToLower() == username.ToLower(),
                 cancellationToken);
@@ -48,14 +49,35 @@ public sealed class UserRepository : IUserRepository
         }
     }
 
-    public async Task UpdateFullNameAsync(int userId, string fullName, CancellationToken cancellationToken = default)
+    public async Task UpdateStoreIdAsync(int userId, int? storeId, CancellationToken cancellationToken = default)
     {
         UserEntity? entity = await _db.Users.FindAsync(new object[] { userId }, cancellationToken);
-        if (entity is not null)
-        {
-            entity.FullName = fullName ?? string.Empty;
-            await _db.SaveChangesAsync(cancellationToken);
-        }
+        if (entity is null)
+            return;
+
+        entity.StoreId = storeId;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateTwilioNumberIdAsync(int userId, int? twilioNumberId, CancellationToken cancellationToken = default)
+    {
+        UserEntity? entity = await _db.Users.FindAsync(new object[] { userId }, cancellationToken);
+        if (entity is null)
+            return;
+        
+        entity.TwilioNumberId = twilioNumberId;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Updates the username of the existing user by primary key. Never creates a new user.</summary>
+    public async Task UpdateUsernameAsync(int userId, string username, CancellationToken cancellationToken = default)
+    {
+        UserEntity? entity = await _db.Users.FindAsync(new object[] { userId }, cancellationToken);
+        if (entity is null)
+            return;
+
+        entity.Username = username.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task UpdatePasswordHashAsync(int userId, string passwordHash, CancellationToken cancellationToken = default)
@@ -74,7 +96,8 @@ public sealed class UserRepository : IUserRepository
         {
             UserId = entity.UserId,
             StoreId = entity.StoreId,
-            FullName = entity.FullName,
+            StoreName = entity.Store?.StoreName,
+            TwilioNumberId = entity.TwilioNumberId,
             Username = entity.Username,
             PasswordHash = entity.PasswordHash,
             Role = entity.Role,

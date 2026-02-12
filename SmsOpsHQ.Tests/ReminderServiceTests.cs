@@ -390,7 +390,7 @@ public class ReminderServiceTests : IDisposable
         public async Task<string?> GetDefaultNumberAsync(int storeId, CancellationToken ct = default)
         {
             StoreEntity? store = await _db.Stores.FirstOrDefaultAsync(s => s.StoreId == storeId, ct);
-            if (store?.DefaultNumberId is null) return null;
+            if (store is null || store.DefaultNumberId == 0) return null;
             TwilioNumberEntity? tn = await _db.TwilioNumbers
                 .FirstOrDefaultAsync(t => t.NumberId == store.DefaultNumberId, ct);
             return tn?.PhoneE164;

@@ -16,6 +16,7 @@ public sealed class ThreadEntity
 
     // Navigation
     public StoreEntity Store { get; set; } = null!;
+    public CustomerEntity? Customer { get; set; }
     public UserEntity? AssignedToUser { get; set; }
     public List<MessageEntity> Messages { get; set; } = new();
 }

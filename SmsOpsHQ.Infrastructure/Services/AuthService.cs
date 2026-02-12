@@ -55,10 +55,10 @@ public sealed class AuthService : IAuthService
             {
                 UserId = user.UserId,
                 Username = user.Username,
-                FullName = user.FullName,
                 StoreId = user.StoreId,
-                Role = user.Role,
-                StorePhone = null // Store phone lookup deferred to Phase 2.
+                StoreName = user.StoreName,
+                TwilioNumberId = user.TwilioNumberId,
+                Role = user.Role
             }
         };
     }
@@ -91,13 +91,43 @@ public sealed class AuthService : IAuthService
         return handler.WriteToken(tokenDescriptor);
     }
 
-    public async Task<bool> UpdateProfileAsync(int userId, string fullName, CancellationToken cancellationToken = default)
+    /// <summary>Updates the existing user identified by userId (from JWT). Only updates in place; never creates a new user.</summary>
+    public async Task<bool> UpdateProfileAsync(int userId, string? username = null, int? storeId = null, int? twilioNumberId = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(fullName))
+        User? currentUser = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (currentUser is null)
             return false;
 
-        await _userRepository.UpdateFullNameAsync(userId, fullName.Trim(), cancellationToken);
-        return true;
+        bool updated = false;
+
+        // Update username on the same user (never create a new user)
+        if (!string.IsNullOrWhiteSpace(username))
+        {
+            string newUsername = username.Trim();
+            if (newUsername != currentUser.Username)
+            {
+                User? existingWithName = await _userRepository.GetByUsernameAsync(newUsername, cancellationToken);
+                if (existingWithName is not null && existingWithName.UserId != userId)
+                    throw new InvalidOperationException("Username already exists.");
+
+                await _userRepository.UpdateUsernameAsync(userId, newUsername, cancellationToken);
+                updated = true;
+            }
+        }
+
+        if (storeId.HasValue)
+        {
+            await _userRepository.UpdateStoreIdAsync(userId, storeId.Value, cancellationToken);
+            updated = true;
+        }
+
+        if (twilioNumberId.HasValue)
+        {
+            await _userRepository.UpdateTwilioNumberIdAsync(userId, twilioNumberId.Value, cancellationToken);
+            updated = true;
+        }
+
+        return updated;
     }
 
     public async Task<string?> ChangePasswordAsync(int userId, string oldPassword, string newPassword, CancellationToken cancellationToken = default)

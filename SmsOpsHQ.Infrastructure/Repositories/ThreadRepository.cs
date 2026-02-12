@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SmsOpsHQ.Core.Entities;
 using SmsOpsHQ.Core.Repositories;
 using SmsOpsHQ.Infrastructure.Persistence;
 using SmsOpsHQ.Infrastructure.Persistence.Entities;
@@ -58,7 +59,36 @@ public sealed class ThreadRepository : IThreadRepository
             .AsNoTracking()
             .Where(t => t.StoreId == storeId);
 
-        // Apply filter
+        query = ApplyInboxFilters(query, filter, search, twilioNumberId);
+
+        List<ThreadEntity> entities = await query
+            .OrderByDescending(t => t.LastMessageAt)
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(MapToDomain).ToList();
+    }
+
+    // Get inbox threads with customer data in one query (avoids N+1). Same filters and search as GetInboxAsync.
+    public async Task<List<(Thread thread, Customer? customer)>> GetInboxWithCustomersAsync(int storeId, string? filter, string? search,
+        int? twilioNumberId, CancellationToken cancellationToken = default)
+    {
+        IQueryable<ThreadEntity> query = _db.Threads
+            .AsNoTracking()
+            .Include(t => t.Customer)
+            .Where(t => t.StoreId == storeId);
+
+        query = ApplyInboxFilters(query, filter, search, twilioNumberId);
+
+        List<ThreadEntity> entities = await query
+            .OrderByDescending(t => t.LastMessageAt)
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(t => (MapToDomain(t), t.Customer is not null ? MapCustomerToDomain(t.Customer) : null)).ToList();
+    }
+
+    private static IQueryable<ThreadEntity> ApplyInboxFilters(IQueryable<ThreadEntity> query, string? filter, string? search, int? twilioNumberId)
+    {
+        // Apply status filter
         if (!string.IsNullOrWhiteSpace(filter))
         {
             string f = filter.ToLowerInvariant();
@@ -70,20 +100,22 @@ public sealed class ThreadRepository : IThreadRepository
                 query = query.Where(t => t.Status == "Closed");
         }
 
-        // Apply Twilio number filter
+        // Apply Twilio number filter: show threads for this number OR threads with no number set (legacy/unassigned).
+        // Otherwise threads with TwilioNumberId=null would never appear when the store has a default number.
         if (twilioNumberId is not null)
-            query = query.Where(t => t.TwilioNumberId == twilioNumberId);
+            query = query.Where(t => t.TwilioNumberId == twilioNumberId || t.TwilioNumberId == null);
 
-        // Search requires joining on Customers -- for now filter in-memory
-        // after loading threads. In Phase 2E the controller layer will handle
-        // search with a separate customer lookup. The interface is defined to
-        // accept the parameter for future use.
+        // Search by customer name or phone (join to Customer via navigation)
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            string term = search.Trim();
+            query = query.Where(t => t.CustomerId != null && t.Customer != null &&
+                ((t.Customer.FirstName != null && t.Customer.FirstName.Contains(term)) ||
+                 (t.Customer.LastName != null && t.Customer.LastName.Contains(term)) ||
+                 (t.Customer.PhoneE164 != null && t.Customer.PhoneE164.Contains(term))));
+        }
 
-        List<ThreadEntity> entities = await query
-            .OrderByDescending(t => t.LastMessageAt)
-            .ToListAsync(cancellationToken);
-
-        return entities.Select(MapToDomain).ToList();
+        return query;
     }
 
     public async Task<Thread?> GetByIdAsync(int storeId, int threadId,
@@ -188,6 +220,18 @@ public sealed class ThreadRepository : IThreadRepository
             LastMessageAt = entity.LastMessageAt,
             UnreadCount = entity.UnreadCount,
             CreatedAt = entity.CreatedAt
+        };
+    }
+
+    private static Customer MapCustomerToDomain(CustomerEntity entity)
+    {
+        return new Customer
+        {
+            CustomerId = entity.CustomerId,
+            StoreId = entity.StoreId,
+            PhoneE164 = entity.PhoneE164,
+            FirstName = entity.FirstName,
+            LastName = entity.LastName
         };
     }
 }

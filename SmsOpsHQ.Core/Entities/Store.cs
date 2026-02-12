@@ -17,11 +17,9 @@ public sealed class Store
 
     public string? Zip { get; set; }
 
-    // Store contact phone number
-    public string? Phone { get; set; }
-
     // FK to TwilioNumbers. Default outbound number for this store.
-    public int? DefaultNumberId { get; set; }
+    // 0 means no Twilio number set yet.
+    public int DefaultNumberId { get; set; } = 0;
 
     public bool IsActive { get; set; } = true;
 

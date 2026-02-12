@@ -47,6 +47,7 @@ public partial class App : Application
         services.AddSingleton(new ApiClient(apiBaseUrl));
         services.AddSingleton<AppState>();
         services.AddSingleton<CacheService>();
+        services.AddSingleton<TwilioConfigService>();
         services.AddSingleton<XBlueService>();
         services.AddSingleton(sp =>
         {
@@ -74,7 +75,8 @@ public partial class App : Application
 
         services.AddTransient<SettingsViewModel>(sp => new SettingsViewModel(
             sp.GetRequiredService<ApiClient>(),
-            sp.GetRequiredService<AppState>()));
+            sp.GetRequiredService<AppState>(),
+            sp.GetRequiredService<TwilioConfigService>()));
 
         services.AddTransient<LateCustomersViewModel>(sp => new LateCustomersViewModel(
             sp.GetRequiredService<ApiClient>()));
@@ -105,12 +107,13 @@ public partial class App : Application
         loginWindow.Show();
     }
 
-    private void OnLoginSuccess(LoginResult loginResult)
+    private async void OnLoginSuccess(LoginResult loginResult)
     {
         if (_serviceProvider is null) return;
 
         NavigationService navigation = _serviceProvider.GetRequiredService<NavigationService>();
         AppState appState = _serviceProvider.GetRequiredService<AppState>();
+        ApiClient apiClient = _serviceProvider.GetRequiredService<ApiClient>();
         SignalRClient signalRClient = _serviceProvider.GetRequiredService<SignalRClient>();
 
         MainViewModel mainVm = new(navigation, appState, signalRClient, OnLogout);

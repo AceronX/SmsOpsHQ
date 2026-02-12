@@ -24,9 +24,9 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="280"/>
+                                <ColumnDefinition Width="*" MinWidth="280" MaxWidth="400"/>
                                 <ColumnDefinition Width="20"/>
-                                <ColumnDefinition Width="*" MinWidth="280"/>
+                                <ColumnDefinition Width="*" MinWidth="280" MaxWidth="400"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -34,7 +34,7 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Left: Profile card -->
+                            <!-- Username card -->
                             <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource Surface}"
                                     CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
                                     Padding="24,20" Margin="0,0,0,20">
@@ -46,20 +46,21 @@
                                         <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
                                                    FontSize="16" Foreground="{StaticResource Primary}"
                                                    VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Profile" FontSize="16" FontWeight="SemiBold"
+                                        <TextBlock Text="Username" FontSize="16" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                    <TextBlock Text="This name appears in the app and in the sidebar."
+                                    <TextBlock Text="Change your login username."
                                                FontSize="12" Foreground="{StaticResource TextMuted}"
                                                Margin="0,0,0,16"/>
-                                    <TextBlock Text="Display name" FontSize="12" FontWeight="SemiBold"
+
+                                    <TextBlock Text="Username" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
-                                    <TextBox Text="{Binding CredentialFullName, UpdateSourceTrigger=PropertyChanged}"
-                                             Padding="12,10" FontSize="14"/>
+                                    <TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="12,10" FontSize="14" Margin="0,0,0,0"/>
                                 </StackPanel>
                             </Border>
 
-                            <!-- Right: Password card -->
+                            <!-- Password card -->
                             <Border Grid.Row="0" Grid.Column="2" Background="{StaticResource Surface}"
                                     CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
                                     Padding="24,20" Margin="0,0,0,20">
@@ -229,7 +230,7 @@
                             <!-- Left: Connection card -->
                             <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource Surface}"
                                     CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
-                                    Padding="24,20" Margin="0,0,0,20">
+                                    Padding="24,20" Margin="0,0,0,24">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
                                 </Border.Effect>
@@ -280,7 +281,7 @@
                             <!-- Right: XPD sync card -->
                             <Border Grid.Row="0" Grid.Column="2" Background="{StaticResource Surface}"
                                     CornerRadius="10" BorderBrush="{StaticResource Border}" BorderThickness="1"
-                                    Padding="24,20" Margin="0,0,0,20">
+                                    Padding="24,20" Margin="0,0,0,24">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
                                 </Border.Effect>
@@ -402,18 +403,91 @@
                             </Border>
 
                             <!-- Full-width note -->
-                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
-                                       Text="SQLite path is from the API. XPD file, MDW path, and credentials are required for sync and are sent with each run. appsettings (and appsettings.Development) can override server defaults."
-                                       FontSize="11" Foreground="{StaticResource TextMuted}"
-                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Background="{StaticResource Surface}"
+                                    CornerRadius="8" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                    Padding="14,12" Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE946;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="14" Foreground="{StaticResource TextMuted}" VerticalAlignment="Top" Margin="0,0,8,0"/>
+                                    <TextBlock Text="SQLite path is from the API. XPD file, MDW path, and credentials are required for sync and are sent with each run. appsettings can override server defaults."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
                         </Grid>
                     </ScrollViewer>
                 </TabItem>
 
                 <!-- Phone Numbers -->
-                <TabItem Header="Phone Numbers">
+                <TabItem Header="Phone Numbers" Loaded="PhoneNumbersTab_Loaded" x:Name="PhoneNumbersTab">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
                         <StackPanel MaxWidth="640">
+                            <!-- Store: combobox to select + Add new button opens dialog (HQ only) -->
+                            <Border Background="{StaticResource Surface}" CornerRadius="10" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" Padding="24,20" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <TextBlock Text="Store" FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Select the store to use for this session. Click Save to apply."
+                                               FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,14"/>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox Grid.Column="0" ItemsSource="{Binding AvailableStores}"
+                                                  DisplayMemberPath="StoreName" SelectedValuePath="StoreId"
+                                                  SelectedValue="{Binding SelectedStoreId, UpdateSourceTrigger=PropertyChanged}"
+                                                  MinWidth="200" MaxWidth="280" Padding="12,8" FontSize="14"
+                                                  Margin="0,0,10,0" VerticalContentAlignment="Center"/>
+                                        <Button Grid.Column="1" Command="{Binding SaveStoreSelectionAsyncCommand}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                MinHeight="36" Padding="14,0" Margin="0,0,8,0"
+                                                VerticalAlignment="Center" ToolTip="Save store selection">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="14" Foreground="{StaticResource TextOnPrimary}"
+                                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Grid.Column="1" Text="Save" FontSize="13" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextOnPrimary}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Button>
+                                        <Button x:Name="AddNewStoreButton" Grid.Column="2"
+                                                Click="AddNewStoreButton_Click"
+                                                Style="{StaticResource GhostButton}"
+                                                MinHeight="36" Padding="12,0"
+                                                VerticalAlignment="Center"
+                                                ToolTip="Add new store"
+                                                Visibility="{Binding IsHqUser, Converter={StaticResource BoolToVisibility}}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="&#xE710;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="14" Foreground="{StaticResource Primary}"
+                                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Grid.Column="1" Text="Add new" FontSize="13"
+                                                           Foreground="{StaticResource Primary}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Button>
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding StoreSaveMessage}" FontSize="12"
+                                               Foreground="{StaticResource Success}" Margin="0,8,0,0"
+                                               Visibility="{Binding StoreSaveMessage, Converter={StaticResource StringToVisibility}}"/>
+                                </StackPanel>
+                            </Border>
+
                             <!-- Header -->
                             <DockPanel Margin="0,0,0,20">
                                 <Button DockPanel.Dock="Right" Command="{Binding LoadPhoneNumbersCommand}"
@@ -444,9 +518,9 @@
                                 </Border.Effect>
                                 <StackPanel>
                                     <TextBlock Text="Add phone number" FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,10"/>
-                                    <TextBlock Text="Enter a phone number (e.g. +1234567890) or Twilio number SID to add it to this store."
-                                               FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,12"/>
+                                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"/>
+                                    <TextBlock Text="Enter a phone number (e.g. +1234567890) or Twilio number SID to add it to the current store."
+                                               FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,14"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -465,6 +539,19 @@
                                             </StackPanel>
                                         </Button>
                                     </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Error message -->
+                            <Border Background="{StaticResource ErrorLight}" CornerRadius="8" Padding="14,10"
+                                    Margin="0,0,0,16"
+                                    Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE783;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="14" Foreground="{StaticResource Error}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}"
+                                               FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
 

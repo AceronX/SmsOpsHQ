@@ -42,11 +42,11 @@ public class UserRepositoryTests : IDisposable
         // Seed a user.
         UserEntity user = new UserEntity
         {
-            FullName = "Jane Doe",
             Username = "janedoe",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("secret"),
             Role = "StoreAdmin",
             StoreId = _seededStoreId,
+            TwilioNumberId = null,
             IsActive = true
         };
         _db.Users.Add(user);
@@ -71,7 +71,6 @@ public class UserRepositoryTests : IDisposable
 
         Assert.NotNull(user);
         Assert.Equal(_seededUserId, user.UserId);
-        Assert.Equal("Jane Doe", user.FullName);
         Assert.Equal("janedoe", user.Username);
         Assert.Equal("StoreAdmin", user.Role);
         Assert.Equal(_seededStoreId, user.StoreId);
@@ -117,7 +116,6 @@ public class UserRepositoryTests : IDisposable
 
         Assert.NotNull(user);
         Assert.Equal(_seededUserId, user.UserId);
-        Assert.Equal("Jane Doe", user.FullName);
         Assert.Equal("janedoe", user.Username);
         Assert.Equal("StoreAdmin", user.Role);
         Assert.Equal(_seededStoreId, user.StoreId);
@@ -139,11 +137,11 @@ public class UserRepositoryTests : IDisposable
         // Add a second user.
         _db.Users.Add(new UserEntity
         {
-            FullName = "John Smith",
             Username = "johnsmith",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("pass"),
             Role = "HQViewer",
             StoreId = null,
+            TwilioNumberId = null,
             IsActive = true
         });
         _db.SaveChanges();
@@ -152,9 +150,9 @@ public class UserRepositoryTests : IDisposable
         User? john = await _userRepository.GetByUsernameAsync("johnsmith");
 
         Assert.NotNull(jane);
-        Assert.Equal("Jane Doe", jane.FullName);
+        Assert.Equal("janedoe", jane.Username);
 
         Assert.NotNull(john);
-        Assert.Equal("John Smith", john.FullName);
+        Assert.Equal("johnsmith", john.Username);
     }
 }

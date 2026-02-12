@@ -50,32 +50,28 @@ public sealed class ThreadsController : ControllerBase
         if (twilioNumberId is null)
         {
             Store? store = await _storeRepo.GetByIdAsync(storeId, cancellationToken);
-            if (store?.DefaultNumberId is not null)
+            if (store is not null && store.DefaultNumberId > 0)
                 twilioNumberId = store.DefaultNumberId;
         }
 
-        List<Core.Entities.Thread> threads = await _threadRepo.GetInboxAsync(
+        // Single query with customer data (avoids N+1)
+        List<(Core.Entities.Thread thread, Customer? customer)> inboxRows = await _threadRepo.GetInboxWithCustomersAsync(
             storeId, filter, search, twilioNumberId, cancellationToken);
 
         // Build response with customer data and last message
-        List<object> result = new(threads.Count);
-        foreach (Core.Entities.Thread t in threads)
+        List<object> result = new(inboxRows.Count);
+        foreach (var (t, customer) in inboxRows)
         {
-            // Load customer by CustomerId (backward compatibility)
             CustomerDto? customerDto = null;
-            if (t.CustomerId is not null && t.CustomerId > 0)
+            if (customer is not null)
             {
-                Customer? customer = await _customerRepo.GetByIdAsync(storeId, t.CustomerId.Value, cancellationToken);
-                if (customer is not null)
+                customerDto = new CustomerDto
                 {
-                    customerDto = new CustomerDto
-                    {
-                        CustomerId = customer.CustomerId,
-                        PhoneE164 = customer.PhoneE164,
-                        FirstName = customer.FirstName,
-                        LastName = customer.LastName
-                    };
-                }
+                    CustomerId = customer.CustomerId,
+                    PhoneE164 = customer.PhoneE164,
+                    FirstName = customer.FirstName,
+                    LastName = customer.LastName
+                };
             }
 
             // Load last message

@@ -8,8 +8,11 @@ public sealed class User
     // FK to Stores. Null for HQ users who can access all stores.
     public int? StoreId { get; set; }
 
-    // Display name, e.g. "Jane Doe"
-    public string FullName { get; set; } = string.Empty;
+    // Store name (loaded from Store navigation for login response).
+    public string? StoreName { get; set; }
+
+    // FK to TwilioNumbers. Default Twilio number ID for this user (set in Settings/Phone Numbers).
+    public int? TwilioNumberId { get; set; }
 
     // Unique login name
     public string Username { get; set; } = string.Empty;

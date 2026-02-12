@@ -5,7 +5,7 @@ using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 namespace SmsOpsHQ.Infrastructure.Persistence;
 
-// Seeds initial data (one Store, one HQ admin user) for development.
+// Seeds initial data (one HQ admin user only). No store is created automatically.
 // Idempotent: skips if the admin user already exists.
 public static class SeedData
 {
@@ -23,34 +23,20 @@ public static class SeedData
         // Create the database and schema from the model if it doesn't exist yet.
         await db.Database.EnsureCreatedAsync();
 
-        bool adminExists = await db.Users
-            .AnyAsync(u => u.Username == DefaultAdminUsername);
+        bool anyUserExists = await db.Users.AnyAsync();
 
-        if (adminExists)
+        if (anyUserExists)
         {
-            logger.LogInformation("Seed skipped: admin user already exists.");
+            logger.LogInformation("Seed skipped: at least one user already exists.");
             return;
         }
 
-        // Seed one store.
-        StoreEntity store = new StoreEntity
-        {
-            StoreName = "HQ",
-            Address = "123 Main St",
-            City = "New York",
-            State = "NY",
-            Zip = "10001",
-            IsActive = true
-        };
-        db.Stores.Add(store);
-        await db.SaveChangesAsync();
-
-        // Seed one HQ admin user (StoreId = null for HQ-level access).
+        // Seed one HQ admin user only (StoreId = null for HQ-level access). No store is auto-created.
         string passwordHash = BCrypt.Net.BCrypt.HashPassword(DefaultAdminPassword);
         UserEntity adminUser = new UserEntity
         {
             StoreId = null,
-            FullName = "HQ Administrator",
+            TwilioNumberId = null,
             Username = DefaultAdminUsername,
             PasswordHash = passwordHash,
             Role = "HQAdmin",
@@ -60,7 +46,7 @@ public static class SeedData
         await db.SaveChangesAsync();
 
         logger.LogInformation(
-            "Seed complete: Store '{StoreName}' (Id={StoreId}) and user '{Username}' created.",
-            store.StoreName, store.StoreId, adminUser.Username);
+            "Seed complete: HQ admin user '{Username}' created. No store was created; create stores via API or admin UI.",
+            adminUser.Username);
     }
 }

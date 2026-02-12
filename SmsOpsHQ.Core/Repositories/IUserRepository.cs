@@ -14,8 +14,14 @@ public interface IUserRepository
     // Update the user's last login timestamp.
     Task UpdateLastLoginAtAsync(int userId, DateTime utcNow, CancellationToken cancellationToken = default);
 
-    // Update the user's display name.
-    Task UpdateFullNameAsync(int userId, string fullName, CancellationToken cancellationToken = default);
+    // Update the user's store ID.
+    Task UpdateStoreIdAsync(int userId, int? storeId, CancellationToken cancellationToken = default);
+
+    // Update the user's Twilio number ID.
+    Task UpdateTwilioNumberIdAsync(int userId, int? twilioNumberId, CancellationToken cancellationToken = default);
+
+    // Update the user's username.
+    Task UpdateUsernameAsync(int userId, string username, CancellationToken cancellationToken = default);
 
     // Update the user's password hash (caller must hash the password).
     Task UpdatePasswordHashAsync(int userId, string passwordHash, CancellationToken cancellationToken = default);

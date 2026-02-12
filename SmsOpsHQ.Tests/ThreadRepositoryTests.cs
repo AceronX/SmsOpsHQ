@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SmsOpsHQ.Core.Entities;
 using SmsOpsHQ.Infrastructure.Persistence;
 using SmsOpsHQ.Infrastructure.Persistence.Entities;
 using SmsOpsHQ.Infrastructure.Repositories;
@@ -164,6 +165,58 @@ public class ThreadRepositoryTests : IDisposable
 
         List<Thread> inbox = await _repo.GetInboxAsync(_storeId, null, null, null);
         Assert.Single(inbox);
+    }
+
+    [Fact]
+    public async Task GetInboxAsync_Search_FiltersByCustomerNameOrPhone()
+    {
+        CustomerEntity cust1 = new CustomerEntity { StoreId = _storeId, PhoneE164 = "+15551234567", FirstName = "Alice", LastName = "Smith" };
+        CustomerEntity cust2 = new CustomerEntity { StoreId = _storeId, PhoneE164 = "+15559876543", FirstName = "Bob", LastName = "Jones" };
+        _db.Customers.Add(cust1);
+        _db.Customers.Add(cust2);
+        _db.SaveChanges();
+
+        _db.Threads.Add(new ThreadEntity { StoreId = _storeId, Status = "Open", CustomerId = cust1.CustomerId, LastMessageAt = DateTime.UtcNow });
+        _db.Threads.Add(new ThreadEntity { StoreId = _storeId, Status = "Open", CustomerId = cust2.CustomerId, LastMessageAt = DateTime.UtcNow.AddMinutes(-1) });
+        _db.SaveChanges();
+
+        List<Thread> inboxAll = await _repo.GetInboxAsync(_storeId, null, null, null);
+        Assert.Equal(2, inboxAll.Count);
+
+        List<Thread> inboxSearchAlice = await _repo.GetInboxAsync(_storeId, null, "Alice", null);
+        Assert.Single(inboxSearchAlice);
+        Assert.Equal(cust1.CustomerId, inboxSearchAlice[0].CustomerId);
+
+        List<Thread> inboxSearchJones = await _repo.GetInboxAsync(_storeId, null, "Jones", null);
+        Assert.Single(inboxSearchJones);
+        Assert.Equal(cust2.CustomerId, inboxSearchJones[0].CustomerId);
+
+        List<Thread> inboxSearchPhone = await _repo.GetInboxAsync(_storeId, null, "9876543", null);
+        Assert.Single(inboxSearchPhone);
+        Assert.Equal(cust2.CustomerId, inboxSearchPhone[0].CustomerId);
+
+        List<Thread> inboxSearchNoMatch = await _repo.GetInboxAsync(_storeId, null, "Nobody", null);
+        Assert.Empty(inboxSearchNoMatch);
+    }
+
+    [Fact]
+    public async Task GetInboxWithCustomersAsync_ReturnsThreadsWithCustomerData()
+    {
+        CustomerEntity cust = new CustomerEntity { StoreId = _storeId, PhoneE164 = "+15551112222", FirstName = "Jane", LastName = "Doe" };
+        _db.Customers.Add(cust);
+        _db.SaveChanges();
+        _db.Threads.Add(new ThreadEntity { StoreId = _storeId, Status = "Open", CustomerId = cust.CustomerId, LastMessageAt = DateTime.UtcNow });
+        _db.SaveChanges();
+
+        var rows = await _repo.GetInboxWithCustomersAsync(_storeId, null, null, null);
+
+        Assert.Single(rows);
+        Assert.Equal(cust.CustomerId, rows[0].thread.CustomerId);
+        Customer? c = rows[0].customer;
+        Assert.NotNull(c);
+        Assert.Equal("Jane", c.FirstName);
+        Assert.Equal("Doe", c.LastName);
+        Assert.Equal("+15551112222", c.PhoneE164);
     }
 
     // ── GetByIdAsync ─────────────────────────────────────────────────

@@ -32,9 +32,12 @@ public class TemplateRepositoryTests : IDisposable
 
         UserEntity user = new UserEntity
         {
-            FullName = "Test User", Username = "test",
-            PasswordHash = "hash", Role = "StoreAdmin",
-            StoreId = _storeId, IsActive = true
+            Username = "test",
+            PasswordHash = "hash",
+            Role = "StoreAdmin",
+            StoreId = _storeId,
+            TwilioNumberId = null,
+            IsActive = true
         };
         _db.Users.Add(user);
         _db.SaveChanges();

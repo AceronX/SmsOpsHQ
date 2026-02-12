@@ -2,5 +2,7 @@ namespace SmsOpsHQ.Core.DTOs;
 
 public sealed class UpdateProfileRequest
 {
-    public string FullName { get; set; } = string.Empty;
+    public string? Username { get; set; }
+    public int? StoreId { get; set; }
+    public int? TwilioNumberId { get; set; }
 }

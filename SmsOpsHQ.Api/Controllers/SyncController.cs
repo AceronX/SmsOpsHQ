@@ -88,44 +88,6 @@ public sealed class SyncController : ControllerBase
         });
     }
 
-    [HttpPost("full-blocking")]
-    public async Task<IActionResult> TriggerFullSyncBlocking([FromBody] SyncRunOptions? options = null, CancellationToken cancellationToken = default)
-    {
-        if (!User.IsHqUser())
-            return Problem(statusCode: 403, detail: "Only HQ users can trigger sync");
-
-        SyncProgress progress = _syncService.GetProgress();
-        if (progress.InProgress)
-        {
-            return Ok(new
-            {
-                success = false,
-                message = "Sync already in progress"
-            });
-        }
-
-        SyncResult result = await _syncService.FullSyncAsync(options, cancellationToken);
-
-        return Ok(new
-        {
-            success = result.Success,
-            error = result.Error,
-            started_at = result.StartedAt?.ToString("o"),
-            completed_at = result.CompletedAt?.ToString("o"),
-            duration_seconds = result.DurationSeconds,
-            sqlite_before = result.SqliteBefore,
-            sqlite_after = result.SqliteAfter,
-                synced = new
-                {
-                    customers = result.Synced.Customers,
-                    tickets = result.Synced.Tickets,
-                    items = result.Synced.Items,
-                    payments = result.Synced.Payments,
-                    phone_index = result.Synced.PhoneIndex
-                }
-        });
-    }
-
     // GET /api/sync/status
     // Returns last sync time, stats, and whether a sync is running.
     [HttpGet("status")]

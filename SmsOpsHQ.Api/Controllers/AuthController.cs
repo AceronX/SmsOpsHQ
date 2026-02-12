@@ -36,6 +36,7 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Updates the authenticated user's profile (username, store, or Twilio number). Updates the existing user only; never creates a new user.</summary>
     [HttpPut("profile")]
     [Authorize]
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request, CancellationToken cancellationToken)
@@ -44,11 +45,18 @@ public class AuthController : ControllerBase
         if (userId <= 0)
             return Unauthorized();
 
-        bool updated = await _authService.UpdateProfileAsync(userId, request.FullName ?? string.Empty, cancellationToken);
-        if (!updated)
-            return BadRequest(new { detail = "Display name cannot be empty." });
+        try
+        {
+            bool updated = await _authService.UpdateProfileAsync(userId, request.Username, request.StoreId, request.TwilioNumberId, cancellationToken);
+            if (!updated)
+                return BadRequest(new { detail = "At least one field (Username, StoreId, or TwilioNumberId) must be provided." });
 
-        return NoContent();
+            return NoContent();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Username already exists", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
     }
 
     [HttpPost("change-password")]

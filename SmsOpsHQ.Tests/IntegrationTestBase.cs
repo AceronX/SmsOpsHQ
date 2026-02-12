@@ -89,7 +89,7 @@ public class IntegrationTestFixture : WebApplicationFactory<Program>
             db.Users.Add(new UserEntity
             {
                 StoreId = storeId,
-                FullName = $"{username} User",
+                TwilioNumberId = null,
                 Username = username,
                 PasswordHash = passwordHash,
                 Role = role,

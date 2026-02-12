@@ -35,11 +35,11 @@ public class MessageRepositoryTests : IDisposable
         // Seed user
         UserEntity user = new UserEntity
         {
-            FullName = "Test User",
             Username = "testuser",
             PasswordHash = "hash",
             Role = "StoreAdmin",
             StoreId = _storeId,
+            TwilioNumberId = null,
             IsActive = true
         };
         _db.Users.Add(user);

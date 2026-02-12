@@ -50,35 +50,25 @@ public sealed class ApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<LoginResult>(JsonOptions);
     }
 
-    public async Task UpdateProfileAsync(string fullName)
+    public async Task UpdateProfileAsync(string? username = null, int? storeId = null, int? twilioNumberId = null)
     {
-        var request = new { fullName };
-        HttpResponseMessage response = await _httpClient.PutAsJsonAsync("/api/auth/profile", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
+        var request = new { username, storeId, twilioNumberId };
+        await PutJsonAsync("/api/auth/profile", request);
     }
 
     public async Task ChangePasswordAsync(string oldPassword, string newPassword)
     {
         var request = new { oldPassword, newPassword };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/auth/change-password", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
+        await PostJsonAsync("/api/auth/change-password", request);
     }
 
     // ── Messages ─────────────────────────────────────────────────────
 
-    public async Task<JsonElement> SendMessageAsync(SendMessageRequest request)
-    {
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/send", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
+    public async Task<JsonElement> SendMessageAsync(SendMessageRequest request) =>
+        await PostJsonAsync("/api/send", request);
 
-    public async Task<JsonElement> CreateNoteAsync(int threadId, CreateNoteRequest request)
-    {
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"/api/thread/{threadId}/notes", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
+    public async Task<JsonElement> CreateNoteAsync(int threadId, CreateNoteRequest request) =>
+        await PostJsonAsync($"/api/thread/{threadId}/notes", request);
 
     public async Task<JsonElement> GetMessagesAsync(int storeId, string? category = null, int? threadId = null, int limit = 100, int offset = 0)
     {
@@ -138,12 +128,8 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> GetCustomerContextAsync(int customerId) =>
         await GetJsonAsync($"/api/customer/{customerId}/context");
 
-    public async Task<JsonElement> UpdateCustomerAsync(int customerId, UpdateCustomerRequest request)
-    {
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"/api/customer/{customerId}/update", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
+    public async Task<JsonElement> UpdateCustomerAsync(int customerId, UpdateCustomerRequest request) =>
+        await PostJsonAsync($"/api/customer/{customerId}/update", request);
 
     public async Task<JsonElement> GetLateCustomersAsync() =>
         await GetJsonAsync("/api/customers/late");
@@ -157,9 +143,7 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> AppendNoteXpdAsync(int customerKey, string note)
     {
         var request = new { customerKey, note };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/customers/append-note-xpd", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync("/api/customers/append-note-xpd", request);
     }
 
     public async Task<JsonElement> TestSqliteAsync(string? path = null)
@@ -175,24 +159,25 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> GetTemplatesAsync(int storeId) =>
         await GetJsonAsync($"/api/templates?store_id={storeId}");
 
-    public async Task<JsonElement> CreateTemplateAsync(TemplateCreateRequest request)
-    {
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/templates", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
+    public async Task<JsonElement> CreateTemplateAsync(TemplateCreateRequest request) =>
+        await PostJsonAsync("/api/templates", request);
 
-    public async Task<JsonElement> UpdateTemplateAsync(int templateId, TemplateCreateRequest request)
-    {
-        HttpResponseMessage response = await _httpClient.PutAsJsonAsync($"/api/templates/{templateId}", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
+    public async Task<JsonElement> UpdateTemplateAsync(int templateId, TemplateCreateRequest request) =>
+        await PutJsonAsync($"/api/templates/{templateId}", request);
 
     public async Task<JsonElement> DeleteTemplateAsync(int templateId) =>
         await DeleteJsonAsync($"/api/templates/{templateId}");
 
     // ── Stores ───────────────────────────────────────────────────────
+
+    public async Task<JsonElement> GetStoresAsync() =>
+        await GetJsonAsync("/api/stores");
+
+    public async Task<JsonElement> CreateStoreAsync(string storeName)
+    {
+        var request = new { storeName = storeName.Trim() };
+        return await PostJsonAsync("/api/stores", request);
+    }
 
     public async Task<JsonElement> GetTwilioNumbersAsync(int storeId) =>
         await GetJsonAsync($"/api/stores/{storeId}/numbers");
@@ -200,62 +185,40 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> AddNumberAsync(int storeId, string phone)
     {
         var request = new { phone };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"/api/stores/{storeId}/numbers", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync($"/api/stores/{storeId}/numbers", request);
     }
 
     public async Task<JsonElement> SetDefaultNumberAsync(int storeId, int numberId)
     {
         var request = new { numberId };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"/api/stores/{storeId}/default-number", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync($"/api/stores/{storeId}/default-number", request);
     }
 
     public async Task<JsonElement> UpdateNumberAsync(int storeId, int numberId, string phone)
     {
         var request = new { phone };
-        HttpResponseMessage response = await _httpClient.PutAsJsonAsync($"/api/stores/{storeId}/numbers/{numberId}", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PutJsonAsync($"/api/stores/{storeId}/numbers/{numberId}", request);
     }
 
     public async Task<JsonElement> DeleteNumberAsync(int storeId, int numberId) =>
         await DeleteJsonAsync($"/api/stores/{storeId}/numbers/{numberId}");
-
-    public async Task<JsonElement> UpdateTwilioConfigAsync(int storeId, string? sid, string? token)
-    {
-        var request = new { sid, token };
-        HttpResponseMessage response = await _httpClient.PutAsJsonAsync($"/api/stores/{storeId}/twilio_config", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
 
     // ── Reminders ────────────────────────────────────────────────────
 
     public async Task<JsonElement> SendReminderAsync(int ticketKey, int customerKey, string phone, string transNo, string dueDate, int daysDiff)
     {
         var request = new { ticketKey, customerKey, phone, transNo, dueDate, daysDiff };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/reminders/send", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync("/api/reminders/send", request);
     }
 
     public async Task<JsonElement> RunBatchRemindersAsync(int maxCount = 100)
     {
         var request = new { maxCount };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/reminders/batch", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync("/api/reminders/batch", request);
     }
 
-    public async Task<JsonElement> RunAutoRemindersAsync()
-    {
-        HttpResponseMessage response = await _httpClient.PostAsync("/api/reminders/auto", null);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
-    }
+    public async Task<JsonElement> RunAutoRemindersAsync() =>
+        await PostJsonAsync("/api/reminders/auto", null);
 
     public async Task<SchedulerStatus?> GetSchedulerStatusAsync() =>
         await _httpClient.GetFromJsonAsync<SchedulerStatus>("/api/reminders/scheduler/status", JsonOptions);
@@ -290,17 +253,13 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> ExcludePhoneAsync(string phone, string? reason = null)
     {
         var request = new { phone, reason };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/reminders/exclude", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync("/api/reminders/exclude", request);
     }
 
     public async Task<JsonElement> UnsubscribePhoneAsync(string phone, string method = "MANUAL", string? notes = null)
     {
         var request = new { phone, method, notes };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync("/api/reminders/unsubscribe", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        return await PostJsonAsync("/api/reminders/unsubscribe", request);
     }
 
     public async Task<JsonElement> CheckExcludedAsync(string phone) =>
@@ -319,23 +278,14 @@ public sealed class ApiClient : IDisposable
 
     public async Task<JsonElement> TriggerSyncAsync(string? xpdPath = null, string? mdwPath = null, string? xpdUser = null, string? xpdPassword = null)
     {
-        object? body = null;
-        if (!string.IsNullOrWhiteSpace(xpdPath) || !string.IsNullOrWhiteSpace(mdwPath) ||
-            !string.IsNullOrWhiteSpace(xpdUser) || !string.IsNullOrWhiteSpace(xpdPassword))
+        var options = new SyncRunOptions
         {
-            body = new
-            {
-                xpdPath = xpdPath ?? "",
-                mdwPath = mdwPath ?? "",
-                xpdUser = xpdUser ?? "",
-                xpdPassword = xpdPassword ?? ""
-            };
-        }
-        HttpResponseMessage response = body is null
-            ? await _httpClient.PostAsync("/api/sync/full", null)
-            : await _httpClient.PostAsJsonAsync("/api/sync/full", body, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+            XpdPath = xpdPath,
+            MdwPath = mdwPath,
+            XpdUser = xpdUser,
+            XpdPassword = xpdPassword
+        };
+        return await PostJsonAsync("/api/sync/full", options);
     }
 
     public async Task<JsonElement> GetSyncCountsAsync() =>
@@ -344,14 +294,12 @@ public sealed class ApiClient : IDisposable
     // ── Quarantine ───────────────────────────────────────────────────
 
     public async Task<JsonElement> GetQuarantinedAsync(int limit = 50) =>
-        await GetJsonAsync($"/api/quarantine?limit={limit}");
+        await GetJsonAsync($"/api/quarantine/list?limit={limit}");
 
-    public async Task<JsonElement> ResolveQuarantineAsync(int quarantineId, string resolution)
+    public async Task<JsonElement> ResolveQuarantineAsync(int quarantineId, string action)
     {
-        var request = new { resolution };
-        HttpResponseMessage response = await _httpClient.PostAsJsonAsync($"/api/quarantine/{quarantineId}/resolve", request, JsonOptions);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        var request = new { action };
+        return await PostJsonAsync($"/api/quarantine/{quarantineId}/resolve", request);
     }
 
     public async Task<JsonElement> GetQuarantineStatsAsync() =>
@@ -389,21 +337,72 @@ public sealed class ApiClient : IDisposable
         }
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────
+    // ── HTTP helpers ─────────────────────────────────────────────────
 
     private async Task<JsonElement> GetJsonAsync(string url)
     {
-        HttpResponseMessage response = await _httpClient.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+        using HttpResponseMessage response = await _httpClient.GetAsync(url);
+        return await ProcessResponseAsync(response);
+    }
+
+    private async Task<JsonElement> PostJsonAsync(string url, object? body = null)
+    {
+        using HttpResponseMessage response = body is null
+            ? await _httpClient.PostAsync(url, null)
+            : await _httpClient.PostAsJsonAsync(url, body, JsonOptions);
+        return await ProcessResponseAsync(response);
+    }
+
+    private async Task<JsonElement> PutJsonAsync(string url, object body)
+    {
+        using HttpResponseMessage response = await _httpClient.PutAsJsonAsync(url, body, JsonOptions);
+        return await ProcessResponseAsync(response);
     }
 
     private async Task<JsonElement> DeleteJsonAsync(string url)
     {
-        HttpResponseMessage response = await _httpClient.DeleteAsync(url);
-        response.EnsureSuccessStatusCode();
+        using HttpResponseMessage response = await _httpClient.DeleteAsync(url);
+        return await ProcessResponseAsync(response);
+    }
+
+    private async Task<JsonElement> ProcessResponseAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return await ReadBodyAsync(response);
+
+        string detail = await TryReadErrorDetailAsync(response);
+        throw new HttpRequestException(detail);
+    }
+
+    private static async Task<JsonElement> ReadBodyAsync(HttpResponseMessage response)
+    {
+        if (response.StatusCode == HttpStatusCode.NoContent || response.Content.Headers.ContentLength == 0)
+            return default;
         return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
     }
+
+    private static async Task<string> TryReadErrorDetailAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            if (response.Content.Headers.ContentType?.MediaType?.Contains("json") != true)
+                return FormatStatus(response);
+
+            JsonElement json = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
+            if (json.TryGetProperty("detail", out JsonElement d))
+                return d.GetString() ?? FormatStatus(response);
+            if (json.TryGetProperty("title", out JsonElement t))
+                return t.GetString() ?? FormatStatus(response);
+        }
+        catch
+        {
+            // ignore parse errors
+        }
+        return FormatStatus(response);
+    }
+
+    private static string FormatStatus(HttpResponseMessage response) =>
+        $"HTTP {(int)response.StatusCode} {response.StatusCode}";
 
     public void Dispose() => _httpClient.Dispose();
 }

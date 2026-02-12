@@ -38,10 +38,11 @@ public class QuarantineServiceTests : IDisposable
         // Seed user for review.
         UserEntity user = new UserEntity
         {
-            FullName = "Admin",
             Username = "admin",
             PasswordHash = "hash",
             Role = "HQ",
+            StoreId = null,
+            TwilioNumberId = null,
             IsActive = true
         };
         _db.Users.Add(user);

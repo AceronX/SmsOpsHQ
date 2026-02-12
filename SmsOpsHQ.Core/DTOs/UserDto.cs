@@ -6,8 +6,8 @@ public sealed class UserDto
 {
     public int UserId { get; set; }
     public string Username { get; set; } = string.Empty;
-    public string FullName { get; set; } = string.Empty;
     public int? StoreId { get; set; }
+    public string? StoreName { get; set; }
+    public int? TwilioNumberId { get; set; }
     public string Role { get; set; } = string.Empty;
-    public string? StorePhone { get; set; }
 }

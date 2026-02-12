@@ -9,8 +9,7 @@ public sealed class StoreEntity
     public string? City { get; set; }
     public string? State { get; set; }
     public string? Zip { get; set; }
-    public string? Phone { get; set; }
-    public int? DefaultNumberId { get; set; }
+    public int DefaultNumberId { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
 

@@ -165,6 +165,29 @@ public partial class SettingsView : UserControl
         }
     }
 
+    private async void PhoneNumbersTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            // Load stores first, then phone numbers after stores are loaded
+            await vm.LoadStoresCommand.ExecuteAsync(null);
+            await vm.LoadPhoneNumbersCommand.ExecuteAsync(null);
+        }
+    }
+
+    private async void AddNewStoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+
+        var dialog = new AddStoreDialog
+        {
+            Owner = Window.GetWindow(this)
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        await vm.AddStoreByNameAsync(dialog.StoreName);
+    }
+
     private void TwilioTab_Loaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

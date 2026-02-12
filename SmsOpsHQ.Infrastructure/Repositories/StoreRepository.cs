@@ -17,6 +17,16 @@ public sealed class StoreRepository : IStoreRepository
         _db = db;
     }
 
+    public async Task<List<Store>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        List<StoreEntity> entities = await _db.Stores
+            .AsNoTracking()
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.StoreId)
+            .ToListAsync(cancellationToken);
+        return entities.Select(MapToDomain).ToList();
+    }
+
     public async Task<Store?> GetByIdAsync(int storeId, CancellationToken cancellationToken = default)
     {
         StoreEntity? entity = await _db.Stores
@@ -39,20 +49,34 @@ public sealed class StoreRepository : IStoreRepository
 
     // Returns the default Twilio number's E.164 phone for a store.
     // Uses the store's DefaultNumberId to find the TwilioNumber.
+    // Returns null if DefaultNumberId is 0 (no Twilio number set).
     public async Task<string?> GetDefaultNumberAsync(int storeId, CancellationToken cancellationToken = default)
     {
         StoreEntity? store = await _db.Stores
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.StoreId == storeId, cancellationToken);
 
-        if (store?.DefaultNumberId is null)
+        if (store is null || store.DefaultNumberId == 0)
             return null;
 
         TwilioNumberEntity? number = await _db.TwilioNumbers
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.NumberId == store.DefaultNumberId.Value, cancellationToken);
+            .FirstOrDefaultAsync(t => t.NumberId == store.DefaultNumberId, cancellationToken);
 
         return number?.PhoneE164;
+    }
+
+    public async Task<Store> CreateAsync(string storeName, CancellationToken cancellationToken = default)
+    {
+        var entity = new StoreEntity
+        {
+            StoreName = storeName.Trim(),
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.Stores.Add(entity);
+        await _db.SaveChangesAsync(cancellationToken);
+        return MapToDomain(entity);
     }
 
     private static Store MapToDomain(StoreEntity entity)
@@ -65,7 +89,6 @@ public sealed class StoreRepository : IStoreRepository
             City = entity.City,
             State = entity.State,
             Zip = entity.Zip,
-            Phone = entity.Phone,
             DefaultNumberId = entity.DefaultNumberId,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt

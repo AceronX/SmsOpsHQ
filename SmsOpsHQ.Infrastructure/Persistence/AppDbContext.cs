@@ -78,7 +78,10 @@ public sealed class AppDbContext : DbContext
             store.Property(s => s.City).HasMaxLength(64);
             store.Property(s => s.State).HasMaxLength(10);
             store.Property(s => s.Zip).HasMaxLength(20);
-            store.Property(s => s.Phone).HasMaxLength(32);
+
+            store.Property(s => s.DefaultNumberId)
+                .IsRequired()
+                .HasDefaultValue(0);
 
             store.Property(s => s.IsActive)
                 .IsRequired()
@@ -104,10 +107,6 @@ public sealed class AppDbContext : DbContext
             user.ToTable("Users");
             user.HasKey(u => u.UserId);
 
-            user.Property(u => u.FullName)
-                .HasMaxLength(128)
-                .IsRequired();
-
             user.Property(u => u.Username)
                 .HasMaxLength(64)
                 .IsRequired();
@@ -130,6 +129,7 @@ public sealed class AppDbContext : DbContext
 
             user.HasIndex(u => u.Username).IsUnique();
             user.HasIndex(u => u.StoreId);
+            user.HasIndex(u => u.TwilioNumberId);
 
             user.HasOne(u => u.Store)
                 .WithMany(s => s.Users)
@@ -265,6 +265,13 @@ public sealed class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(t => t.StoreId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Optional FK for inbox customer lookup (no DB constraint; app-level only)
+            thread.HasOne(t => t.Customer)
+                .WithMany()
+                .HasForeignKey(t => t.CustomerId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
 
             thread.HasOne(t => t.AssignedToUser)
                 .WithMany()
