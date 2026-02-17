@@ -150,6 +150,26 @@
                         </Button.Style>
                     </Button>
 
+                    <!-- Reminders -->
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="Reminders">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE823;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="14" VerticalAlignment="Center"
+                                       Width="22"/>
+                            <TextBlock Text="Reminders" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavItem}" Value="Reminders">
+                                        <Setter Property="Background" Value="{StaticResource SidebarActive}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource SidebarTextActive}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
                     <!-- Late Customers -->
                     <Button Command="{Binding NavigateCommand}" CommandParameter="Late">
                         <StackPanel Orientation="Horizontal">

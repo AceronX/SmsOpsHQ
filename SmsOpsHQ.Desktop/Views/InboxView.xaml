@@ -56,7 +56,7 @@
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right"
-                           Text="{Binding TotalThreads, StringFormat='{}{0} threads'}"
+                           Text="{Binding TotalThreads, StringFormat='{}{0} conversations'}"
                            VerticalAlignment="Center"
                            FontSize="12" Foreground="{StaticResource TextMuted}"/>
 
@@ -79,10 +79,11 @@
                  Background="{StaticResource Bg}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Border Padding="20,14" BorderBrush="{StaticResource Divider}" BorderThickness="0,0,0,1"
+                    <Border Padding="16,12" BorderBrush="{StaticResource Divider}" BorderThickness="0,0,0,1"
                             Background="{StaticResource Surface}" Cursor="Hand">
                         <Grid>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
@@ -91,30 +92,37 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Name + unread badge -->
-                            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
-                                <TextBlock Text="{Binding CustomerName}" FontSize="13.5"
-                                           FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                            <!-- Avatar circle -->
+                            <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                                    Width="44" Height="44" CornerRadius="22"
+                                    Background="{StaticResource Primary}" Margin="0,0,12,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding AvatarLetter}" FontSize="18" FontWeight="SemiBold"
+                                           Foreground="White" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+
+                            <!-- Row 1: DisplayName + time (bold when unread) -->
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayName}"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTime}"
+                                       FontSize="11" Foreground="{StaticResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+
+                            <!-- Row 2: Phone + unread badge -->
+                            <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                        Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding CustomerPhone}" FontSize="12"
+                                           Foreground="{StaticResource TextSecondary}"/>
                                 <Border Visibility="{Binding UnreadCount, Converter={StaticResource CountToVisibility}}"
                                         Background="{StaticResource Primary}" CornerRadius="8"
-                                        Padding="7,1" Margin="8,0,0,0"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding UnreadCount}" FontSize="10.5"
+                                        Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding UnreadCount}" FontSize="10"
                                                Foreground="White" FontWeight="Bold"/>
                                 </Border>
                             </StackPanel>
-
-                            <!-- Timestamp -->
-                            <TextBlock Grid.Row="0" Grid.Column="1"
-                                       Text="{Binding LastMessageTime}" FontSize="11"
-                                       Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
-
-                            <!-- Preview -->
-                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                                       Text="{Binding LastMessageBody}" FontSize="12.5"
-                                       Foreground="{StaticResource TextSecondary}"
-                                       TextTrimming="CharacterEllipsis"
-                                       MaxHeight="18" Margin="0,4,0,0"/>
                         </Grid>
                     </Border>
                 </DataTemplate>

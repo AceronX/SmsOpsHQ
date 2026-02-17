@@ -38,6 +38,12 @@
             <DataTemplate DataType="{x:Type vm:PfxCustomersViewModel}">
                 <views:PfxCustomersView/>
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:RemindersViewModel}">
+                <views:RemindersView/>
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ReminderDetailViewModel}">
+                <views:ReminderDetailView/>
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:CustomerPanelViewModel}">
                 <views:CustomerPanelView/>
             </DataTemplate>

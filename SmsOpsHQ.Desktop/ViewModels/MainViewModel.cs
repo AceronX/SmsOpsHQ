@@ -50,6 +50,9 @@ public sealed partial class MainViewModel : ViewModelBase
             case "Inbox":
                 _navigation.NavigateTo<InboxViewModel>();
                 break;
+            case "Reminders":
+                _navigation.NavigateTo<RemindersViewModel>();
+                break;
             case "Late":
                 _navigation.NavigateTo<LateCustomersViewModel>();
                 break;

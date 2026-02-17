@@ -11,6 +11,8 @@ public sealed class InboxThreadItem
 {
     public int ThreadId { get; set; }
     public string CustomerName { get; set; } = "Unknown";
+    /// <summary>Display name formatted as "Last, First" (or first/last only).</summary>
+    public string DisplayName { get; set; } = "Unknown";
     public string CustomerPhone { get; set; } = string.Empty;
     public string LastMessageBody { get; set; } = string.Empty;
     public string LastMessageDirection { get; set; } = string.Empty;
@@ -18,6 +20,8 @@ public sealed class InboxThreadItem
     public int UnreadCount { get; set; }
     public string Status { get; set; } = "Open";
     public int? CustomerId { get; set; }
+    /// <summary>First letter for avatar (from DisplayName or Phone).</summary>
+    public string AvatarLetter { get; set; } = "?";
 }
 
 // Inbox ViewModel: loads threads, supports search and filter.
@@ -92,7 +96,7 @@ public sealed partial class InboxViewModel : ViewModelBase
                 if (threadJson.TryGetProperty("last_message_at", out JsonElement lmaElem) && lmaElem.ValueKind == JsonValueKind.String)
                 {
                     if (DateTime.TryParse(lmaElem.GetString(), out DateTime lma))
-                        item.LastMessageTime = lma.ToLocalTime().ToString("MMM d, h:mm tt");
+                        item.LastMessageTime = FormatInboxTime(lma);
                 }
 
                 if (threadJson.TryGetProperty("customer", out JsonElement custElem) && custElem.ValueKind == JsonValueKind.Object)
@@ -102,6 +106,15 @@ public sealed partial class InboxViewModel : ViewModelBase
                     item.CustomerPhone = custElem.TryGetProperty("phone", out JsonElement phoneElem) ? phoneElem.GetString() ?? "" : "";
                     if (custElem.TryGetProperty("id", out JsonElement idElem) && idElem.ValueKind == JsonValueKind.Number)
                         item.CustomerId = idElem.GetInt32();
+                    string? first = custElem.TryGetProperty("first_name", out JsonElement fn) ? fn.GetString() : null;
+                    string? last = custElem.TryGetProperty("last_name", out JsonElement ln) ? ln.GetString() : null;
+                    item.DisplayName = FormatDisplayName(first, last, item.CustomerName);
+                    item.AvatarLetter = GetAvatarLetter(item.DisplayName, item.CustomerPhone);
+                }
+                else
+                {
+                    item.DisplayName = item.CustomerName;
+                    item.AvatarLetter = GetAvatarLetter(item.DisplayName, item.CustomerPhone);
                 }
 
                 if (threadJson.TryGetProperty("last_message", out JsonElement lmElem) && lmElem.ValueKind == JsonValueKind.Object)
@@ -142,6 +155,39 @@ public sealed partial class InboxViewModel : ViewModelBase
     private void OpenThread(InboxThreadItem item)
     {
         ThreadViewModel threadVm = new(_apiClient, _appState, _navigation, _signalRClient, item.ThreadId, item.CustomerName, _xblueService);
+        if (item.CustomerId.HasValue)
+            threadVm.CustomerId = item.CustomerId;
         _navigation.NavigateTo(threadVm);
+    }
+
+    /// <summary>Today: "h:mm tt"; this week: "ddd h:mm tt"; older: "MM/dd h:mm tt".</summary>
+    private static string FormatInboxTime(DateTime utcOrLocal)
+    {
+        DateTime dt = utcOrLocal.Kind == DateTimeKind.Utc ? utcOrLocal.ToLocalTime() : utcOrLocal;
+        DateTime now = DateTime.Now;
+        if (dt.Date == now.Date)
+            return dt.ToString("h:mm tt");
+        if ((now - dt).TotalDays < 7)
+            return dt.ToString("ddd h:mm tt");
+        return dt.ToString("MM/dd h:mm tt");
+    }
+
+    private static string FormatDisplayName(string? first, string? last, string fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(last) && !string.IsNullOrWhiteSpace(first))
+            return $"{last.Trim()}, {first.Trim()}";
+        if (!string.IsNullOrWhiteSpace(first)) return first.Trim();
+        if (!string.IsNullOrWhiteSpace(last)) return last.Trim();
+        return string.IsNullOrWhiteSpace(fallback) ? "Unknown" : fallback;
+    }
+
+    private static string GetAvatarLetter(string displayName, string phone)
+    {
+        string s = string.IsNullOrWhiteSpace(displayName) ? phone : displayName;
+        if (string.IsNullOrWhiteSpace(s)) return "?";
+        char c = s.Trim()[0];
+        if (char.IsLetter(c)) return char.ToUpperInvariant(c).ToString();
+        if (char.IsDigit(c)) return c.ToString();
+        return "?";
     }
 }

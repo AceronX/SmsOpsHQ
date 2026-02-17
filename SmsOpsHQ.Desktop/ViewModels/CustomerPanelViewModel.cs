@@ -98,6 +98,56 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanClickToCall));
     }
 
+    /// <summary>Populate panel from GetCustomerByPhone response when app CustomerId is not available.</summary>
+    public void PopulateFromByPhoneResponse(JsonElement response)
+    {
+        if (!response.TryGetProperty("customer", out JsonElement cust))
+            return;
+
+        string first = cust.TryGetProperty("first_name", out JsonElement fn) ? fn.GetString() ?? "" : "";
+        string last = cust.TryGetProperty("last_name", out JsonElement ln) ? ln.GetString() ?? "" : "";
+        CustomerName = $"{first} {last}".Trim();
+        if (string.IsNullOrEmpty(CustomerName))
+            CustomerName = cust.TryGetProperty("phone", out JsonElement ph) ? ph.GetString() ?? "Unknown" : "Unknown";
+        CustomerPhone = cust.TryGetProperty("phone", out JsonElement phoneE) ? phoneE.GetString() ?? "" : "";
+        CustomerNotes = cust.TryGetProperty("notes", out JsonElement notesE) ? notesE.GetString() ?? "" : "";
+        string addr = cust.TryGetProperty("address", out JsonElement addrE) ? addrE.GetString() ?? "" : "";
+        string city = cust.TryGetProperty("city", out JsonElement cityE) ? cityE.GetString() ?? "" : "";
+        string state = cust.TryGetProperty("state", out JsonElement stateE) ? stateE.GetString() ?? "" : "";
+        string zip = cust.TryGetProperty("zip", out JsonElement zipE) ? zipE.GetString() ?? "" : "";
+        CustomerAddress = string.Join(", ", new[] { addr, city, state, zip }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        if (response.TryGetProperty("stats", out JsonElement stats))
+        {
+            ActiveCount = stats.TryGetProperty("active_count", out JsonElement ac) ? ac.GetInt32() : 0;
+            LateCount = stats.TryGetProperty("late_count", out JsonElement lc) ? lc.GetInt32() : 0;
+            PfxCount = stats.TryGetProperty("pfx_count", out JsonElement pc) ? pc.GetInt32() : 0;
+            TotalBalance = stats.TryGetProperty("total_balance", out JsonElement tb) ? tb.GetDouble() : 0;
+            AllTimeCount = stats.TryGetProperty("all_time_count", out JsonElement at) ? at.GetInt32() : 0;
+        }
+
+        if (response.TryGetProperty("quality", out JsonElement quality))
+        {
+            RiskLevel = quality.TryGetProperty("level", out JsonElement lv) ? lv.GetString() ?? "" : "";
+            RiskColor = RiskLevel switch
+            {
+                "High Risk" => "#DC2626",
+                "Medium Risk" => "#F59E0B",
+                "Low Risk" => "#3B82F6",
+                "Excellent" => "#16A34A",
+                _ => "#64748B"
+            };
+        }
+
+        ActiveTickets = ParseTickets(response, "active_tickets");
+        var cpu = ParseTickets(response, "cpu_tickets");
+        var pfx = ParseTickets(response, "pfx_tickets");
+        var closed = new ObservableCollection<TicketDisplayItem>();
+        foreach (var t in cpu) closed.Add(t);
+        foreach (var t in pfx) closed.Add(t);
+        ClosedTickets = closed;
+    }
+
     [RelayCommand]
     private async Task LoadContextAsync()
     {

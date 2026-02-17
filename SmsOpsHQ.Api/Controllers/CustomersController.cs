@@ -390,10 +390,10 @@ public sealed class CustomersController : ControllerBase
         return Ok(results);
     }
 
-    // GET /api/xpd/customer-by-phone?phone=9294990435
+    // GET /api/customer/by-phone?phone=9294990435
     // Full identity resolution: phone -> CustomerKeys -> customer + tickets + quality score.
-    [HttpGet("xpd/customer-by-phone")]
-    public async Task<IActionResult> GetXpdCustomerByPhone(
+    [HttpGet("customer/by-phone")]
+    public async Task<IActionResult> GetCustomerByPhone(
         [FromQuery] string phone,
         CancellationToken cancellationToken)
     {
@@ -489,6 +489,14 @@ public sealed class CustomersController : ControllerBase
             });
         }
 
+        // Resolve app CustomerId when this phone is linked to a local customer
+        int? appCustomerId = null;
+        var appCustomer = await _db.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.CustomerKey == primaryCustomerKey, cancellationToken);
+        if (appCustomer is not null)
+            appCustomerId = appCustomer.CustomerId;
+
         // Step 3: Load tickets for ALL customer keys
         List<Ticket> allTickets = await _ticketRepo.GetByCustomerKeysAsync(customerKeys, cancellationToken);
 
@@ -580,6 +588,7 @@ public sealed class CustomersController : ControllerBase
         {
             found = true,
             customer = customerData,
+            customer_id = appCustomerId,
             stats,
             quality,
             payment_history = paymentHistory,

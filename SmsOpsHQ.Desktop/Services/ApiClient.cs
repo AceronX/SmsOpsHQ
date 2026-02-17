@@ -137,8 +137,8 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> GetPfxCustomersAsync(int days = 60) =>
         await GetJsonAsync($"/api/customers/pfx?days={days}");
 
-    public async Task<JsonElement> GetXpdCustomerByPhoneAsync(string phone) =>
-        await GetJsonAsync($"/api/xpd/customer-by-phone?phone={Uri.EscapeDataString(phone)}");
+    public async Task<JsonElement> GetCustomerByPhoneAsync(string phone) =>
+        await GetJsonAsync($"/api/customer/by-phone?phone={Uri.EscapeDataString(phone)}");
 
     public async Task<JsonElement> AppendNoteXpdAsync(int customerKey, string note)
     {

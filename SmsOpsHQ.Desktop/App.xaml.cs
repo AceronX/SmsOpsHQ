@@ -84,6 +84,12 @@ public partial class App : Application
         services.AddTransient<PfxCustomersViewModel>(sp => new PfxCustomersViewModel(
             sp.GetRequiredService<ApiClient>()));
 
+        services.AddTransient<RemindersViewModel>(sp => new RemindersViewModel(
+            sp.GetRequiredService<ApiClient>(),
+            sp.GetRequiredService<NavigationService>(),
+            sp.GetRequiredService<AppState>(),
+            sp.GetRequiredService<XBlueService>()));
+
         services.AddTransient<ComposeViewModel>(sp => new ComposeViewModel(
             sp.GetRequiredService<ApiClient>(),
             sp.GetRequiredService<AppState>()));
