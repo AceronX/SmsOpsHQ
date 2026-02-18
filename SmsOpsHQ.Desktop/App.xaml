@@ -16,6 +16,7 @@
             <conv:InvertBoolConverter x:Key="InvertBool"/>
             <conv:BusyToButtonTextConverter x:Key="BusyToButtonText"/>
             <conv:NullToCollapsedConverter x:Key="NullToCollapsed"/>
+            <conv:HexToBrushConverter x:Key="HexToBrushConverter"/>
 
             <!-- ============================================================ -->
             <!--  VIEW-MODEL  to  VIEW  MAPPINGS                              -->

@@ -286,44 +286,67 @@ public sealed class CustomersController : ControllerBase
 
             using DbCommand command = connection.CreateCommand();
             command.CommandText = @"
-                SELECT c.CustomerKey AS Key, c.FirstName, c.LastName, c.ResPhone, c.BusPhone,
-                       t.Key AS TicketKey, t.TransNo, t.DueDate, t.CurrentBalance,
-                       t.Amount
+                SELECT
+                    c.CustomerKey AS Key,
+                    c.CustomerId,
+                    c.FirstName,
+                    c.LastName,
+                    c.ResPhone,
+                    c.BusPhone,
+                    c.Notes AS CustomerNotes,
+                    t.Key AS TicketKey,
+                    t.TransNo,
+                    t.DueDate,
+                    t.CurrentBalance,
+                    t.Amount,
+                    t.Notes AS TicketNotes,
+                    (SELECT COUNT(*) FROM Tickets t2 
+                     WHERE t2.CustomerKey = c.CustomerKey 
+                     AND t2.HowClosed LIKE 'PFX%') AS ForfeitCount,
+                    GROUP_CONCAT(i.PrintedDetail, ' | ') AS Items,
+                    GROUP_CONCAT(i.Notes, ' | ') AS ItemNotes,
+                    GROUP_CONCAT(i.CategoryCode, ' | ') AS Category
                 FROM Tickets t
                 JOIN Customers c ON t.CustomerKey = c.CustomerKey
-                WHERE CAST(t.Active AS INTEGER) = 1
+                LEFT JOIN Items i ON i.TicketKey = t.Key
+                WHERE t.Type != 0
+                  AND t.Active = 1
                   AND t.DueDate IS NOT NULL
-                  AND t.DueDate < datetime('now')
-                ORDER BY t.DueDate ASC";
+                  AND t.DueDate != ''
+                GROUP BY t.Key
+                ORDER BY t.DueDate DESC
+                LIMIT 5000";
 
             using DbDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-            DateTime today = DateTime.Now;
+            DateTime today = DateTime.Now.Date;
+            var tempResults = new List<(int RiskScore, object Data)>();
 
             while (await reader.ReadAsync(cancellationToken))
             {
                 string? dueDateStr = reader.IsDBNull(reader.GetOrdinal("DueDate"))
                     ? null : reader.GetString(reader.GetOrdinal("DueDate"));
 
-                int daysLate = 0;
-                DateTime? dueDate = TryParseDate(dueDateStr);
-                if (dueDate is not null)
-                    daysLate = (today.Date - dueDate.Value.Date).Days;
+                DateTime? dueDate = ParseDueDate(dueDateStr);
+                if (dueDate is null || dueDate.Value.Date >= today)
+                    continue;
 
-                results.Add(new
-                {
-                    customer_key = reader.GetInt32(reader.GetOrdinal("Key")),
-                    first_name = reader.IsDBNull(reader.GetOrdinal("FirstName")) ? "" : reader.GetString(reader.GetOrdinal("FirstName")),
-                    last_name = reader.IsDBNull(reader.GetOrdinal("LastName")) ? "" : reader.GetString(reader.GetOrdinal("LastName")),
-                    phone = reader.IsDBNull(reader.GetOrdinal("ResPhone"))
-                        ? (reader.IsDBNull(reader.GetOrdinal("BusPhone")) ? "" : reader.GetString(reader.GetOrdinal("BusPhone")))
-                        : reader.GetString(reader.GetOrdinal("ResPhone")),
-                    ticket_key = reader.GetInt32(reader.GetOrdinal("TicketKey")),
-                    trans_no = reader.IsDBNull(reader.GetOrdinal("TransNo")) ? 0 : reader.GetInt32(reader.GetOrdinal("TransNo")),
-                    due_date = dueDateStr,
-                    days_late = daysLate,
-                    balance = reader.IsDBNull(reader.GetOrdinal("CurrentBalance")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("CurrentBalance"))
-                });
+                int daysLate = (today - dueDate.Value.Date).Days;
+                int customerKey = reader.GetInt32(reader.GetOrdinal("Key"));
+                int forfeitCount = reader.IsDBNull(reader.GetOrdinal("ForfeitCount")) 
+                    ? 0 : reader.GetInt32(reader.GetOrdinal("ForfeitCount"));
+                
+                string? category = ExtractFirstCategory(reader.IsDBNull(reader.GetOrdinal("Category")) 
+                    ? null : reader.GetString(reader.GetOrdinal("Category")));
+                
+                int riskScore = CalculateRiskScore(daysLate, forfeitCount, category);
+                object data = MapLateCustomerRow(reader, customerKey, dueDateStr, daysLate, forfeitCount, category, riskScore);
+
+                tempResults.Add((riskScore, data));
             }
+
+            results = tempResults.OrderByDescending(r => r.RiskScore)
+                .Select(r => r.Data)
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -332,6 +355,129 @@ public sealed class CustomersController : ControllerBase
 
         return Ok(results);
     }
+
+    private static DateTime? ParseDueDate(string? dueDateStr)
+    {
+        if (string.IsNullOrWhiteSpace(dueDateStr))
+            return null;
+
+        // Try ISO datetime format first (from SQLite datetime storage)
+        if (DateTime.TryParse(dueDateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime isoDate))
+            return isoDate;
+
+        // Fallback to M/D/YYYY format parsing
+        return TryParseDate(dueDateStr);
+    }
+
+    private static string? ExtractFirstCategory(string? category)
+    {
+        if (string.IsNullOrEmpty(category))
+            return null;
+
+        return category.Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()?.Trim();
+    }
+
+    private static object MapLateCustomerRow(
+        DbDataReader reader,
+        int customerKey,
+        string? dueDateStr,
+        int daysLate,
+        int forfeitCount,
+        string? category,
+        int riskScore)
+    {
+        int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerId"))
+            ? null : reader.GetInt32(reader.GetOrdinal("CustomerId"));
+
+        int transNo = reader.IsDBNull(reader.GetOrdinal("TransNo")) 
+            ? 0 : reader.GetInt32(reader.GetOrdinal("TransNo"));
+
+        return new
+        {
+            customer_id = customerId,
+            customer_key = customerKey,
+            first_name = reader.IsDBNull(reader.GetOrdinal("FirstName")) ? "" : reader.GetString(reader.GetOrdinal("FirstName")),
+            last_name = reader.IsDBNull(reader.GetOrdinal("LastName")) ? "" : reader.GetString(reader.GetOrdinal("LastName")),
+            phone = GetCustomerPhone(reader),
+            ticket_key = reader.GetInt32(reader.GetOrdinal("TicketKey")),
+            trans_no = transNo,
+            ticket_no = transNo,
+            due_date = dueDateStr,
+            days_late = daysLate,
+            balance = reader.IsDBNull(reader.GetOrdinal("CurrentBalance")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("CurrentBalance")),
+            amount = reader.IsDBNull(reader.GetOrdinal("Amount")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("Amount")) / 1000.0,
+            items = reader.IsDBNull(reader.GetOrdinal("Items")) ? "No items" : reader.GetString(reader.GetOrdinal("Items")),
+            item_notes = reader.IsDBNull(reader.GetOrdinal("ItemNotes")) ? "" : reader.GetString(reader.GetOrdinal("ItemNotes")),
+            customer_notes = reader.IsDBNull(reader.GetOrdinal("CustomerNotes")) ? "" : reader.GetString(reader.GetOrdinal("CustomerNotes")),
+            ticket_notes = reader.IsDBNull(reader.GetOrdinal("TicketNotes")) ? "" : reader.GetString(reader.GetOrdinal("TicketNotes")),
+            category = category ?? "",
+            forfeit_count = forfeitCount,
+            risk_score = riskScore,
+            risk_band = GetRiskBand(riskScore),
+            risk_color = GetRiskColor(riskScore)
+        };
+    }
+
+    private static string GetCustomerPhone(DbDataReader reader)
+    {
+        if (!reader.IsDBNull(reader.GetOrdinal("ResPhone")))
+            return reader.GetString(reader.GetOrdinal("ResPhone"));
+        
+        if (!reader.IsDBNull(reader.GetOrdinal("BusPhone")))
+            return reader.GetString(reader.GetOrdinal("BusPhone"));
+        
+        return "";
+    }
+
+    private static int CalculateRiskScore(int daysLate, int forfeitCount, string? category)
+    {
+        int score = 0;
+
+        // Days late (0-40 points)
+        if (daysLate > 90)
+            score += 40;
+        else if (daysLate > 60)
+            score += 30;
+        else if (daysLate > 30)
+            score += 20;
+        else if (daysLate > 0)
+            score += 10;
+
+        // Forfeit count (0-40 points)
+        if (forfeitCount >= 3)
+            score += 40;
+        else if (forfeitCount == 2)
+            score += 30;
+        else if (forfeitCount == 1)
+            score += 20;
+
+        // Category risk (0-10 points)
+        string? categoryUpper = category?.ToUpperInvariant();
+        if (categoryUpper == "ELECTRONICS" || categoryUpper == "GENERAL")
+            score += 10;
+        else if (categoryUpper == "JEWELRY")
+            score += 5;
+
+        return Math.Min(score, 100);
+    }
+
+    private static string GetRiskBand(int riskScore)
+    {
+        if (riskScore >= 70) return "CRITICAL";
+        if (riskScore >= 50) return "HIGH";
+        if (riskScore >= 30) return "MEDIUM";
+        return "LOW";
+    }
+
+    private static string GetRiskColor(int riskScore)
+    {
+        if (riskScore >= 70) return "#d93025"; // Red
+        if (riskScore >= 50) return "#f57c00"; // Orange
+        if (riskScore >= 30) return "#f9ab00"; // Yellow
+        return "#34a853"; // Green
+    }
+
 
     // GET /api/customers/pfx?days=60
     // Returns customers with PFX (forfeited) tickets in the last N days.
@@ -813,19 +959,43 @@ public sealed class CustomersController : ControllerBase
         }
     }
 
-    private static readonly string[] XpdDateFormats = { "M/d/yyyy", "MM/dd/yyyy", "yyyy-MM-dd" };
+    private static readonly string[] XpdDateFormats = { 
+        "M/d/yyyy", "MM/dd/yyyy", "M/dd/yyyy", "MM/d/yyyy",
+        "yyyy-MM-dd", "yyyy-M-d", "yyyy-MM-d", "yyyy-M-dd"
+    };
 
     private static DateTime? TryParseDate(string? dateString)
     {
         if (string.IsNullOrWhiteSpace(dateString))
             return null;
 
-        string datePart = dateString.Contains(' ') ? dateString.Split(' ')[0] : dateString;
+        string datePart = dateString.Contains(' ') ? dateString.Split(' ')[0].Trim() : dateString.Trim();
 
+        // Try exact formats first
         if (DateTime.TryParseExact(datePart, XpdDateFormats,
             CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime result))
         {
             return result;
+        }
+
+        // Fallback: Manual parsing like Python code (M/D/YYYY format)
+        if (datePart.Contains('/'))
+        {
+            string[] parts = datePart.Split('/');
+            if (parts.Length == 3 &&
+                int.TryParse(parts[0], out int month) &&
+                int.TryParse(parts[1], out int day) &&
+                int.TryParse(parts[2], out int year))
+            {
+                try
+                {
+                    return new DateTime(year, month, day);
+                }
+                catch
+                {
+                    // Invalid date (e.g., Feb 30)
+                }
+            }
         }
 
         return null;
