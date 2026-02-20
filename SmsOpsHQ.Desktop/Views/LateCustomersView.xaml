@@ -31,22 +31,15 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="20,16"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Command="{Binding LoadCommand}"
-                        Style="{StaticResource GhostButton}"
-                        Padding="12,6">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
-                                   FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"
-                                   RenderTransformOrigin="0.5,0.5">
-                            <TextBlock.RenderTransform>
-                                <RotateTransform Angle="90"/>
-                            </TextBlock.RenderTransform>
-                        </TextBlock>
-                        <TextBlock Text="Refresh"/>
-                    </StackPanel>
-                </Button>
-                <StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- Left: Title + stats -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Late Customers" FontSize="20" FontWeight="Bold"
                                    Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
@@ -71,7 +64,60 @@
                                    Foreground="#34a853" VerticalAlignment="Center"/>
                     </StackPanel>
                 </StackPanel>
-            </DockPanel>
+                
+                <!-- Middle: Search -->
+                <TextBox Grid.Column="1" 
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         MaxWidth="320" Width="280" Margin="24,0"
+                         VerticalAlignment="Center"
+                         HorizontalAlignment="Center"
+                         Padding="12,8"
+                         VerticalContentAlignment="Center"
+                         FontSize="13">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TextBox">
+                                        <Border Background="{StaticResource Surface}"
+                                                BorderBrush="{StaticResource Border}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+                
+                <!-- Right: Settings + Refresh -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding OpenSettingsCommand}"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6" Margin="0,0,8,0"
+                            ToolTip="Configure SQL Query">
+                        <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}"
+                                   FontSize="14" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Command="{Binding LoadCommand}"
+                            Style="{StaticResource GhostButton}"
+                            Padding="12,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform Angle="90"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                            <TextBlock Text="Refresh"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Data grid -->
@@ -156,6 +202,45 @@
                                 <Setter Property="MaxHeight" Value="60"/>
                                 <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
                                 <Setter Property="ToolTip" Value="{Binding Items}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Padding" Value="12,8"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    
+                    <!-- Ticket Notes -->
+                    <DataGridTextColumn Header="Ticket Notes" Binding="{Binding TicketNotes}" Width="200" MinWidth="150">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                <Setter Property="ToolTip" Value="{Binding TicketNotes}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Padding" Value="12,8"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    
+                    <!-- Item Notes -->
+                    <DataGridTextColumn Header="Item Notes" Binding="{Binding ItemNotes}" Width="200" MinWidth="150">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                <Setter Property="ToolTip" Value="{Binding ItemNotes}"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Padding" Value="12,8"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    
+                    <!-- Customer Notes -->
+                    <DataGridTextColumn Header="Customer Notes" Binding="{Binding CustomerNotes}" Width="200" MinWidth="150">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                <Setter Property="ToolTip" Value="{Binding CustomerNotes}"/>
                                 <Setter Property="VerticalAlignment" Value="Center"/>
                                 <Setter Property="Padding" Value="12,8"/>
                             </Style>

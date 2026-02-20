@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Text.Json;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Desktop.Services;
+using SmsOpsHQ.Desktop.Views;
 
 namespace SmsOpsHQ.Desktop.ViewModels;
 
@@ -64,6 +67,8 @@ public sealed class LateCustomerItem
 public sealed partial class LateCustomersViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
+    private readonly LateCustomersQueryService _queryService;
+    private ObservableCollection<LateCustomerItem> _allCustomers = new();
 
     [ObservableProperty]
     private ObservableCollection<LateCustomerItem> _customers = new();
@@ -86,9 +91,18 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     [ObservableProperty]
     private string _statsText = "Loading...";
 
-    public LateCustomersViewModel(ApiClient apiClient)
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    partial void OnSearchTextChanged(string value)
+    {
+        ApplySearchFilter();
+    }
+
+    public LateCustomersViewModel(ApiClient apiClient, LateCustomersQueryService queryService)
     {
         _apiClient = apiClient;
+        _queryService = queryService;
     }
 
     [RelayCommand]
@@ -99,7 +113,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 
         try
         {
-            JsonElement result = await _apiClient.GetLateCustomersAsync();
+            string query = _queryService.LoadQuery();
+            JsonElement result = await _apiClient.GetLateCustomersAsync(query);
             ObservableCollection<LateCustomerItem> items = new();
 
             foreach (JsonElement c in result.EnumerateArray())
@@ -129,13 +144,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
                 });
             }
 
-            Customers = items;
-            TotalCount = items.Count;
-            CriticalCount = items.Count(c => c.RiskScore >= 70);
-            HighCount = items.Count(c => c.RiskScore >= 50 && c.RiskScore < 70);
-            MediumCount = items.Count(c => c.RiskScore >= 30 && c.RiskScore < 50);
-            LowCount = items.Count(c => c.RiskScore < 30);
-            StatsText = $"Total: {TotalCount} | 🔴 Critical: {CriticalCount} | 🟠 High: {HighCount} | 🟡 Medium: {MediumCount} | 🟢 Low: {LowCount}";
+            _allCustomers = items;
+            ApplySearchFilter();
         }
         catch (Exception ex)
         {
@@ -145,6 +155,39 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    private void ApplySearchFilter()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            Customers = new ObservableCollection<LateCustomerItem>(_allCustomers);
+        }
+        else
+        {
+            string searchLower = SearchText.ToLowerInvariant();
+            var filtered = _allCustomers.Where(c =>
+                c.FullName.ToLowerInvariant().Contains(searchLower) ||
+                c.Phone.Contains(searchLower) ||
+                c.FormattedPhone.Contains(searchLower) ||
+                c.TicketNo.ToString().Contains(searchLower) ||
+                c.Items.ToLowerInvariant().Contains(searchLower) ||
+                c.CustomerNotes.ToLowerInvariant().Contains(searchLower) ||
+                c.TicketNotes.ToLowerInvariant().Contains(searchLower)
+            ).ToList();
+            Customers = new ObservableCollection<LateCustomerItem>(filtered);
+        }
+
+        UpdateStats();
+    }
+
+    private void UpdateStats()
+    {
+        TotalCount = Customers.Count;
+        CriticalCount = Customers.Count(c => c.RiskScore >= 70);
+        HighCount = Customers.Count(c => c.RiskScore >= 50 && c.RiskScore < 70);
+        MediumCount = Customers.Count(c => c.RiskScore >= 30 && c.RiskScore < 50);
+        LowCount = Customers.Count(c => c.RiskScore < 30);
     }
 
     [RelayCommand]
@@ -159,6 +202,21 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         catch (Exception ex)
         {
             SetError($"Reminder failed: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private void OpenSettings()
+    {
+        var owner = Application.Current.MainWindow;
+        var dialog = new LateCustomersSettingsDialog(_queryService);
+        if (owner != null)
+            dialog.Owner = owner;
+
+        if (dialog.ShowDialog() == true && dialog.SavedQuery != null)
+        {
+            // Reload data with the new query so the UI updates immediately
+            _ = LoadCommand.ExecuteAsync(null);
         }
     }
 }

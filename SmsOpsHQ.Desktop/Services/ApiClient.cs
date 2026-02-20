@@ -131,8 +131,15 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> UpdateCustomerAsync(int customerId, UpdateCustomerRequest request) =>
         await PostJsonAsync($"/api/customer/{customerId}/update", request);
 
-    public async Task<JsonElement> GetLateCustomersAsync() =>
-        await GetJsonAsync("/api/customers/late");
+    public async Task<JsonElement> GetLateCustomersAsync(string? query = null)
+    {
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var request = new { Query = query };
+            return await PostJsonAsync("/api/customers/late", request);
+        }
+        return await PostJsonAsync("/api/customers/late", new { });
+    }
 
     public async Task<JsonElement> GetPfxCustomersAsync(int days = 60) =>
         await GetJsonAsync($"/api/customers/pfx?days={days}");

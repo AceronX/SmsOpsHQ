@@ -271,10 +271,13 @@ public sealed class CustomersController : ControllerBase
         });
     }
 
-    // GET /api/customers/late
-    // Returns customers with late (overdue) pawn tickets.
-    [HttpGet("customers/late")]
-    public async Task<IActionResult> GetLateCustomers(CancellationToken cancellationToken)
+    // POST /api/customers/late
+    // Returns customers with late (overdue) pawn tickets, sorted by risk score.
+    // Accepts optional SQL query in request body.
+    [HttpPost("customers/late")]
+    public async Task<IActionResult> GetLateCustomers(
+        [FromBody] LateCustomersQueryRequest? request = null,
+        CancellationToken cancellationToken = default)
     {
         List<object> results = new();
 
@@ -284,8 +287,10 @@ public sealed class CustomersController : ControllerBase
             if (connection.State != ConnectionState.Open)
                 await connection.OpenAsync(cancellationToken);
 
-            using DbCommand command = connection.CreateCommand();
-            command.CommandText = @"
+            // Use provided query or default
+            string sqlQuery = !string.IsNullOrWhiteSpace(request?.Query) 
+                ? request.Query 
+                : @"
                 SELECT
                     c.CustomerKey AS Key,
                     c.CustomerId,
@@ -316,6 +321,9 @@ public sealed class CustomersController : ControllerBase
                 GROUP BY t.Key
                 ORDER BY t.DueDate DESC
                 LIMIT 5000";
+
+            using DbCommand command = connection.CreateCommand();
+            command.CommandText = sqlQuery;
 
             using DbDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
             DateTime today = DateTime.Now.Date;
@@ -1007,4 +1015,10 @@ public sealed class AppendNoteXpdRequest
 {
     public int CustomerKey { get; set; }
     public string Note { get; set; } = string.Empty;
+}
+
+// Request body for POST /api/customers/late.
+public sealed class LateCustomersQueryRequest
+{
+    public string? Query { get; set; }
 }
