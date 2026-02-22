@@ -9,7 +9,6 @@ using SmsOpsHQ.Desktop.Views;
 
 namespace SmsOpsHQ.Desktop.ViewModels;
 
-// Represents one row in the late customers report.
 public sealed class LateCustomerItem
 {
     public int? CustomerId { get; set; }
@@ -17,9 +16,10 @@ public sealed class LateCustomerItem
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    public List<string> PhoneNumbers { get; set; } = new List<string>();
     public int TicketKey { get; set; }
     public int TransNo { get; set; }
-    public int TicketNo => TransNo; // Alias for widget compatibility
+    public int TicketNo => TransNo;
     public string DueDate { get; set; } = string.Empty;
     public int DaysLate { get; set; }
     public double Balance { get; set; }
@@ -35,22 +35,10 @@ public sealed class LateCustomerItem
     public string RiskColor { get; set; } = "#34a853";
     public string FullName => $"{FirstName} {LastName}".Trim();
     public string NotesDisplay => !string.IsNullOrWhiteSpace(TicketNotes) ? TicketNotes : ItemNotes;
-    
-    public string FormattedPhone
-    {
-        get
-        {
-            if (string.IsNullOrWhiteSpace(Phone)) return "";
-            string digits = new string(Phone.Where(char.IsDigit).ToArray());
-            if (digits.Length == 10)
-                return $"({digits.Substring(0, 3)}) {digits.Substring(3, 3)}-{digits.Substring(6)}";
-            return Phone;
-        }
-    }
-    
-    public string FormattedAmount => Amount > 0 ? $"${Amount:F2}" : "$0.00";
-    public string FormattedBalance => Balance > 0 ? $"${Balance:F2}" : "$0.00";
-    
+
+    public string FormattedAmount => Amount >= 0 ? $"${Amount:F2}" : "$0.00";
+    public string FormattedBalance => Balance >= 0 ? $"${Balance:F2}" : "$0.00";
+
     public string FormattedDueDate
     {
         get
@@ -60,6 +48,15 @@ public sealed class LateCustomerItem
                 return dt.ToString("MM/dd/yyyy");
             return DueDate;
         }
+    }
+
+    public static string FormatPhoneForDisplay(string digitsOnly)
+    {
+        if (string.IsNullOrWhiteSpace(digitsOnly)) return "";
+        string digits = new string(digitsOnly.Where(char.IsDigit).ToArray());
+        if (digits.Length == 10)
+            return $"({digits.Substring(0, 3)}) {digits.Substring(3, 3)}-{digits.Substring(6)}";
+        return digitsOnly;
     }
 }
 
@@ -119,13 +116,32 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 
             foreach (JsonElement c in result.EnumerateArray())
             {
+                List<string> phones = new List<string>();
+                if (c.TryGetProperty("phones", out JsonElement phonesE) && phonesE.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement pe in phonesE.EnumerateArray())
+                    {
+                        string? p = pe.GetString();
+                        if (!string.IsNullOrWhiteSpace(p))
+                            phones.Add(p);
+                    }
+                }
+                if (phones.Count == 0 && c.TryGetProperty("phone", out JsonElement phE))
+                {
+                    string? single = phE.GetString();
+                    if (!string.IsNullOrWhiteSpace(single))
+                        phones.Add(single);
+                }
+                string primaryPhone = phones.Count > 0 ? phones[0] : string.Empty;
+
                 items.Add(new LateCustomerItem
                 {
                     CustomerId = c.TryGetProperty("customer_id", out JsonElement cidE) && cidE.ValueKind != JsonValueKind.Null ? cidE.GetInt32() : null,
                     CustomerKey = c.TryGetProperty("customer_key", out JsonElement ckE) ? ckE.GetInt32() : 0,
                     FirstName = c.TryGetProperty("first_name", out JsonElement fnE) ? fnE.GetString() ?? "" : "",
                     LastName = c.TryGetProperty("last_name", out JsonElement lnE) ? lnE.GetString() ?? "" : "",
-                    Phone = c.TryGetProperty("phone", out JsonElement phE) ? phE.GetString() ?? "" : "",
+                    Phone = primaryPhone,
+                    PhoneNumbers = phones,
                     TicketKey = c.TryGetProperty("ticket_key", out JsonElement tkE) ? tkE.GetInt32() : 0,
                     TransNo = c.TryGetProperty("trans_no", out JsonElement tnE) ? tnE.GetInt32() : 0,
                     DueDate = c.TryGetProperty("due_date", out JsonElement ddE) ? ddE.GetString() ?? "" : "",
@@ -168,8 +184,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             string searchLower = SearchText.ToLowerInvariant();
             var filtered = _allCustomers.Where(c =>
                 c.FullName.ToLowerInvariant().Contains(searchLower) ||
-                c.Phone.Contains(searchLower) ||
-                c.FormattedPhone.Contains(searchLower) ||
+                c.PhoneNumbers.Any(p => p.Contains(searchLower) || LateCustomerItem.FormatPhoneForDisplay(p).Contains(searchLower)) ||
                 c.TicketNo.ToString().Contains(searchLower) ||
                 c.Items.ToLowerInvariant().Contains(searchLower) ||
                 c.CustomerNotes.ToLowerInvariant().Contains(searchLower) ||
@@ -191,18 +206,40 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task SendReminderAsync(LateCustomerItem item)
+    private async Task SendSmsAsync(LateCustomerItem? item)
     {
+        if (item is null) return;
+        string? phone = ResolvePhoneForSms(item);
+        if (string.IsNullOrEmpty(phone))
+        {
+            SetError("No phone number available for this customer.");
+            return;
+        }
         try
         {
             await _apiClient.SendReminderAsync(
-                item.TicketKey, item.CustomerKey, item.Phone,
+                item.TicketKey, item.CustomerKey, phone,
                 item.TransNo.ToString(), item.DueDate, item.DaysLate);
         }
         catch (Exception ex)
         {
             SetError($"Reminder failed: {ex.Message}");
         }
+    }
+
+    private string? ResolvePhoneForSms(LateCustomerItem item)
+    {
+        if (item.PhoneNumbers.Count == 0) return null;
+        if (item.PhoneNumbers.Count == 1) return item.PhoneNumbers[0];
+        var dialog = new PhonePickerDialog(item.PhoneNumbers);
+        if (Application.Current.MainWindow is Window owner)
+            dialog.Owner = owner;
+        return dialog.ShowDialog() == true ? dialog.SelectedPhone : null;
+    }
+
+    [RelayCommand]
+    private void CallCustomer(LateCustomerItem? item)
+    {
     }
 
     [RelayCommand]

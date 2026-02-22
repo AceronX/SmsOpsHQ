@@ -55,4 +55,24 @@ public static class PhoneUtils
     {
         return NormalizeToE164(phone) is not null;
     }
+
+    private static readonly Regex PhoneInTextPattern = new Regex(
+        @"\b1?[2-9]\d{2}[-.\s]?\d{3}[-.\s]?\d{4}\b|\b[2-9]\d{9}\b",
+        RegexOptions.Compiled);
+
+    public static List<string> ExtractPhonesFromText(string? text)
+    {
+        List<string> result = new List<string>();
+        if (string.IsNullOrWhiteSpace(text))
+            return result;
+
+        HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match m in PhoneInTextPattern.Matches(text))
+        {
+            string? normalized = ExtractLast10Digits(m.Value);
+            if (normalized is not null && seen.Add(normalized))
+                result.Add(normalized);
+        }
+        return result;
+    }
 }

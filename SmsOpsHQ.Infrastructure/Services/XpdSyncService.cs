@@ -392,7 +392,7 @@ public sealed class XpdSyncService : IXpdSyncService
         List<CustomerEntity> customers = await db.Customers
             .AsNoTracking()
             .Where(c => c.CustomerKey != null)
-            .Select(c => new CustomerEntity { CustomerKey = c.CustomerKey, ResPhone = c.ResPhone, BusPhone = c.BusPhone })
+            .Select(c => new CustomerEntity { CustomerKey = c.CustomerKey, ResPhone = c.ResPhone, BusPhone = c.BusPhone, Notes = c.Notes })
             .ToListAsync(cancellationToken);
 
         return await ExecuteInTransactionAsync(conn, async (txn, ct) =>
@@ -439,6 +439,11 @@ public sealed class XpdSyncService : IXpdSyncService
             if (!string.IsNullOrWhiteSpace(c.BusPhone) && c.BusPhone != c.ResPhone)
             {
                 count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.BusPhone, "BusPhone", cancellationToken);
+            }
+
+            foreach (string notePhone in PhoneUtils.ExtractPhonesFromText(c.Notes))
+            {
+                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, notePhone, "Notes", cancellationToken);
             }
 
             int done = i + 1;

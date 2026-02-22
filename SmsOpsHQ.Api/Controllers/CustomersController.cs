@@ -401,20 +401,26 @@ public sealed class CustomersController : ControllerBase
         int transNo = reader.IsDBNull(reader.GetOrdinal("TransNo")) 
             ? 0 : reader.GetInt32(reader.GetOrdinal("TransNo"));
 
+        List<string> phones = GetCustomerPhones(reader);
+        string primaryPhone = phones.Count > 0 ? phones[0] : string.Empty;
+        double rawAmount = reader.IsDBNull(reader.GetOrdinal("Amount")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("Amount"));
+        double amountDollars = ToAmountDollars(rawAmount);
+
         return new
         {
             customer_id = customerId,
             customer_key = customerKey,
             first_name = reader.IsDBNull(reader.GetOrdinal("FirstName")) ? "" : reader.GetString(reader.GetOrdinal("FirstName")),
             last_name = reader.IsDBNull(reader.GetOrdinal("LastName")) ? "" : reader.GetString(reader.GetOrdinal("LastName")),
-            phone = GetCustomerPhone(reader),
+            phone = primaryPhone,
+            phones = phones,
             ticket_key = reader.GetInt32(reader.GetOrdinal("TicketKey")),
             trans_no = transNo,
             ticket_no = transNo,
             due_date = dueDateStr,
             days_late = daysLate,
             balance = reader.IsDBNull(reader.GetOrdinal("CurrentBalance")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("CurrentBalance")),
-            amount = reader.IsDBNull(reader.GetOrdinal("Amount")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("Amount")) / 1000.0,
+            amount = amountDollars,
             items = reader.IsDBNull(reader.GetOrdinal("Items")) ? "No items" : reader.GetString(reader.GetOrdinal("Items")),
             item_notes = reader.IsDBNull(reader.GetOrdinal("ItemNotes")) ? "" : reader.GetString(reader.GetOrdinal("ItemNotes")),
             customer_notes = reader.IsDBNull(reader.GetOrdinal("CustomerNotes")) ? "" : reader.GetString(reader.GetOrdinal("CustomerNotes")),
@@ -427,15 +433,50 @@ public sealed class CustomersController : ControllerBase
         };
     }
 
-    private static string GetCustomerPhone(DbDataReader reader)
+    private static double ToAmountDollars(double rawAmount)
     {
-        if (!reader.IsDBNull(reader.GetOrdinal("ResPhone")))
-            return reader.GetString(reader.GetOrdinal("ResPhone"));
-        
-        if (!reader.IsDBNull(reader.GetOrdinal("BusPhone")))
-            return reader.GetString(reader.GetOrdinal("BusPhone"));
-        
-        return "";
+        if (rawAmount <= 0) return 0.0;
+        if (rawAmount > 0 && rawAmount < 100)
+            return rawAmount * 100.0;
+        return rawAmount / 1000.0;
+    }
+
+    private static List<string> GetCustomerPhones(DbDataReader reader)
+    {
+        HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+        List<string> ordered = new List<string>();
+
+        string? res = reader.IsDBNull(reader.GetOrdinal("ResPhone")) ? null : reader.GetString(reader.GetOrdinal("ResPhone"));
+        if (!string.IsNullOrWhiteSpace(res))
+        {
+            string? norm = PhoneUtils.ExtractLast10Digits(res);
+            if (norm is not null && seen.Add(norm))
+                ordered.Add(norm);
+        }
+
+        string? bus = reader.IsDBNull(reader.GetOrdinal("BusPhone")) ? null : reader.GetString(reader.GetOrdinal("BusPhone"));
+        if (!string.IsNullOrWhiteSpace(bus))
+        {
+            string? norm = PhoneUtils.ExtractLast10Digits(bus);
+            if (norm is not null && seen.Add(norm))
+                ordered.Add(norm);
+        }
+
+        string? customerNotes = reader.IsDBNull(reader.GetOrdinal("CustomerNotes")) ? null : reader.GetString(reader.GetOrdinal("CustomerNotes"));
+        foreach (string p in PhoneUtils.ExtractPhonesFromText(customerNotes))
+        {
+            if (seen.Add(p))
+                ordered.Add(p);
+        }
+
+        string? ticketNotes = reader.IsDBNull(reader.GetOrdinal("TicketNotes")) ? null : reader.GetString(reader.GetOrdinal("TicketNotes"));
+        foreach (string p in PhoneUtils.ExtractPhonesFromText(ticketNotes))
+        {
+            if (seen.Add(p))
+                ordered.Add(p);
+        }
+
+        return ordered;
     }
 
     private static int CalculateRiskScore(int daysLate, int forfeitCount, string? category)
