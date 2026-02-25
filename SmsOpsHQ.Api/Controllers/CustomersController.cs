@@ -404,7 +404,6 @@ public sealed class CustomersController : ControllerBase
         List<string> phones = GetCustomerPhones(reader);
         string primaryPhone = phones.Count > 0 ? phones[0] : string.Empty;
         double rawAmount = reader.IsDBNull(reader.GetOrdinal("Amount")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("Amount"));
-        double amountDollars = ToAmountDollars(rawAmount);
 
         return new
         {
@@ -420,7 +419,7 @@ public sealed class CustomersController : ControllerBase
             due_date = dueDateStr,
             days_late = daysLate,
             balance = reader.IsDBNull(reader.GetOrdinal("CurrentBalance")) ? 0.0 : reader.GetDouble(reader.GetOrdinal("CurrentBalance")),
-            amount = amountDollars,
+            amount = rawAmount,
             items = reader.IsDBNull(reader.GetOrdinal("Items")) ? "No items" : reader.GetString(reader.GetOrdinal("Items")),
             item_notes = reader.IsDBNull(reader.GetOrdinal("ItemNotes")) ? "" : reader.GetString(reader.GetOrdinal("ItemNotes")),
             customer_notes = reader.IsDBNull(reader.GetOrdinal("CustomerNotes")) ? "" : reader.GetString(reader.GetOrdinal("CustomerNotes")),
@@ -431,14 +430,6 @@ public sealed class CustomersController : ControllerBase
             risk_band = GetRiskBand(riskScore),
             risk_color = GetRiskColor(riskScore)
         };
-    }
-
-    private static double ToAmountDollars(double rawAmount)
-    {
-        if (rawAmount <= 0) return 0.0;
-        if (rawAmount > 0 && rawAmount < 100)
-            return rawAmount * 100.0;
-        return rawAmount / 1000.0;
     }
 
     private static List<string> GetCustomerPhones(DbDataReader reader)

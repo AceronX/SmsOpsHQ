@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Desktop.Services;
@@ -34,10 +37,9 @@ public sealed class LateCustomerItem
     public string RiskBand { get; set; } = "LOW";
     public string RiskColor { get; set; } = "#34a853";
     public string FullName => $"{FirstName} {LastName}".Trim();
-    public string NotesDisplay => !string.IsNullOrWhiteSpace(TicketNotes) ? TicketNotes : ItemNotes;
 
-    public string FormattedAmount => Amount >= 0 ? $"${Amount:F2}" : "$0.00";
-    public string FormattedBalance => Balance >= 0 ? $"${Balance:F2}" : "$0.00";
+    public string FormattedAmount => Amount.ToString("C2");
+    public string FormattedBalance => Balance.ToString("C2");
 
     public string FormattedDueDate
     {
@@ -60,12 +62,11 @@ public sealed class LateCustomerItem
     }
 }
 
-// Late customers report ViewModel.
 public sealed partial class LateCustomersViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
     private readonly LateCustomersQueryService _queryService;
-    private ObservableCollection<LateCustomerItem> _allCustomers = new();
+    private List<LateCustomerItem> _allCustomers = new();
 
     [ObservableProperty]
     private ObservableCollection<LateCustomerItem> _customers = new();
@@ -86,7 +87,10 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     private int _lowCount;
 
     [ObservableProperty]
-    private string _statsText = "Loading...";
+    private string _totalAmountDisplay = "$0.00";
+
+    [ObservableProperty]
+    private string _lastSyncDisplay = "";
 
     [ObservableProperty]
     private string _searchText = string.Empty;
@@ -110,9 +114,11 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 
         try
         {
+            await LoadLastSyncAsync();
+
             string query = _queryService.LoadQuery();
             JsonElement result = await _apiClient.GetLateCustomersAsync(query);
-            ObservableCollection<LateCustomerItem> items = new();
+            List<LateCustomerItem> items = new();
 
             foreach (JsonElement c in result.EnumerateArray())
             {
@@ -160,7 +166,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
                 });
             }
 
-            _allCustomers = items;
+            _allCustomers = items.OrderByDescending(i => i.DaysLate).ToList();
             ApplySearchFilter();
         }
         catch (Exception ex)
@@ -173,48 +179,60 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         }
     }
 
+    private async Task LoadLastSyncAsync()
+    {
+        try
+        {
+            JsonElement status = await _apiClient.GetSyncStatusAsync();
+            if (status.TryGetProperty("last_sync", out JsonElement ls) && ls.ValueKind == JsonValueKind.String)
+            {
+                string? s = ls.GetString();
+                LastSyncDisplay = !string.IsNullOrEmpty(s) ? $"Last Sync: {s}" : "Last Sync: Never";
+            }
+            else
+            {
+                LastSyncDisplay = "Last Sync: Never";
+            }
+        }
+        catch
+        {
+            LastSyncDisplay = "";
+        }
+    }
+
     private void ApplySearchFilter()
     {
-        if (string.IsNullOrWhiteSpace(SearchText))
-        {
-            Customers = new ObservableCollection<LateCustomerItem>(_allCustomers);
-        }
-        else
+        IEnumerable<LateCustomerItem> source = _allCustomers;
+        if (!string.IsNullOrWhiteSpace(SearchText))
         {
             string searchLower = SearchText.ToLowerInvariant();
-            var filtered = _allCustomers.Where(c =>
+            source = source.Where(c =>
                 c.FullName.ToLowerInvariant().Contains(searchLower) ||
                 c.PhoneNumbers.Any(p => p.Contains(searchLower) || LateCustomerItem.FormatPhoneForDisplay(p).Contains(searchLower)) ||
                 c.TicketNo.ToString().Contains(searchLower) ||
                 c.Items.ToLowerInvariant().Contains(searchLower) ||
                 c.CustomerNotes.ToLowerInvariant().Contains(searchLower) ||
                 c.TicketNotes.ToLowerInvariant().Contains(searchLower)
-            ).ToList();
-            Customers = new ObservableCollection<LateCustomerItem>(filtered);
+            );
         }
 
-        UpdateStats();
-    }
+        List<LateCustomerItem> filtered = source.ToList();
+        Customers = new ObservableCollection<LateCustomerItem>(filtered);
 
-    private void UpdateStats()
-    {
-        TotalCount = Customers.Count;
-        CriticalCount = Customers.Count(c => c.RiskScore >= 70);
-        HighCount = Customers.Count(c => c.RiskScore >= 50 && c.RiskScore < 70);
-        MediumCount = Customers.Count(c => c.RiskScore >= 30 && c.RiskScore < 50);
-        LowCount = Customers.Count(c => c.RiskScore < 30);
+        TotalCount = filtered.Count;
+        CriticalCount = filtered.Count(c => c.RiskScore >= 70);
+        HighCount = filtered.Count(c => c.RiskScore >= 50 && c.RiskScore < 70);
+        MediumCount = filtered.Count(c => c.RiskScore >= 30 && c.RiskScore < 50);
+        LowCount = filtered.Count(c => c.RiskScore < 30);
+        TotalAmountDisplay = filtered.Sum(c => c.Amount).ToString("C2");
     }
 
     [RelayCommand]
     private async Task SendSmsAsync(LateCustomerItem? item)
     {
         if (item is null) return;
-        string? phone = ResolvePhoneForSms(item);
-        if (string.IsNullOrEmpty(phone))
-        {
-            SetError("No phone number available for this customer.");
-            return;
-        }
+        string? phone = PickPhone(item, "Send SMS");
+        if (string.IsNullOrEmpty(phone)) return;
         try
         {
             await _apiClient.SendReminderAsync(
@@ -227,33 +245,37 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         }
     }
 
-    private string? ResolvePhoneForSms(LateCustomerItem item)
-    {
-        if (item.PhoneNumbers.Count == 0) return null;
-        if (item.PhoneNumbers.Count == 1) return item.PhoneNumbers[0];
-        var dialog = new PhonePickerDialog(item.PhoneNumbers);
-        if (Application.Current.MainWindow is Window owner)
-            dialog.Owner = owner;
-        return dialog.ShowDialog() == true ? dialog.SelectedPhone : null;
-    }
-
     [RelayCommand]
     private void CallCustomer(LateCustomerItem? item)
     {
+        if (item is null) return;
+        PickPhone(item, "Call");
+    }
+
+    private string? PickPhone(LateCustomerItem item, string action)
+    {
+        if (item.PhoneNumbers.Count == 0)
+        {
+            SetError("No phone number available for this customer.");
+            return null;
+        }
+        if (item.PhoneNumbers.Count == 1) return item.PhoneNumbers[0];
+        PhonePickerDialog dialog = new PhonePickerDialog(item.PhoneNumbers);
+        if (Application.Current.MainWindow is Window owner)
+            dialog.Owner = owner;
+        dialog.Title = $"{action} — Choose Number";
+        return dialog.ShowDialog() == true ? dialog.SelectedPhone : null;
     }
 
     [RelayCommand]
     private void OpenSettings()
     {
-        var owner = Application.Current.MainWindow;
-        var dialog = new LateCustomersSettingsDialog(_queryService);
+        Window? owner = Application.Current.MainWindow;
+        LateCustomersSettingsDialog dialog = new LateCustomersSettingsDialog(_queryService);
         if (owner != null)
             dialog.Owner = owner;
 
         if (dialog.ShowDialog() == true && dialog.SavedQuery != null)
-        {
-            // Reload data with the new query so the UI updates immediately
             _ = LoadCommand.ExecuteAsync(null);
-        }
     }
 }

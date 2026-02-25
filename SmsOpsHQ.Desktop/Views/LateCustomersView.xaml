@@ -2,7 +2,6 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:SmsOpsHQ.Desktop.ViewModels"
-             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              d:DataContext="{d:DesignInstance vm:LateCustomersViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -28,7 +27,6 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
         <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="20,16"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
             <Grid>
@@ -37,8 +35,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                
-                <!-- Left: Title + stats -->
+
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Late Customers" FontSize="20" FontWeight="Bold"
@@ -46,6 +43,11 @@
                         <Border Background="{StaticResource Primary}" CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
                                 VerticalAlignment="Center">
                             <TextBlock Text="{Binding TotalCount}" FontSize="11" FontWeight="Bold"
+                                       Foreground="White"/>
+                        </Border>
+                        <Border Background="#1B5E20" CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding TotalAmountDisplay}" FontSize="11" FontWeight="Bold"
                                        Foreground="White"/>
                         </Border>
                     </StackPanel>
@@ -61,19 +63,17 @@
                                    Foreground="#f9ab00" VerticalAlignment="Center" Margin="0,0,12,0"/>
                         <Ellipse Width="10" Height="10" Fill="#34a853" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <TextBlock Text="{Binding LowCount}" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="#34a853" VerticalAlignment="Center"/>
+                                   Foreground="#34a853" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock Text="{Binding LastSyncDisplay}" FontSize="11" Foreground="{StaticResource TextSecondary}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </StackPanel>
                 </StackPanel>
-                
-                <!-- Middle: Search -->
-                <TextBox Grid.Column="1" 
+
+                <TextBox Grid.Column="1"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          MaxWidth="320" Width="280" Margin="24,0"
-                         VerticalAlignment="Center"
-                         HorizontalAlignment="Center"
-                         Padding="12,8"
-                         VerticalContentAlignment="Center"
-                         FontSize="13">
+                         VerticalAlignment="Center" HorizontalAlignment="Center"
+                         Padding="12,8" VerticalContentAlignment="Center" FontSize="13">
                     <TextBox.Style>
                         <Style TargetType="TextBox">
                             <Setter Property="Template">
@@ -81,8 +81,7 @@
                                     <ControlTemplate TargetType="TextBox">
                                         <Border Background="{StaticResource Surface}"
                                                 BorderBrush="{StaticResource Border}"
-                                                BorderThickness="1"
-                                                CornerRadius="4"
+                                                BorderThickness="1" CornerRadius="4"
                                                 Padding="{TemplateBinding Padding}">
                                             <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
                                         </Border>
@@ -92,19 +91,17 @@
                         </Style>
                     </TextBox.Style>
                 </TextBox>
-                
-                <!-- Right: Settings + Refresh -->
+
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Command="{Binding OpenSettingsCommand}"
                             Style="{StaticResource GhostButton}"
                             Padding="12,6" Margin="0,0,8,0"
-                            ToolTip="Configure SQL Query">
+                            ToolTip="Configure SQL Query &amp; Risk Settings">
                         <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}"
                                    FontSize="14" VerticalAlignment="Center"/>
                     </Button>
                     <Button Command="{Binding LoadCommand}"
-                            Style="{StaticResource GhostButton}"
-                            Padding="12,6">
+                            Style="{StaticResource GhostButton}" Padding="12,6">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
                                        FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"
@@ -120,18 +117,21 @@
             </Grid>
         </Border>
 
-        <!-- Data grid -->
         <Border Grid.Row="1" CornerRadius="6" BorderBrush="{StaticResource Border}"
                 BorderThickness="1" Background="White" Margin="0,14,0,0">
-            <DataGrid ItemsSource="{Binding Customers}" AutoGenerateColumns="False"
+            <DataGrid x:Name="LateGrid"
+                      ItemsSource="{Binding Customers}" AutoGenerateColumns="False"
                       IsReadOnly="True" BorderThickness="0" GridLinesVisibility="None"
                       HeadersVisibility="Column" SelectionMode="Single"
                       Background="White" RowBackground="White" AlternatingRowBackground="#FAFAFA"
                       CanUserResizeColumns="True" CanUserSortColumns="True"
+                      CanUserReorderColumns="True"
                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                      ColumnReordered="OnColumnReordered">
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Days Late" Width="90" MinWidth="70">
+                    <DataGridTemplateColumn Header="Days Late" Width="90" MinWidth="60"
+                                            SortMemberPath="DaysLate" SortDirection="Descending">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Border Background="#FFF5F5" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center">
@@ -152,7 +152,8 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTemplateColumn Header="Risk" Width="80" MinWidth="60">
+                    <DataGridTemplateColumn Header="Risk" Width="80" MinWidth="60"
+                                            SortMemberPath="RiskScore">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Border CornerRadius="12" Padding="8,4" HorizontalAlignment="Center"
@@ -174,7 +175,8 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Amount" Binding="{Binding FormattedAmount}" Width="90" MinWidth="70">
+                    <DataGridTextColumn Header="Amount" Binding="{Binding FormattedAmount}" Width="90" MinWidth="70"
+                                        SortMemberPath="Amount">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="HorizontalAlignment" Value="Right"/>
@@ -230,7 +232,8 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Due Date" Binding="{Binding FormattedDueDate}" Width="95" MinWidth="75">
+                    <DataGridTextColumn Header="Due Date" Binding="{Binding FormattedDueDate}" Width="95" MinWidth="75"
+                                        SortMemberPath="DueDate">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -240,7 +243,7 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTemplateColumn Header="SMS" Width="50" MinWidth="44">
+                    <DataGridTemplateColumn Header="SMS" Width="50" MinWidth="44" CanUserSort="False">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Button Command="{Binding DataContext.SendSmsCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
@@ -253,7 +256,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Call" Width="50" MinWidth="44">
+                    <DataGridTemplateColumn Header="Call" Width="50" MinWidth="44" CanUserSort="False">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Button Command="{Binding DataContext.CallCustomerCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
@@ -267,7 +270,7 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                 </DataGrid.Columns>
-                
+
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
                         <Setter Property="Background" Value="White"/>
@@ -285,7 +288,6 @@
             </DataGrid>
         </Border>
 
-        <!-- Loading overlay -->
         <Border Grid.Row="1" Background="#80F4F5F7"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -294,7 +296,6 @@
             </StackPanel>
         </Border>
 
-        <!-- Error bar -->
         <Border Grid.Row="2" Background="{StaticResource ErrorLight}" Padding="16,10" Margin="0,14,0,0"
                 Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}" FontSize="12"/>

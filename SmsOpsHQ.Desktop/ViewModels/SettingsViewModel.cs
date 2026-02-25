@@ -374,8 +374,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         SyncInProgress = true;
         SyncProgressMessage = "Starting...";
         SyncProgressPercent = 0;
-        DatabaseSuccessMessage = null;
-        DatabaseErrorMessage = null;
+        DatabaseSuccessMessage = string.Empty;
+        DatabaseErrorMessage = string.Empty;
         try
         {
             string? xpdPath = string.IsNullOrWhiteSpace(XpdFilePath) ? null : XpdFilePath.Trim();
@@ -443,12 +443,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
                         if (isError)
                         {
                             DatabaseErrorMessage = string.IsNullOrEmpty(finalMessage) ? "Sync failed." : finalMessage;
-                            DatabaseSuccessMessage = null;
+                            DatabaseSuccessMessage = string.Empty;
                         }
                         else if (finalMessage.StartsWith("Sync completed", StringComparison.OrdinalIgnoreCase))
                         {
                             DatabaseSuccessMessage = finalMessage;
-                            DatabaseErrorMessage = null;
+                            DatabaseErrorMessage = string.Empty;
                         }
                     });
                     return;
