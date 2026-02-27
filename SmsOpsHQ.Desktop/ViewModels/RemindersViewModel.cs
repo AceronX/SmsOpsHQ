@@ -37,13 +37,25 @@ public sealed partial class RemindersViewModel : ViewModelBase
     private ObservableCollection<ReminderListItem> _reminders = new();
 
     [ObservableProperty]
+    private ObservableCollection<ReminderListItem> _filteredReminders = new();
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
     private ReminderListItem? _selectedReminder;
+
+    [ObservableProperty]
+    private ReminderDetailViewModel? _currentReminderDetailViewModel;
+
+    [ObservableProperty]
+    private CustomerPanelViewModel? _customerPanel;
 
     public RemindersViewModel(
         ApiClient apiClient,
         NavigationService navigation,
         AppState appState,
-        XBlueService? xblueService = null)
+        XBlueService? xblueService)
     {
         _apiClient = apiClient;
         _navigation = navigation;
@@ -55,6 +67,32 @@ public sealed partial class RemindersViewModel : ViewModelBase
     {
         if (value is not null)
             OpenReminder(value);
+    }
+
+    partial void OnSearchTextChanged(string value) => RefreshFiltered();
+
+    partial void OnRemindersChanged(ObservableCollection<ReminderListItem> value) => RefreshFiltered();
+
+    private void RefreshFiltered()
+    {
+        FilteredReminders.Clear();
+        string term = (SearchText ?? "").Trim().ToUpperInvariant();
+        foreach (ReminderListItem item in Reminders)
+        {
+            if (string.IsNullOrEmpty(term) || MatchesSearch(item, term))
+                FilteredReminders.Add(item);
+        }
+    }
+
+    private static bool MatchesSearch(ReminderListItem item, string term)
+    {
+        if (item.CustomerName?.ToUpperInvariant().Contains(term) == true) return true;
+        if (item.Phone?.ToUpperInvariant().Contains(term) == true) return true;
+        if (item.Message?.ToUpperInvariant().Contains(term) == true) return true;
+        if (item.ReminderType?.ToUpperInvariant().Contains(term) == true) return true;
+        if (item.DueDate?.ToUpperInvariant().Contains(term) == true) return true;
+        if (item.TransNo.HasValue && item.TransNo.Value.ToString().Contains(term, StringComparison.Ordinal)) return true;
+        return false;
     }
 
     [RelayCommand]
@@ -128,8 +166,14 @@ public sealed partial class RemindersViewModel : ViewModelBase
             item.TransNo,
             item.DueDate,
             item.ReminderType,
-            _xblueService);
-        _navigation.NavigateTo(detailVm);
+            _xblueService,
+            setRightPanel: p => CustomerPanel = p,
+            onCloseRequested: () =>
+            {
+                CurrentReminderDetailViewModel = null;
+                CustomerPanel = null;
+            });
+        CurrentReminderDetailViewModel = detailVm;
     }
 
     private static string GetAvatarLetter(string name, string phone)

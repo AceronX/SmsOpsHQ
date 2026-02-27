@@ -15,13 +15,68 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
+        <!-- Header: title | search customers | Refresh (like Late Customers) -->
         <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="20,16"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Command="{Binding LoadRemindersCommand}"
-                        Style="{StaticResource GhostButton}"
-                        Padding="12,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Text="Reminders" FontSize="20" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                    <Border Background="{StaticResource Primary}" CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Reminders.Count}" FontSize="11" FontWeight="Bold"
+                                   Foreground="White"/>
+                    </Border>
+                </StackPanel>
+                <Grid Grid.Column="1" Margin="24,0" HorizontalAlignment="Center" Width="280">
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                             Padding="36,10,12,10" VerticalContentAlignment="Center"
+                             FontSize="13">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="TextBox">
+                                            <Border Background="{StaticResource Surface}"
+                                                    BorderBrush="{StaticResource Border}"
+                                                    BorderThickness="1" CornerRadius="4"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                    <Border IsHitTestVisible="False" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                            Visibility="{Binding SearchText, Converter={StaticResource EmptyToVisible}}"
+                            Padding="12,0,12,0">
+                        <Grid VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="20" Height="20" Margin="0,0,10,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}"
+                                           FontSize="16" Foreground="{StaticResource TextMuted}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Search customers..."
+                                       FontSize="13" Foreground="{StaticResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Button Grid.Column="2" Command="{Binding LoadRemindersCommand}"
+                        Style="{StaticResource GhostButton}" Padding="12,6" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
                                    FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"
@@ -33,73 +88,105 @@
                         <TextBlock Text="Refresh"/>
                     </StackPanel>
                 </Button>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Reminders" FontSize="18" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding Reminders.Count, StringFormat=' ({0})'}" FontSize="13"
-                               Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"
-                               Margin="4,0,0,0"/>
-                </StackPanel>
-            </DockPanel>
+            </Grid>
         </Border>
 
-        <!-- List -->
-        <ListBox Grid.Row="1" ItemsSource="{Binding Reminders}"
-                 SelectedItem="{Binding SelectedReminder}"
-                 Background="{StaticResource Bg}">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Border Padding="16,12" BorderBrush="{StaticResource Divider}" BorderThickness="0,0,0,1"
-                            Background="{StaticResource Surface}" Cursor="Hand">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+        <!-- Three columns: list | reminder detail | customer panel -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="200"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="340" MinWidth="280"/>
+            </Grid.ColumnDefinitions>
 
-                            <!-- Avatar -->
-                            <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
-                                    Width="44" Height="44" CornerRadius="22"
-                                    Background="{StaticResource Primary}" Margin="0,0,12,0"
-                                    VerticalAlignment="Center">
-                                <TextBlock Text="{Binding AvatarLetter}" FontSize="18" FontWeight="SemiBold"
-                                           Foreground="White" HorizontalAlignment="Center"
+            <!-- Column 0: Reminder list -->
+            <ListBox Grid.Column="0" ItemsSource="{Binding FilteredReminders}"
+                     SelectedItem="{Binding SelectedReminder}"
+                     Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="16,12" BorderBrush="{StaticResource Divider}" BorderThickness="0,0,0,1"
+                                Background="{StaticResource Surface}" Cursor="Hand">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                                        Width="44" Height="44" CornerRadius="22"
+                                        Background="{StaticResource Primary}" Margin="0,0,12,0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding AvatarLetter}" FontSize="18" FontWeight="SemiBold"
+                                               Foreground="White" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CustomerName}"
+                                           FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TimeText}"
+                                           FontSize="11" Foreground="{StaticResource TextMuted}"
                                            VerticalAlignment="Center"/>
-                            </Border>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                           Text="{Binding SubtitleLine}" FontSize="12"
+                                           Foreground="{StaticResource TextSecondary}"
+                                           Margin="0,2,0,0"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
-                            <!-- Row 1: CustomerName + TimeText -->
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CustomerName}"
-                                       FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}"
-                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TimeText}"
-                                       FontSize="11" Foreground="{StaticResource TextMuted}"
-                                       VerticalAlignment="Center"/>
+            <!-- Column 1: Reminder detail or placeholder -->
+            <Grid Grid.Column="1" Background="{StaticResource Bg}">
+                <Border Visibility="{Binding CurrentReminderDetailViewModel, Converter={StaticResource NullToVisible}}"
+                        Background="{StaticResource Surface}" Padding="24">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE8F1;" FontFamily="{StaticResource IconFont}"
+                                   FontSize="28" Foreground="{StaticResource TextMuted}"
+                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock Text="Select a reminder"
+                                   FontSize="13" Foreground="{StaticResource TextSecondary}"
+                                   TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+                <ContentPresenter Content="{Binding CurrentReminderDetailViewModel}"
+                                  Visibility="{Binding CurrentReminderDetailViewModel, Converter={StaticResource NullToCollapsed}}"/>
+            </Grid>
 
-                            <!-- Row 2: Phone · #Ticket or Type -->
-                            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                                       Text="{Binding SubtitleLine}" FontSize="12"
-                                       Foreground="{StaticResource TextSecondary}"
-                                       Margin="0,2,0,0"/>
-                        </Grid>
+            <!-- Column 2: Customer panel or placeholder -->
+            <Border Grid.Column="2" Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Border Visibility="{Binding CustomerPanel, Converter={StaticResource NullToVisible}}"
+                            Background="{StaticResource Surface}" Padding="24">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="28" Foreground="{StaticResource TextMuted}"
+                                       HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="Customer details"
+                                       FontSize="13" Foreground="{StaticResource TextSecondary}"
+                                       TextAlignment="Center"/>
+                        </StackPanel>
                     </Border>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+                    <ContentPresenter Content="{Binding CustomerPanel}"
+                                      Visibility="{Binding CustomerPanel, Converter={StaticResource NullToCollapsed}}"/>
+                </Grid>
+            </Border>
 
-        <!-- Loading overlay -->
-        <Border Grid.Row="1" Background="#80F4F5F7"
-                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Text="Loading..." FontSize="13"
-                           Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center"/>
-            </StackPanel>
-        </Border>
+            <!-- Loading overlay -->
+            <Border Grid.ColumnSpan="3" Background="#80F4F5F7"
+                    Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Loading..." FontSize="13"
+                               Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
 
         <!-- Error bar -->
         <Border Grid.Row="2" Background="{StaticResource ErrorLight}" Padding="16,8"

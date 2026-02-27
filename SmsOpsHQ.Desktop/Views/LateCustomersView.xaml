@@ -69,28 +69,48 @@
                     </StackPanel>
                 </StackPanel>
 
-                <TextBox Grid.Column="1"
-                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         MaxWidth="320" Width="280" Margin="24,0"
-                         VerticalAlignment="Center" HorizontalAlignment="Center"
-                         Padding="12,8" VerticalContentAlignment="Center" FontSize="13">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="TextBox">
-                                        <Border Background="{StaticResource Surface}"
-                                                BorderBrush="{StaticResource Border}"
-                                                BorderThickness="1" CornerRadius="4"
-                                                Padding="{TemplateBinding Padding}">
-                                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
+                <Grid Grid.Column="1" Margin="24,0" HorizontalAlignment="Center" Width="280">
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                             Padding="36,10,12,10" VerticalContentAlignment="Center"
+                             FontSize="13">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="TextBox">
+                                            <Border Background="{StaticResource Surface}"
+                                                    BorderBrush="{StaticResource Border}"
+                                                    BorderThickness="1" CornerRadius="4"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                    <Border IsHitTestVisible="False" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                            Visibility="{Binding SearchText, Converter={StaticResource EmptyToVisible}}"
+                            Padding="12,0,12,0">
+                        <Grid VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="20" Height="20" Margin="0,0,10,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}"
+                                           FontSize="16" Foreground="{StaticResource TextMuted}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Search customers..."
+                                       FontSize="13" Foreground="{StaticResource TextMuted}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Command="{Binding OpenSettingsCommand}"

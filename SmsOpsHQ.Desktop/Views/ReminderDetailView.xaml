@@ -9,89 +9,88 @@
              Loaded="OnLoaded">
 
     <Grid Background="{StaticResource Bg}">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-
-        <!-- Left: Back + reminder card -->
-        <Grid Grid.Column="0">
+        <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Header with Back -->
-            <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,12"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                <DockPanel>
-                    <Button DockPanel.Dock="Left" Command="{Binding GoBackCommand}"
-                            Style="{StaticResource GhostButton}"
-                            Padding="8,6" Margin="0,0,12,0" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE72B;" FontFamily="{StaticResource IconFont}"
-                                       FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <TextBlock Text="Back to Reminders" FontSize="13" FontWeight="Medium"
-                                       Foreground="{StaticResource Primary}"/>
-                        </StackPanel>
-                    </Button>
-                </DockPanel>
-            </Border>
+            <!-- Reminder content: message + details (comfortable, easy to read) -->
+            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                          Background="{StaticResource Bg}" Padding="24,20">
+                <StackPanel>
+                    <!-- Section: Message -->
+                    <TextBlock Text="Message" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,12"/>
+                    <Border Background="{StaticResource Surface}" CornerRadius="8"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            Padding="20,18" Margin="0,0,0,24">
+                        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="15"
+                                   Foreground="{StaticResource TextPrimary}" LineHeight="24"
+                                   FontWeight="Normal"/>
+                    </Border>
 
-            <!-- Reminder message card -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                          Background="{StaticResource Bg}" Padding="20,16">
-                <Border Background="{StaticResource Surface}" CornerRadius="8"
-                        BorderBrush="{StaticResource Border}" BorderThickness="1"
-                        Padding="20,16">
-                    <StackPanel>
-                        <TextBlock Text="Reminder sent" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
-                        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="14"
-                                   Foreground="{StaticResource TextPrimary}" LineHeight="22"
-                                   Margin="0,0,0,12"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <TextBlock Text="{Binding SentAtText}" FontSize="12"
-                                       Foreground="{StaticResource TextSecondary}"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Visibility="{Binding TransNo, Converter={StaticResource NullToCollapsed}}">
-                            <TextBlock Text="Ticket #: " FontSize="12"
-                                       Foreground="{StaticResource TextMuted}"/>
-                            <TextBlock Text="{Binding TransNo}" FontSize="12"
-                                       Foreground="{StaticResource TextPrimary}"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
-                                    Visibility="{Binding DueDate, Converter={StaticResource StringToVisibility}}">
-                            <TextBlock Text="Due: " FontSize="12"
-                                       Foreground="{StaticResource TextMuted}"/>
-                            <TextBlock Text="{Binding DueDate}" FontSize="12"
-                                       Foreground="{StaticResource TextPrimary}"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
-                                    Visibility="{Binding ReminderType, Converter={StaticResource StringToVisibility}}">
-                            <TextBlock Text="Type: " FontSize="12"
-                                       Foreground="{StaticResource TextMuted}"/>
-                            <TextBlock Text="{Binding ReminderType}" FontSize="12"
-                                       Foreground="{StaticResource TextPrimary}"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+                    <!-- Section: Details -->
+                    <TextBlock Text="Details" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,12"/>
+                    <Border Background="{StaticResource Surface}" CornerRadius="8"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            Padding="20,16">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Sent -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Sent"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"
+                                       Margin="0,0,0,14" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SentAtText}"
+                                       FontSize="14" Foreground="{StaticResource TextPrimary}"
+                                       Margin="0,0,0,14" VerticalAlignment="Center"/>
+                            <!-- Ticket -->
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Ticket #"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"
+                                       Visibility="{Binding TransNo, Converter={StaticResource NullToCollapsed}}"
+                                       Margin="0,0,0,14" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TransNo}"
+                                       FontSize="14" Foreground="{StaticResource TextPrimary}"
+                                       Visibility="{Binding TransNo, Converter={StaticResource NullToCollapsed}}"
+                                       Margin="0,0,0,14" VerticalAlignment="Center"/>
+                            <!-- Due -->
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Due date"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"
+                                       Visibility="{Binding DueDate, Converter={StaticResource StringToVisibility}}"
+                                       Margin="0,0,0,14" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DueDate}"
+                                       FontSize="14" Foreground="{StaticResource TextPrimary}"
+                                       Visibility="{Binding DueDate, Converter={StaticResource StringToVisibility}}"
+                                       Margin="0,0,0,14" VerticalAlignment="Center"/>
+                            <!-- Type -->
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Type"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"
+                                       Visibility="{Binding ReminderType, Converter={StaticResource StringToVisibility}}"
+                                       Margin="0,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ReminderType}"
+                                       FontSize="14" Foreground="{StaticResource TextPrimary}"
+                                       Visibility="{Binding ReminderType, Converter={StaticResource StringToVisibility}}"
+                                       Margin="0,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </ScrollViewer>
 
             <!-- Error -->
-            <Border Grid.Row="2" Background="{StaticResource ErrorLight}" Padding="16,7"
+            <Border Grid.Row="1" Background="{StaticResource ErrorLight}" Padding="16,7"
                     Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}" FontSize="12"/>
             </Border>
         </Grid>
-
-        <!-- Right: Customer context panel -->
-        <Border Grid.Column="1" Width="320"
-                BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
-                Background="{StaticResource Bg}"
-                Visibility="{Binding CustomerPanel, Converter={StaticResource NullToCollapsed}}">
-            <ContentPresenter Content="{Binding CustomerPanel}"/>
-        </Border>
     </Grid>
 </UserControl>

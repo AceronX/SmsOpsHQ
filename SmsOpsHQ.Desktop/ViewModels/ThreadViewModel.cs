@@ -30,6 +30,8 @@ public sealed partial class ThreadViewModel : ViewModelBase
     private readonly NavigationService _navigation;
     private readonly SignalRClient _signalRClient;
     private readonly XBlueService? _xblueService;
+    private readonly Action<CustomerPanelViewModel?>? _setRightPanel;
+    private readonly Action? _onCloseRequested;
 
     [ObservableProperty]
     private int _threadId;
@@ -68,13 +70,17 @@ public sealed partial class ThreadViewModel : ViewModelBase
         ApiClient apiClient, AppState appState,
         NavigationService navigation, SignalRClient signalRClient,
         int threadId, string customerName,
-        XBlueService? xblueService = null)
+        XBlueService? xblueService = null,
+        Action<CustomerPanelViewModel?>? setRightPanel = null,
+        Action? onCloseRequested = null)
     {
         _apiClient = apiClient;
         _appState = appState;
         _navigation = navigation;
         _signalRClient = signalRClient;
         _xblueService = xblueService;
+        _setRightPanel = setRightPanel;
+        _onCloseRequested = onCloseRequested;
         ThreadId = threadId;
         CustomerName = customerName;
 
@@ -216,7 +222,6 @@ public sealed partial class ThreadViewModel : ViewModelBase
             Messages = newMessages;
             MessagesLoaded?.Invoke();
 
-            // Load customer panel if we have a customer ID.
             if (CustomerId.HasValue && (CustomerPanel is null || CustomerPanel.CustomerId != CustomerId.Value))
             {
                 CustomerPanelViewModel panel = new(_apiClient, _xblueService)
@@ -226,6 +231,7 @@ public sealed partial class ThreadViewModel : ViewModelBase
                     CustomerPhone = CustomerPhone
                 };
                 CustomerPanel = panel;
+                _setRightPanel?.Invoke(panel);
                 await panel.LoadContextCommand.ExecuteAsync(null);
             }
 
@@ -309,6 +315,9 @@ public sealed partial class ThreadViewModel : ViewModelBase
     private void GoBack()
     {
         _signalRClient.MessageReceived -= OnSignalRMessageReceived;
-        _navigation.NavigateTo<InboxViewModel>();
+        if (_onCloseRequested is not null)
+            _onCloseRequested();
+        else
+            _navigation.NavigateTo<InboxViewModel>();
     }
 }

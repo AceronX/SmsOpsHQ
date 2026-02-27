@@ -15,13 +15,7 @@
     </UserControl.Resources>
 
     <Grid Background="{StaticResource Bg}">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-
-        <!-- Left: Conversation -->
-        <Grid Grid.Column="0">
+        <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -29,13 +23,17 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Header -->
-            <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,12"
+            <!-- Header: Back + customer -->
+            <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,14"
                     BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                <DockPanel>
-                    <Button DockPanel.Dock="Left" Command="{Binding GoBackCommand}"
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Command="{Binding GoBackCommand}"
                             Style="{StaticResource GhostButton}"
-                            Padding="8,6" Margin="0,0,12,0" VerticalAlignment="Center">
+                            Padding="8,6" Margin="0,0,16,0" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE72B;" FontFamily="{StaticResource IconFont}"
                                        FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
@@ -43,33 +41,36 @@
                                        Foreground="{StaticResource Primary}"/>
                         </StackPanel>
                     </Button>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="{Binding CustomerName}" FontSize="15" FontWeight="Bold"
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding CustomerName}" FontSize="16" FontWeight="Bold"
                                    Foreground="{StaticResource TextPrimary}"/>
-                        <TextBlock Text="{Binding CustomerPhone}" FontSize="11.5"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,1,0,0"/>
+                        <TextBlock Text="{Binding CustomerPhone}" FontSize="12"
+                                   Foreground="{StaticResource TextMuted}" Margin="0,2,0,0"/>
                     </StackPanel>
-                </DockPanel>
+                </Grid>
             </Border>
 
             <!-- Messages -->
             <ScrollViewer Grid.Row="1" x:Name="MessageScroller"
                           VerticalScrollBarVisibility="Auto"
-                          Background="{StaticResource Bg}" Padding="20,12">
+                          Background="#F0F2F5" Padding="28,20">
                 <ItemsControl ItemsSource="{Binding Messages}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,3">
+                            <Grid Margin="0,8">
                                 <Border HorizontalAlignment="{Binding Direction, Converter={StaticResource DirToAlign}}"
                                         Background="{Binding Direction, Converter={StaticResource DirToBubbleColor}}"
-                                        CornerRadius="14" Padding="14,9" MaxWidth="480">
+                                        CornerRadius="18" Padding="18,14" MaxWidth="420"
+                                        BorderThickness="0">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.06"/>
+                                    </Border.Effect>
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13.5"
+                                        <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="14.5"
                                                    Foreground="{Binding Direction, Converter={StaticResource DirToTextColor}}"
-                                                   LineHeight="20"/>
-                                        <!-- Media link -->
-                                        <TextBlock Text="View attachment" FontSize="11"
-                                                   Cursor="Hand" Margin="0,5,0,0"
+                                                   LineHeight="24"/>
+                                        <TextBlock Text="View attachment" FontSize="12"
+                                                   Cursor="Hand" Margin="0,8,0,0"
                                                    TextDecorations="Underline"
                                                    Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
                                                    MouseLeftButtonDown="MediaLink_Click">
@@ -78,26 +79,20 @@
                                                     <Setter Property="Foreground" Value="{StaticResource Primary}"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Direction}" Value="Outbound">
-                                                            <Setter Property="Foreground" Value="#C7DBFF"/>
+                                                            <Setter Property="Foreground" Value="#BFDBFE"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <!-- Timestamp + status -->
-                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                            <TextBlock Text="{Binding CreatedAt}" FontSize="10"
-                                                       Opacity="0.6">
-                                                <TextBlock.Foreground>
-                                                    <Binding Path="Direction" Converter="{StaticResource DirToTextColor}"/>
-                                                </TextBlock.Foreground>
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding Status}" FontSize="10"
-                                                       Opacity="0.6" Margin="8,0,0,0">
-                                                <TextBlock.Foreground>
-                                                    <Binding Path="Direction" Converter="{StaticResource DirToTextColor}"/>
-                                                </TextBlock.Foreground>
-                                            </TextBlock>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <TextBlock Text="{Binding CreatedAt}" FontSize="11"
+                                                       Foreground="{Binding Direction, Converter={StaticResource DirToTextColor}}"
+                                                       Opacity="0.85"/>
+                                            <TextBlock Text="{Binding Status}" FontSize="11"
+                                                       Margin="10,0,0,0"
+                                                       Foreground="{Binding Direction, Converter={StaticResource DirToTextColor}}"
+                                                       Opacity="0.7"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
@@ -108,35 +103,42 @@
             </ScrollViewer>
 
             <!-- Compose bar -->
-            <Border Grid.Row="2" Background="{StaticResource Surface}" Padding="16,10"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+            <Border Grid.Row="2" Background="{StaticResource Surface}" Padding="24,16"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,2,0,0">
                 <StackPanel>
-                    <!-- Quick reply selector -->
-                    <DockPanel Margin="0,0,0,8"
+                    <DockPanel Margin="0,0,0,12"
                                Visibility="{Binding QuickTemplates.Count, Converter={StaticResource CountToVisibility}}">
-                        <TextBlock DockPanel.Dock="Left" Text="Template:" FontSize="11.5"
+                        <TextBlock DockPanel.Dock="Left" Text="Quick reply:" FontSize="12"
                                    Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"
-                                   Margin="0,0,8,0"/>
+                                   Margin="0,0,10,0"/>
                         <ComboBox ItemsSource="{Binding QuickTemplates}"
                                   SelectedItem="{Binding SelectedQuickTemplate}"
-                                  DisplayMemberPath="Name" FontSize="12" Padding="6,4"/>
+                                  DisplayMemberPath="Name" FontSize="12" Padding="10,6"
+                                  MinWidth="160"/>
                     </DockPanel>
-
-                    <!-- Input + Send -->
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Command="{Binding SendMessageCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                Padding="14,8" Margin="8,0,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Send" FontSize="13" VerticalAlignment="Center"/>
-                                <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}"
-                                           FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                            </StackPanel>
-                        </Button>
-                        <TextBox Text="{Binding ComposeText, UpdateSourceTrigger=PropertyChanged}"
-                                 AcceptsReturn="False" VerticalContentAlignment="Center"
-                                 KeyDown="ComposeBox_KeyDown"/>
-                    </DockPanel>
+                    <Border Background="#F3F4F6" CornerRadius="24" Padding="4,4"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding ComposeText, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="False" VerticalContentAlignment="Center"
+                                     KeyDown="ComposeBox_KeyDown"
+                                     Padding="20,12" FontSize="14" BorderThickness="0" Background="Transparent"/>
+                            <Button Grid.Column="1" Command="{Binding SendMessageCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Padding="20,10" Margin="6,0,0,0"
+                                    VerticalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Send" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </Border>
 
@@ -146,13 +148,5 @@
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}" FontSize="12"/>
             </Border>
         </Grid>
-
-        <!-- Right: Customer panel -->
-        <Border Grid.Column="1" Width="320"
-                BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
-                Background="{StaticResource Bg}"
-                Visibility="{Binding CustomerPanel, Converter={StaticResource NullToCollapsed}}">
-            <ContentPresenter Content="{Binding CustomerPanel}"/>
-        </Border>
     </Grid>
 </UserControl>

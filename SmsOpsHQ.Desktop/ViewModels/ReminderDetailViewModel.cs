@@ -12,6 +12,8 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
     private readonly AppState _appState;
     private readonly NavigationService _navigation;
     private readonly XBlueService? _xblueService;
+    private readonly Action<CustomerPanelViewModel?>? _setRightPanel;
+    private readonly Action? _onCloseRequested;
 
     [ObservableProperty]
     private int _reminderId;
@@ -55,12 +57,16 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
         int? transNo,
         string? dueDate,
         string reminderType,
-        XBlueService? xblueService = null)
+        XBlueService? xblueService = null,
+        Action<CustomerPanelViewModel?>? setRightPanel = null,
+        Action? onCloseRequested = null)
     {
         _apiClient = apiClient;
         _appState = appState;
         _navigation = navigation;
         _xblueService = xblueService;
+        _setRightPanel = setRightPanel;
+        _onCloseRequested = onCloseRequested;
         ReminderId = reminderId;
         Phone = phone;
         CustomerName = customerName;
@@ -75,7 +81,10 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
     [RelayCommand]
     private void GoBack()
     {
-        _navigation.NavigateTo<RemindersViewModel>();
+        if (_onCloseRequested is not null)
+            _onCloseRequested();
+        else
+            _navigation.NavigateTo<RemindersViewModel>();
     }
 
     [RelayCommand]
@@ -84,6 +93,7 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(Phone))
         {
             CustomerPanel = null;
+            _setRightPanel?.Invoke(null);
             return;
         }
 
@@ -102,6 +112,7 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
                 minimal.CustomerPhone = Phone;
                 minimal.CustomerAddress = "Customer not found by phone.";
                 CustomerPanel = minimal;
+                _setRightPanel?.Invoke(minimal);
                 return;
             }
 
@@ -115,12 +126,13 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
             {
                 panel.CustomerId = appCustomerId.Value;
                 CustomerPanel = panel;
-                // LoadContextCommand will run when CustomerPanelView loads
+                _setRightPanel?.Invoke(panel);
             }
             else
             {
                 panel.PopulateFromByPhoneResponse(response);
                 CustomerPanel = panel;
+                _setRightPanel?.Invoke(panel);
             }
         }
         catch (Exception ex)
@@ -131,6 +143,7 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
             fallback.CustomerPhone = Phone;
             fallback.CustomerAddress = "Could not load context.";
             CustomerPanel = fallback;
+            _setRightPanel?.Invoke(fallback);
         }
         finally
         {

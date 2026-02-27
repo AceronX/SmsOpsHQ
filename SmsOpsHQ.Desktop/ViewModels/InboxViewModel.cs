@@ -48,7 +48,13 @@ public sealed partial class InboxViewModel : ViewModelBase
     [ObservableProperty]
     private int _totalThreads;
 
-    public InboxViewModel(ApiClient apiClient, AppState appState, NavigationService navigation, SignalRClient signalRClient, XBlueService? xblueService = null)
+    [ObservableProperty]
+    private ThreadViewModel? _currentThreadViewModel;
+
+    [ObservableProperty]
+    private CustomerPanelViewModel? _customerPanel;
+
+    public InboxViewModel(ApiClient apiClient, AppState appState, NavigationService navigation, SignalRClient signalRClient, XBlueService? xblueService)
     {
         _apiClient = apiClient;
         _appState = appState;
@@ -154,10 +160,18 @@ public sealed partial class InboxViewModel : ViewModelBase
 
     private void OpenThread(InboxThreadItem item)
     {
-        ThreadViewModel threadVm = new(_apiClient, _appState, _navigation, _signalRClient, item.ThreadId, item.CustomerName, _xblueService);
+        ThreadViewModel threadVm = new(
+            _apiClient, _appState, _navigation, _signalRClient,
+            item.ThreadId, item.CustomerName, _xblueService,
+            setRightPanel: p => CustomerPanel = p,
+            onCloseRequested: () =>
+            {
+                CurrentThreadViewModel = null;
+                CustomerPanel = null;
+            });
         if (item.CustomerId.HasValue)
             threadVm.CustomerId = item.CustomerId;
-        _navigation.NavigateTo(threadVm);
+        CurrentThreadViewModel = threadVm;
     }
 
     /// <summary>Today: "h:mm tt"; this week: "ddd h:mm tt"; older: "MM/dd h:mm tt".</summary>

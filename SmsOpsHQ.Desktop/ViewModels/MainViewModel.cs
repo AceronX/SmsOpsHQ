@@ -32,7 +32,6 @@ public sealed partial class MainViewModel : ViewModelBase
         _signalRClient = signalRClient;
         _onLogout = onLogout;
 
-        // Bind navigation CurrentView changes to our CurrentView.
         _navigation.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(NavigationService.CurrentView))
@@ -40,11 +39,14 @@ public sealed partial class MainViewModel : ViewModelBase
         };
     }
 
-    // Navigate to the specified section.
     [RelayCommand]
     private void Navigate(string section)
     {
         SelectedNavItem = section;
+        if (section == "Inbox" && _navigation.CurrentView is InboxViewModel)
+            return;
+        if (section == "Reminders" && _navigation.CurrentView is RemindersViewModel)
+            return;
         switch (section)
         {
             case "Inbox":

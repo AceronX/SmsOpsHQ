@@ -257,7 +257,7 @@
         </Border>
 
         <!-- ════════════════════════════════════════════════════════ -->
-        <!--  MAIN CONTENT                                           -->
+        <!--  MAIN CONTENT                                             -->
         <!-- ════════════════════════════════════════════════════════ -->
         <ContentPresenter Grid.Column="1" Content="{Binding CurrentView}"/>
     </Grid>

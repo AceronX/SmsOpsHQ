@@ -16,6 +16,8 @@
             <conv:InvertBoolConverter x:Key="InvertBool"/>
             <conv:BusyToButtonTextConverter x:Key="BusyToButtonText"/>
             <conv:NullToCollapsedConverter x:Key="NullToCollapsed"/>
+            <conv:NullToVisibleConverter x:Key="NullToVisible"/>
+            <conv:EmptyToVisibleConverter x:Key="EmptyToVisible"/>
             <conv:HexToBrushConverter x:Key="HexToBrushConverter"/>
 
             <!-- ============================================================ -->
