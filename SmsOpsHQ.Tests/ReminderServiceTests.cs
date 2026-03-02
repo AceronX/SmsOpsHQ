@@ -384,7 +384,7 @@ public class ReminderServiceTests : IDisposable
             if (tn is null) return null;
             StoreEntity? se = await _db.Stores.FirstOrDefaultAsync(s => s.StoreId == tn.StoreId, ct);
             if (se is null) return null;
-            return new Store { StoreId = se.StoreId, StoreName = se.StoreName, Phone = se.Phone };
+            return new Store { StoreId = se.StoreId, StoreName = se.StoreName };
         }
 
         public async Task<string?> GetDefaultNumberAsync(int storeId, CancellationToken ct = default)
@@ -398,5 +398,11 @@ public class ReminderServiceTests : IDisposable
 
         public Task<Store?> GetByIdAsync(int storeId, CancellationToken ct = default)
             => Task.FromResult<Store?>(null);
+
+        public Task<List<Store>> GetAllAsync(CancellationToken ct = default)
+            => Task.FromResult(new List<Store>());
+
+        public Task<Store> CreateAsync(string storeName, CancellationToken ct = default)
+            => Task.FromResult(new Store { StoreId = 0, StoreName = storeName });
     }
 }

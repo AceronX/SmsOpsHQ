@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SmsOpsHQ.Core.DTOs;
@@ -20,6 +21,7 @@ public sealed class XpdSyncService : IXpdSyncService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<XpdSyncService> _logger;
+    private readonly IMemoryCache _cache;
 
     private readonly string _xpdPath;
     private readonly string _mdwPath;
@@ -36,6 +38,7 @@ public sealed class XpdSyncService : IXpdSyncService
     private Dictionary<string, object> _lastSyncStats = new();
     private volatile bool _syncInProgress;
     private string? _lastError;
+    private const string IdentityNegativeCachePrefix = "identity_neg:";
 
     private readonly object _progressLock = new();
     private SyncProgress _currentProgress = new()
@@ -62,9 +65,11 @@ public sealed class XpdSyncService : IXpdSyncService
     public XpdSyncService(
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
+        IMemoryCache cache,
         ILogger<XpdSyncService> logger)
     {
         _scopeFactory = scopeFactory;
+        _cache = cache;
         _logger = logger;
 
         IConfigurationSection xpdSection = configuration.GetSection("Xpd");
@@ -387,6 +392,7 @@ public sealed class XpdSyncService : IXpdSyncService
         return (customers, tickets, items, payments);
     }
 
+    // Rebuild CustomerPhones from ResPhone, BusPhone, and any numbers parsed from Notes so lookup by phone finds the customer.
     private async Task<int> RebuildPhoneIndexAsync(SqliteConnection conn, AppDbContext db, CancellationToken cancellationToken)
     {
         List<CustomerEntity> customers = await db.Customers
@@ -395,13 +401,25 @@ public sealed class XpdSyncService : IXpdSyncService
             .Select(c => new CustomerEntity { CustomerKey = c.CustomerKey, ResPhone = c.ResPhone, BusPhone = c.BusPhone, Notes = c.Notes })
             .ToListAsync(cancellationToken);
 
+        List<TicketEntity> tickets = await db.Tickets
+            .AsNoTracking()
+            .Where(t => !string.IsNullOrWhiteSpace(t.Notes))
+            .Select(t => new TicketEntity { CustomerKey = t.CustomerKey, Notes = t.Notes })
+            .ToListAsync(cancellationToken);
+
+        var ticketNotesByCustomer = tickets
+            .GroupBy(t => t.CustomerKey)
+            .ToDictionary(g => g.Key, g => g.Select(t => t.Notes).Where(n => !string.IsNullOrWhiteSpace(n)).Cast<string>().ToList());
+
+        HashSet<string> insertedNormalizedPhones = new(StringComparer.Ordinal);
         return await ExecuteInTransactionAsync(conn, async (txn, ct) =>
         {
             await ClearPhoneIndexAsync(conn, txn, ct);
-            return await InsertPhoneIndexEntriesAsync(conn, txn, customers, ct);
+            return await InsertPhoneIndexEntriesAsync(conn, txn, customers, ticketNotesByCustomer, insertedNormalizedPhones, ct);
         }, cancellationToken);
     }
 
+    // Empty the CustomerPhones table before repopulating so we have a clean index.
     private async Task ClearPhoneIndexAsync(SqliteConnection conn, SqliteTransaction txn, CancellationToken cancellationToken)
     {
         using SqliteCommand delCmd = conn.CreateCommand();
@@ -410,10 +428,13 @@ public sealed class XpdSyncService : IXpdSyncService
         await delCmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    // For each customer insert one row per phone: ResPhone, BusPhone (if different), and each number found in Notes.
     private async Task<int> InsertPhoneIndexEntriesAsync(
         SqliteConnection conn,
         SqliteTransaction txn,
         List<CustomerEntity> customers,
+        Dictionary<int, List<string>> ticketNotesByCustomer,
+        HashSet<string> insertedNormalizedPhones,
         CancellationToken cancellationToken)
     {
         using SqliteCommand cmd = conn.CreateCommand();
@@ -434,16 +455,27 @@ public sealed class XpdSyncService : IXpdSyncService
             CustomerEntity c = customers[i];
             int customerKey = c.CustomerKey!.Value;
 
-            count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.ResPhone, "ResPhone", cancellationToken);
+            count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.ResPhone, "ResPhone", insertedNormalizedPhones, cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(c.BusPhone) && c.BusPhone != c.ResPhone)
             {
-                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.BusPhone, "BusPhone", cancellationToken);
+                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.BusPhone, "BusPhone", insertedNormalizedPhones, cancellationToken);
             }
 
             foreach (string notePhone in PhoneUtils.ExtractPhonesFromText(c.Notes))
             {
-                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, notePhone, "Notes", cancellationToken);
+                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, notePhone, "Notes", insertedNormalizedPhones, cancellationToken);
+            }
+
+            if (ticketNotesByCustomer.TryGetValue(customerKey, out List<string>? ticketNotes))
+            {
+                foreach (string ticketNote in ticketNotes)
+                {
+                    foreach (string notePhone in PhoneUtils.ExtractPhonesFromText(ticketNote))
+                    {
+                        count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, notePhone, "TicketNotes", insertedNormalizedPhones, cancellationToken);
+                    }
+                }
             }
 
             int done = i + 1;
@@ -453,9 +485,15 @@ public sealed class XpdSyncService : IXpdSyncService
             }
         }
 
+        foreach (string normalizedPhone in insertedNormalizedPhones)
+        {
+            _cache.Remove(IdentityNegativeCachePrefix + normalizedPhone);
+        }
+
         return count;
     }
 
+    // Insert one CustomerPhones row for the given phone after normalizing to last 10 digits; skip if invalid.
     private static async Task<int> ProcessPhoneAsync(
         SqliteCommand cmd,
         SqliteParameter pCustKey,
@@ -465,6 +503,7 @@ public sealed class XpdSyncService : IXpdSyncService
         int customerKey,
         string? phone,
         string phoneType,
+        HashSet<string> insertedNormalizedPhones,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(phone))
@@ -478,11 +517,13 @@ public sealed class XpdSyncService : IXpdSyncService
         pPhoneNorm.Value = norm;
         pPhoneOrig.Value = (object?)phone ?? DBNull.Value;
         pPhoneType.Value = phoneType;
-        await cmd.ExecuteNonQueryAsync(cancellationToken);
-        return 1;
+        int affected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+        if (affected > 0)
+            _ = insertedNormalizedPhones.Add(norm);
+        return affected;
     }
 
-    // ── Count Helpers ─────────────────────────────────────────────────
+    // Helpers for counting rows in allowed tables (used by test endpoint).
 
     private async Task<Dictionary<string, int>> GetCountsFromDbAsync(AppDbContext db, CancellationToken cancellationToken)
     {

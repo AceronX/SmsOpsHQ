@@ -5,53 +5,60 @@
              d:DataContext="{d:DesignInstance vm:CustomerPanelViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" Width="320"
-             Loaded="OnLoaded">
+             mc:Ignorable="d" Width="340">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{StaticResource Bg}">
-        <StackPanel Margin="20,20,20,24">
+        <StackPanel Margin="16,20,16,24">
+            <!-- Customer name from XPD (or "Not in XPD" when not found). -->
+            <TextBlock Text="{Binding CustomerName}" FontSize="18" FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"
+                       Margin="0,0,0,10"/>
 
-            <!-- Customer card -->
-            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="16,14"
-                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,16">
+            <!-- Warning banner shown only when customer has a warning. -->
+            <Border Background="#FEF2F2" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
+                    Visibility="{Binding WarningText, Converter={StaticResource StringToVisibility}}">
+                <TextBlock Text="{Binding WarningText}" Foreground="{StaticResource Error}"
+                           FontSize="12" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Address, phone, ID, and customer-since from XPD; click-to-call when VoIP is configured. -->
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="12,10"
+                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,12">
                 <StackPanel>
-                    <TextBlock Text="{Binding CustomerName}" FontSize="17" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                        <TextBlock Text="{Binding CustomerPhone}" FontSize="13"
-                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding AddressLine}" FontSize="12"
+                               Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding CityStateZip}" FontSize="12"
+                               Foreground="{StaticResource TextPrimary}" Margin="0,1,0,0"
+                               Visibility="{Binding CityStateZip, Converter={StaticResource StringToVisibility}}"/>
+                    <TextBlock FontSize="12" Foreground="{StaticResource Primary}" Margin="0,4,0,0">
+                        <Run Text="&#x260E; "/><Run Text="{Binding PhoneDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
+                                Visibility="{Binding CustomerPhone, Converter={StaticResource StringToVisibility}}">
                         <Button Command="{Binding ClickToCallCommand}"
-                                Style="{StaticResource SuccessButton}"
-                                Padding="10,4" Margin="10,0,0,0" FontSize="12" VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE717;" FontFamily="{StaticResource IconFont}"
-                                           FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBlock Text="Call"/>
-                            </StackPanel>
+                                Style="{StaticResource GhostButton}" Padding="6,3" FontSize="11">
+                            <TextBlock Text="Click to Call" Foreground="{StaticResource Primary}" FontSize="11"/>
                         </Button>
+                        <TextBlock Text="{Binding CallStatus}" FontSize="11"
+                                   Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Visibility="{Binding CallStatus, Converter={StaticResource StringToVisibility}}"/>
                     </StackPanel>
-                    <TextBlock Text="{Binding CallStatus}" FontSize="11"
-                               Foreground="{StaticResource Primary}" Margin="0,0,0,4"
-                               Visibility="{Binding CallStatus, Converter={StaticResource StringToVisibility}}"/>
-                    <TextBlock Text="{Binding CustomerAddress}" FontSize="12"
-                               Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"/>
-                    <Border Background="{Binding RiskColor, Converter={StaticResource HexToBrushConverter}}" CornerRadius="6" Padding="10,5"
-                            HorizontalAlignment="Left" Margin="0,10,0,0">
-                        <TextBlock Text="{Binding RiskLevel}" Foreground="White" FontSize="12"
-                                   FontWeight="Bold"/>
-                    </Border>
+                    <TextBlock Text="{Binding IdInfo}" FontSize="10"
+                               Foreground="{StaticResource TextMuted}" Margin="0,4,0,0"
+                               Visibility="{Binding IdInfo, Converter={StaticResource StringToVisibility}}"/>
+                    <TextBlock Text="{Binding SinceDate}" FontSize="10"
+                               Foreground="{StaticResource TextMuted}" Margin="0,2,0,0"
+                               Visibility="{Binding SinceDate, Converter={StaticResource StringToVisibility}}"/>
                 </StackPanel>
             </Border>
 
-            <!-- Summary -->
-            <TextBlock Text="SUMMARY" FontSize="10" FontWeight="SemiBold"
-                       Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
-            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="16"
-                    Margin="0,0,0,20"
-                    BorderBrush="{StaticResource Border}" BorderThickness="1">
+            <!-- Active, late, and all-time ticket counts; border highlights yellow for first-time customers. -->
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14"
+                    BorderBrush="{Binding StatsBorderColor, Converter={StaticResource HexToBrushConverter}}"
+                    BorderThickness="1" Margin="0,0,0,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition/>
@@ -59,86 +66,197 @@
                         <RowDefinition/>
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,10">
-                        <TextBlock Text="ACTIVE" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding ActiveCount}" FontSize="20" FontWeight="Bold"
-                                   Foreground="{StaticResource TextPrimary}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
-                        <TextBlock Text="LATE" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding LateCount}" FontSize="20" FontWeight="Bold"
-                                   Foreground="{StaticResource Error}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,10">
-                        <TextBlock Text="PFX" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding PfxCount}" FontSize="20" FontWeight="Bold"
-                                   Foreground="{StaticResource Warning}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
-                        <TextBlock Text="BALANCE" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding TotalBalance, StringFormat='${0:N2}'}" FontSize="20"
-                                   FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="2" Grid.Column="0">
-                        <TextBlock Text="LATE RATE" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding LateRate, StringFormat='{}{0:N1}%'}" FontSize="14"
-                                   FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="2" Grid.Column="1">
-                        <TextBlock Text="ALL TIME" FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding AllTimeCount}" FontSize="14"
-                                   FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
-                    </StackPanel>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Active Tickets" FontSize="13"
+                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ActiveCount}" FontSize="14"
+                               FontWeight="Bold" Foreground="{StaticResource TextPrimary}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Late Tickets" FontSize="13"
+                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
+                               Margin="0,8,0,0"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LateCount}" FontSize="14"
+                               FontWeight="Bold" Foreground="{StaticResource Error}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8,0,0"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="All-Time Tickets" FontSize="13"
+                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
+                               Margin="0,8,0,0"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AllTimeCount}" FontSize="14"
+                               FontWeight="Bold" Foreground="{StaticResource TextPrimary}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8,0,0"/>
                 </Grid>
             </Border>
 
-            <!-- Active tickets -->
+            <!-- Risk level, CPU closures, and PFX/ever-late summary. -->
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14"
+                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="CUSTOMER QUALITY" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+                    <Border Background="{Binding RiskColor, Converter={StaticResource HexToBrushConverter}}"
+                            CornerRadius="6" Padding="10,5" HorizontalAlignment="Left" Margin="0,0,0,8">
+                        <TextBlock Text="{Binding RiskLevel}" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                    </Border>
+                    <TextBlock FontSize="13" Margin="0,0,0,4"
+                               Foreground="{Binding CpuColor, Converter={StaticResource HexToBrushConverter}}"
+                               Visibility="{Binding CpuDisplay, Converter={StaticResource StringToVisibility}}">
+                        <Run Text="&#x2022; "/><Run Text="{Binding CpuDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="13"
+                               Foreground="{Binding PfxLateColor, Converter={StaticResource HexToBrushConverter}}"
+                               Visibility="{Binding PfxLateDisplay, Converter={StaticResource StringToVisibility}}">
+                        <Run Text="&#x2022; "/><Run Text="{Binding PfxLateDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- Late rate, late/on-time counts, PFX sample, and worst late ticket; hidden when no payment history. -->
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14"
+                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,12"
+                    Visibility="{Binding HasPaymentHistory, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="PAYMENT HISTORY" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding LateRateDisplay}" FontSize="14" FontWeight="Bold"
+                               Foreground="{Binding LateRateColor, Converter={StaticResource HexToBrushConverter}}"
+                               Margin="0,0,0,6"/>
+                    <TextBlock FontSize="13" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4">
+                        <Run Text="&#x2022; "/><Run Text="{Binding PaymentStatsDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="13" TextWrapping="Wrap" Margin="0,0,0,4"
+                               Foreground="{Binding PfxHistoryColor, Converter={StaticResource HexToBrushConverter}}">
+                        <Run Text="&#x2022; "/><Run Text="{Binding PfxHistoryDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="13" TextWrapping="Wrap"
+                               Foreground="{Binding WorstLateColor, Converter={StaticResource HexToBrushConverter}}">
+                        <Run Text="&#x2022; "/><Run Text="{Binding WorstLateDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- Customer, ticket, and item notes from XPD; add-note box and save button when customer is found. -->
+            <Border Background="#FFFDE7" CornerRadius="8" Padding="14,12"
+                    BorderBrush="#FFF59D" BorderThickness="1" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="CUSTOMER NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding CustomerNotes}" FontSize="12" Foreground="#5D4037"
+                               TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                    <TextBlock Text="TICKET NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding TicketNotes}" FontSize="12" Foreground="#5D4037"
+                               TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                    <TextBlock Text="ITEM NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding ItemNotes}" FontSize="12" Foreground="#5D4037"
+                               TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                    <TextBlock Text="ADD NOTE" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"
+                               Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}"/>
+                    <TextBox Text="{Binding NoteInput, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap" AcceptsReturn="True" MinHeight="50" MaxHeight="80"
+                             FontSize="12" Padding="8,6" Margin="0,0,0,6"
+                             Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}"/>
+                    <Button Command="{Binding AppendNoteXpdCommand}" Padding="10,6" FontSize="12"
+                            HorizontalAlignment="Left"
+                            IsEnabled="{Binding IsSavingNote, Converter={StaticResource InvertBool}}"
+                            Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+                                <Setter Property="Background" Value="#F57F17"/>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock Text="Save Note to XPD" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Each active ticket shown as a card with amount, due date, balance, and late badge if overdue. -->
             <TextBlock Text="ACTIVE TICKETS" FontSize="10" FontWeight="SemiBold"
-                       Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
-            <ItemsControl ItemsSource="{Binding ActiveTickets}">
+                       Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"
+                       Visibility="{Binding HasActiveTickets, Converter={StaticResource BoolToVisibility}}"/>
+            <ItemsControl ItemsSource="{Binding ActiveTickets}"
+                          Visibility="{Binding HasActiveTickets, Converter={StaticResource BoolToVisibility}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="{StaticResource Surface}" CornerRadius="6"
-                                Padding="14,10" Margin="0,0,0,8"
-                                BorderBrush="{StaticResource Border}" BorderThickness="1">
+                        <Border CornerRadius="8" Padding="10" Margin="0,0,0,8"
+                                Background="{Binding CardBackground, Converter={StaticResource HexToBrushConverter}}"
+                                BorderBrush="{Binding BorderColor, Converter={StaticResource HexToBrushConverter}}"
+                                BorderThickness="1">
                             <StackPanel>
                                 <DockPanel>
-                                    <TextBlock DockPanel.Dock="Right" FontSize="11"
-                                               Foreground="{StaticResource TextMuted}">
-                                        <Run Text="$"/><Run Text="{Binding Balance, StringFormat='{}{0:N2}', Mode=OneWay}"/>
+                                    <TextBlock DockPanel.Dock="Right" FontSize="14" FontWeight="ExtraBold"
+                                               Foreground="{Binding AmountColor, Converter={StaticResource HexToBrushConverter}}">
+                                        <Run Text="$"/><Run Text="{Binding Amount, StringFormat='{}{0:N2}', Mode=OneWay}"/>
                                     </TextBlock>
-                                    <TextBlock FontSize="12.5" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimary}">
-                                        <Run Text="#"/><Run Text="{Binding TransNo, Mode=OneWay}"/>
+                                    <TextBlock FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextPrimary}">
+                                        <Run Text="Ticket #"/><Run Text="{Binding TransNo, Mode=OneWay}"/>
+                                        <Run Text=" &#x2022; "/><Run Text="{Binding TicketType, Mode=OneWay}"/>
                                     </TextBlock>
                                 </DockPanel>
-                                <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,2,0,0">
+
+                                <TextBlock Text="{Binding Items}" FontSize="11" Foreground="{StaticResource TextSecondary}"
+                                           TextWrapping="Wrap"                                            Margin="0,3,0,4"/>
+
+                                <TextBlock FontSize="10" Foreground="{StaticResource TextMuted}">
+                                    <Run Text="Issue: "/><Run Text="{Binding IssueDate, Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="10" Foreground="{StaticResource TextMuted}">
                                     <Run Text="Due: "/><Run Text="{Binding DueDate, Mode=OneWay}"/>
                                 </TextBlock>
-                                <TextBlock Text="{Binding Items}" FontSize="11"
-                                           Foreground="{StaticResource TextSecondary}"
-                                           TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+
+                                <TextBlock FontSize="10" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold"
+                                           Margin="0,4,0,0">
+                                    <Run Text="Loan Balance: $"/><Run Text="{Binding Balance, StringFormat='{}{0:N2}', Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="10" Foreground="{StaticResource TextSecondary}">
+                                    <Run Text="Standard PU: $"/><Run Text="{Binding StandardPu, StringFormat='{}{0:N2}', Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock FontSize="10" Foreground="{StaticResource TextSecondary}">
+                                    <Run Text="Grace PU: $"/><Run Text="{Binding GracePu, StringFormat='{}{0:N2}', Mode=OneWay}"/>
+                                </TextBlock>
+
+                                <Border CornerRadius="4" Padding="6,4" Margin="0,6,0,0"
+                                        HorizontalAlignment="Left"
+                                        Visibility="{Binding IsLate, Converter={StaticResource BoolToVisibility}}"
+                                        Background="{StaticResource Error}">
+                                    <StackPanel>
+                                        <TextBlock Foreground="White" FontWeight="Bold" FontSize="11">
+                                            <Run Text="{Binding DaysLate, Mode=OneWay}"/><Run Text=" DAYS LATE"/>
+                                        </TextBlock>
+                                        <TextBlock Foreground="White" FontSize="10" Margin="0,2,0,0"
+                                                   Visibility="{Binding ShowRenewAmount, Converter={StaticResource BoolToVisibility}}">
+                                            <Run Text="Renew: $"/><Run Text="{Binding RenewAmount, StringFormat='{}{0:N2}', Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Notes -->
-            <TextBlock Text="NOTES" FontSize="10" FontWeight="SemiBold"
-                       Foreground="{StaticResource TextMuted}" Margin="0,4,0,8"/>
-            <TextBox Text="{Binding CustomerNotes, UpdateSourceTrigger=PropertyChanged}"
-                     TextWrapping="Wrap" AcceptsReturn="True" MinHeight="84"
-                     FontSize="12" Padding="12,10" Margin="0,0,0,10"/>
-            <Button Content="Save Notes" Command="{Binding SaveNotesCommand}"
-                    Style="{StaticResource PrimaryButton}"
-                    Padding="14,8" FontSize="12" HorizontalAlignment="Left"/>
+            <!-- Comma-separated list of closed ticket numbers (CPU and PFX). -->
+            <TextBlock Text="CLOSED TICKETS" FontSize="10" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextMuted}" Margin="0,6,0,6"
+                       Visibility="{Binding HasClosedTickets, Converter={StaticResource BoolToVisibility}}"/>
+            <Border Background="#F8F9FA" CornerRadius="4" Padding="8" Margin="0,0,0,12"
+                    Visibility="{Binding HasClosedTickets, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding ClosedTicketsText}" FontSize="11"
+                           Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Shown when load or save fails. -->
+            <Border Background="{StaticResource ErrorLight}" CornerRadius="4" Padding="10,6"
+                    Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}" FontSize="12"
+                           TextWrapping="Wrap"/>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

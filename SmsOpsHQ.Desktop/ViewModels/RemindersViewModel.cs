@@ -174,6 +174,8 @@ public sealed partial class RemindersViewModel : ViewModelBase
                 CustomerPanel = null;
             });
         CurrentReminderDetailViewModel = detailVm;
+        // Load right-hand customer detail panel immediately so it stays in sync with selection
+        _ = detailVm.LoadCustomerContextCommand.ExecuteAsync(null);
     }
 
     private static string GetAvatarLetter(string name, string phone)

@@ -222,17 +222,13 @@ public sealed partial class ThreadViewModel : ViewModelBase
             Messages = newMessages;
             MessagesLoaded?.Invoke();
 
-            if (CustomerId.HasValue && (CustomerPanel is null || CustomerPanel.CustomerId != CustomerId.Value))
+            if (!string.IsNullOrEmpty(CustomerPhone) &&
+                (CustomerPanel is null || CustomerPanel.CustomerPhone != CustomerPhone))
             {
-                CustomerPanelViewModel panel = new(_apiClient, _xblueService)
-                {
-                    CustomerId = CustomerId.Value,
-                    CustomerName = CustomerName,
-                    CustomerPhone = CustomerPhone
-                };
+                CustomerPanelViewModel panel = new(_apiClient, _xblueService);
                 CustomerPanel = panel;
                 _setRightPanel?.Invoke(panel);
-                await panel.LoadContextCommand.ExecuteAsync(null);
+                await panel.LoadByPhoneAsync(CustomerPhone);
             }
 
             // Mark thread as read.

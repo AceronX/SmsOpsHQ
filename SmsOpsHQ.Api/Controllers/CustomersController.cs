@@ -576,13 +576,17 @@ public sealed class CustomersController : ControllerBase
         return Ok(results);
     }
 
-    // GET /api/customer/by-phone?phone=9294990435
-    // Full identity resolution: phone -> CustomerKeys -> customer + tickets + quality score.
+    // Look up customer by conversation phone: normalize phone, resolve all CustomerKeys from index, then return customer plus tickets and quality.
     [HttpGet("customer/by-phone")]
     public async Task<IActionResult> GetCustomerByPhone(
         [FromQuery] string phone,
         CancellationToken cancellationToken)
     {
+        bool isHqUser = User.IsHqUser();
+        int? userStoreId = User.GetStoreId();
+        if (!isHqUser && userStoreId is null)
+            return Problem(statusCode: 403, detail: "No store assigned");
+
         string? normalizedPhone = PhoneUtils.ExtractLast10Digits(phone);
         if (string.IsNullOrEmpty(normalizedPhone))
         {
@@ -595,9 +599,24 @@ public sealed class CustomersController : ControllerBase
             });
         }
 
-        // Step 1: Resolve ALL CustomerKeys from phone index
+        // Resolve every CustomerKey that has this phone in the index (one customer can have several numbers).
         List<int> customerKeys = await _identityResolver.ResolveCustomerKeysAsync(
             phone, cancellationToken);
+
+        if (!isHqUser)
+        {
+            List<int> scopedKeys = await _db.Customers
+                .AsNoTracking()
+                .Where(c => c.StoreId == userStoreId!.Value &&
+                    c.CustomerKey.HasValue &&
+                    customerKeys.Contains(c.CustomerKey.Value))
+                .Select(c => c.CustomerKey!.Value)
+                .Distinct()
+                .OrderBy(k => k)
+                .ToListAsync(cancellationToken);
+
+            customerKeys = scopedKeys;
+        }
 
         if (customerKeys.Count == 0)
         {
@@ -611,7 +630,7 @@ public sealed class CustomersController : ControllerBase
 
         int primaryCustomerKey = customerKeys[0];
 
-        // Step 2: Load customer info from Customers table
+        // Load name, address, and phones for the first resolved key (used as the main display customer).
         object? customerData = null;
         try
         {
@@ -683,7 +702,7 @@ public sealed class CustomersController : ControllerBase
         if (appCustomer is not null)
             appCustomerId = appCustomer.CustomerId;
 
-        // Step 3: Load tickets for ALL customer keys
+        // Load tickets for all resolved keys so we show every ticket for this phone (same customer, multiple numbers).
         List<Ticket> allTickets = await _ticketRepo.GetByCustomerKeysAsync(customerKeys, cancellationToken);
 
         // Filter to relevant tickets: active OR closed CPU OR closed PFX
@@ -712,8 +731,12 @@ public sealed class CustomersController : ControllerBase
                 ticket_key = t.Key,
                 customer_key = t.CustomerKey,
                 trans_no = t.TransNo,
+                type = t.Type ?? 1,
                 amount = t.Amount ?? 0,
                 balance = t.CurrentBalance ?? 0,
+                standard_pu = t.StandardPU ?? 0,
+                grace_pu = t.FullTermPU ?? 0,
+                renew_amount = t.FulltermRenew ?? 0,
                 issue_date = t.IssueDate,
                 due_date = t.DueDate,
                 date_closed = t.DateClosed,
@@ -770,6 +793,18 @@ public sealed class CustomersController : ControllerBase
         // Step 5: Calculate late payment history
         LatePaymentHistory paymentHistory = PawnCalculator.CalculateLatePaymentHistory(allTickets, today);
 
+        // Collect ticket notes from Tickets.Notes and item notes from Items.Notes for active tickets only.
+        List<string> ticketNotesList = new();
+        List<int> activeTicketKeys = new();
+        foreach (Ticket t in allTickets.Where(t => t.Active == 1))
+        {
+            activeTicketKeys.Add(t.Key);
+            if (!string.IsNullOrWhiteSpace(t.Notes))
+                ticketNotesList.Add($"Ticket #{t.TransNo}: {t.Notes}");
+        }
+        string ticketNotesStr = ticketNotesList.Count > 0 ? string.Join("\n", ticketNotesList) : "";
+        string itemNotesStr = await GetActiveTicketItemNotesAsync(activeTicketKeys, cancellationToken);
+
         return Ok(new
         {
             found = true,
@@ -778,6 +813,8 @@ public sealed class CustomersController : ControllerBase
             stats,
             quality,
             payment_history = paymentHistory,
+            ticket_notes = ticketNotesStr,
+            item_notes = itemNotesStr,
             active_tickets = activeTickets,
             cpu_tickets = cpuTickets,
             pfx_tickets = pfxTickets
@@ -848,7 +885,22 @@ public sealed class CustomersController : ControllerBase
         [FromBody] AppendNoteXpdRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.Note))
+            return Problem(statusCode: 400, detail: "Note cannot be empty");
+
         string username = User.GetUsername();
+        bool isHqUser = User.IsHqUser();
+        int? userStoreId = User.GetStoreId();
+        if (!isHqUser && userStoreId is null)
+            return Problem(statusCode: 403, detail: "No store assigned");
+
+        var localCustomer = await _db.Customers
+            .FirstOrDefaultAsync(c => c.CustomerKey == request.CustomerKey, cancellationToken);
+        if (localCustomer is null)
+            return Problem(statusCode: 404, detail: $"Customer Key {request.CustomerKey} not found");
+
+        if (!isHqUser && localCustomer.StoreId != userStoreId!.Value)
+            return Problem(statusCode: 403, detail: "Not authorized for this customer");
 
         try
         {
@@ -897,13 +949,8 @@ public sealed class CustomersController : ControllerBase
             }
 
             // Also update local Customers table
-            var localCustomer = await _db.Customers
-                .FirstOrDefaultAsync(c => c.CustomerKey == request.CustomerKey, cancellationToken);
-            if (localCustomer is not null)
-            {
-                localCustomer.Notes = updatedNotes;
-                await _db.SaveChangesAsync(cancellationToken);
-            }
+            localCustomer.Notes = updatedNotes;
+            await _db.SaveChangesAsync(cancellationToken);
 
             return Ok(new
             {
@@ -919,7 +966,49 @@ public sealed class CustomersController : ControllerBase
         }
     }
 
-    // Reads item descriptions for a given ticket from Items table.
+    // Concatenate all non-empty Notes from Items for the given ticket keys, joined with " | ".
+    private async Task<string> GetActiveTicketItemNotesAsync(List<int> ticketKeys, CancellationToken cancellationToken)
+    {
+        if (ticketKeys.Count == 0) return string.Empty;
+        try
+        {
+            DbConnection connection = _db.Database.GetDbConnection();
+            if (connection.State != ConnectionState.Open)
+                await connection.OpenAsync(cancellationToken);
+
+            using DbCommand cmd = connection.CreateCommand();
+            List<string> parameterNames = new List<string>(ticketKeys.Count);
+            for (int index = 0; index < ticketKeys.Count; index++)
+            {
+                string parameterName = "@tk" + index;
+                parameterNames.Add(parameterName);
+                DbParameter parameter = cmd.CreateParameter();
+                parameter.ParameterName = parameterName;
+                parameter.Value = ticketKeys[index];
+                cmd.Parameters.Add(parameter);
+            }
+            cmd.CommandText = "SELECT Notes FROM Items WHERE TicketKey IN (" + string.Join(",", parameterNames) + ") AND Notes IS NOT NULL AND Notes <> ''";
+
+            List<string> noteStrings = new List<string>();
+            using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    string noteValue = reader.GetString(0);
+                    if (!string.IsNullOrWhiteSpace(noteValue))
+                        noteStrings.Add(noteValue);
+                }
+            }
+            return noteStrings.Count > 0 ? string.Join(" | ", noteStrings) : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    // Return item descriptions (PrintedDetail) for one ticket, joined with " | ", or "No items" if none.
     private async Task<string> GetTicketItemsTextAsync(int ticketKey, CancellationToken cancellationToken)
     {
         try
@@ -956,7 +1045,7 @@ public sealed class CustomersController : ControllerBase
         }
     }
 
-    // Whitelist of allowed table names to prevent SQL injection.
+    // Allowed table names for count queries so we never concatenate user input into table name.
     private static readonly HashSet<string> AllowedTableNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Customers", "Tickets", "Items", "PawnPayments"

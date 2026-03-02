@@ -97,58 +97,10 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
-        ClearError();
-
-        try
-        {
-            JsonElement response = await _apiClient.GetCustomerByPhoneAsync(Phone);
-
-            if (!response.TryGetProperty("found", out JsonElement foundE) || !foundE.GetBoolean())
-            {
-                // Still show a minimal panel with what we have from the reminder
-                var minimal = new CustomerPanelViewModel(_apiClient, _xblueService);
-                minimal.CustomerName = CustomerName;
-                minimal.CustomerPhone = Phone;
-                minimal.CustomerAddress = "Customer not found by phone.";
-                CustomerPanel = minimal;
-                _setRightPanel?.Invoke(minimal);
-                return;
-            }
-
-            int? appCustomerId = null;
-            if (response.TryGetProperty("customer_id", out JsonElement cidE) && cidE.ValueKind == JsonValueKind.Number)
-                appCustomerId = cidE.GetInt32();
-
-            var panel = new CustomerPanelViewModel(_apiClient, _xblueService);
-
-            if (appCustomerId.HasValue && appCustomerId.Value > 0)
-            {
-                panel.CustomerId = appCustomerId.Value;
-                CustomerPanel = panel;
-                _setRightPanel?.Invoke(panel);
-            }
-            else
-            {
-                panel.PopulateFromByPhoneResponse(response);
-                CustomerPanel = panel;
-                _setRightPanel?.Invoke(panel);
-            }
-        }
-        catch (Exception ex)
-        {
-            SetError($"Failed to load customer: {ex.Message}");
-            var fallback = new CustomerPanelViewModel(_apiClient, _xblueService);
-            fallback.CustomerName = CustomerName;
-            fallback.CustomerPhone = Phone;
-            fallback.CustomerAddress = "Could not load context.";
-            CustomerPanel = fallback;
-            _setRightPanel?.Invoke(fallback);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        var panel = new CustomerPanelViewModel(_apiClient, _xblueService);
+        CustomerPanel = panel;
+        _setRightPanel?.Invoke(panel);
+        await panel.LoadByPhoneAsync(Phone);
     }
 
     private static string FormatSentAt(DateTime? utcOrLocal)

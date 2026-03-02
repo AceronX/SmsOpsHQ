@@ -33,7 +33,6 @@ public class StoreRepositoryTests : IDisposable
             City = "Brooklyn",
             State = "NY",
             Zip = "11207",
-            Phone = "7185551234",
             IsActive = true
         };
         _db.Stores.Add(store);
