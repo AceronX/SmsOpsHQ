@@ -64,9 +64,6 @@ public sealed partial class MainViewModel : ViewModelBase
             case "Templates":
                 _navigation.NavigateTo<TemplatesViewModel>();
                 break;
-            case "Compose":
-                _navigation.NavigateTo<ComposeViewModel>();
-                break;
             case "Settings":
                 _navigation.NavigateTo<SettingsViewModel>();
                 break;

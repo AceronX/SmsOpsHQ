@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
@@ -43,6 +44,34 @@ try
 
     // Infrastructure: DbContext, repositories, auth service, JWT options.
     builder.Services.AddInfrastructure(connectionString, builder.Configuration);
+
+    // If Twilio section is missing from appsettings, load from Desktop's shared config file.
+    builder.Services.PostConfigure<TwilioSettings>(settings =>
+    {
+        if (!string.IsNullOrWhiteSpace(settings.AccountSid) && !string.IsNullOrWhiteSpace(settings.AuthToken))
+            return;
+
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string configPath = Path.Combine(appData, "SmsOpsHQ", "twilio_config.json");
+        if (!File.Exists(configPath))
+            return;
+
+        try
+        {
+            string json = File.ReadAllText(configPath);
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("accountSid", out JsonElement sidEl))
+                settings.AccountSid = sidEl.GetString() ?? string.Empty;
+            if (doc.RootElement.TryGetProperty("authToken", out JsonElement tokenEl))
+                settings.AuthToken = tokenEl.GetString() ?? string.Empty;
+
+            Log.Information("Loaded Twilio credentials from {Path}", configPath);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to load Twilio config from {Path}", configPath);
+        }
+    });
 
     // MVC controllers (for AuthController, etc.).
     builder.Services.AddControllers();

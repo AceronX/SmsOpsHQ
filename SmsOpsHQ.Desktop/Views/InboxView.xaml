@@ -11,10 +11,10 @@
     <UserControl.Resources>
         <!-- Filter pill button -->
         <Style x:Key="FilterPill" TargetType="Button" BasedOn="{StaticResource GhostButton}">
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="11.5"/>
             <Setter Property="FontWeight" Value="Medium"/>
-            <Setter Property="Padding" Value="12,5"/>
-            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
         </Style>
     </UserControl.Resources>
@@ -27,8 +27,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header: title | search | actions (like Late Customers) -->
-        <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="20,16"
+        <!-- Header: title | search | actions -->
+        <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,10"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -37,19 +37,19 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Text="Inbox" FontSize="20" FontWeight="Bold"
+                    <TextBlock Text="Inbox" FontSize="17" FontWeight="Bold"
                                Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
-                    <Border Background="{StaticResource Primary}" CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
+                    <Border Background="{StaticResource Primary}" CornerRadius="9" Padding="7,2" Margin="8,0,0,0"
                             VerticalAlignment="Center">
-                        <TextBlock Text="{Binding TotalThreads}" FontSize="11" FontWeight="Bold"
+                        <TextBlock Text="{Binding TotalThreads}" FontSize="10.5" FontWeight="Bold"
                                    Foreground="White"/>
                     </Border>
                 </StackPanel>
-                <Grid Grid.Column="1" Margin="24,0" HorizontalAlignment="Center" Width="280">
+                <Grid Grid.Column="1" Margin="16,0" HorizontalAlignment="Center" Width="260">
                     <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                              VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
-                             Padding="36,10,12,10" VerticalContentAlignment="Center"
-                             FontSize="13" KeyDown="SearchBox_KeyDown">
+                             Padding="32,7,10,7" VerticalContentAlignment="Center"
+                             FontSize="12.5" KeyDown="SearchBox_KeyDown">
                         <TextBox.Style>
                             <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                                 <Setter Property="Template">
@@ -69,54 +69,106 @@
                     </TextBox>
                     <Border IsHitTestVisible="False" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
                             Visibility="{Binding SearchText, Converter={StaticResource EmptyToVisible}}"
-                            Padding="12,0,12,0">
+                            Padding="10,0,10,0">
                         <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Width="20" Height="20" Margin="0,0,10,0"
-                                    VerticalAlignment="Center">
-                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}"
-                                           FontSize="16" Foreground="{StaticResource TextMuted}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="Search conversations..."
+                            <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="{StaticResource IconFont}"
                                        FontSize="13" Foreground="{StaticResource TextMuted}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Search..."
+                                       FontSize="12.5" Foreground="{StaticResource TextMuted}"
                                        VerticalAlignment="Center"/>
                         </Grid>
                     </Border>
                 </Grid>
-                <Button Grid.Column="2" Command="{Binding SearchCommand}"
-                        Style="{StaticResource PrimaryButton}" Padding="14,7"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}"
-                                   FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Search"/>
-                    </StackPanel>
-                </Button>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding NewCommand}"
+                            Style="{StaticResource PrimaryButton}" Padding="10,5" Margin="0,0,6,0"
+                            FontSize="12" ToolTip="New message">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE70F;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="11" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock Text="New" FontWeight="SemiBold" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding TrashCommand}"
+                            Style="{StaticResource DangerButton}" Padding="10,5"
+                            FontSize="12" ToolTip="Delete conversations">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74D;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBlock Text="Trash" FontSize="12" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
         <!-- Filters -->
-        <Border Grid.Row="1" Background="{StaticResource Surface}" Padding="20,8"
+        <Border Grid.Row="1" Background="{StaticResource Surface}" Padding="16,6"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right"
                            Text="{Binding TotalThreads, StringFormat='{}{0} conversations'}"
                            VerticalAlignment="Center"
-                           FontSize="12" Foreground="{StaticResource TextMuted}"/>
+                           FontSize="11" Foreground="{StaticResource TextMuted}"/>
 
                 <StackPanel Orientation="Horizontal">
-                    <Button Content="All" Command="{Binding SetFilterCommand}" CommandParameter="all"
-                            Style="{StaticResource FilterPill}"/>
-                    <Button Content="Open" Command="{Binding SetFilterCommand}" CommandParameter="open"
-                            Style="{StaticResource FilterPill}"/>
-                    <Button Content="Unread" Command="{Binding SetFilterCommand}" CommandParameter="unread"
-                            Style="{StaticResource FilterPill}"/>
-                    <Button Content="Closed" Command="{Binding SetFilterCommand}" CommandParameter="closed"
-                            Style="{StaticResource FilterPill}"/>
+                    <Button Content="All" Command="{Binding SetFilterCommand}" CommandParameter="all">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource FilterPill}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterAll}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="Open" Command="{Binding SetFilterCommand}" CommandParameter="open">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource FilterPill}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterOpen}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="Unread" Command="{Binding SetFilterCommand}" CommandParameter="unread">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource FilterPill}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterUnread}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="Closed" Command="{Binding SetFilterCommand}" CommandParameter="closed">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource FilterPill}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterClosed}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -124,60 +176,107 @@
         <!-- Three columns: list | thread content | customer panel -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="200"/>
+                <ColumnDefinition Width="250" MinWidth="200"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="340" MinWidth="280"/>
+                <ColumnDefinition Width="300" MinWidth="240"/>
             </Grid.ColumnDefinitions>
 
             <!-- Column 0: Conversation list -->
-            <ListBox Grid.Column="0" ItemsSource="{Binding Threads}"
-                     SelectedItem="{Binding SelectedThread}"
-                     Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="16,12" BorderBrush="{StaticResource Divider}" BorderThickness="0,0,0,1"
-                                Background="{StaticResource Surface}" Cursor="Hand">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
-                                        Width="44" Height="44" CornerRadius="22"
-                                        Background="{StaticResource Primary}" Margin="0,0,12,0"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding AvatarLetter}" FontSize="18" FontWeight="SemiBold"
-                                               Foreground="White" HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                </Border>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayName}"
-                                           FontSize="14" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimary}"
-                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTime}"
-                                           FontSize="11" Foreground="{StaticResource TextMuted}"
-                                           VerticalAlignment="Center"/>
-                                <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                                            Orientation="Horizontal" Margin="0,2,0,0">
-                                    <TextBlock Text="{Binding CustomerPhone}" FontSize="12"
-                                               Foreground="{StaticResource TextSecondary}"/>
-                                    <Border Visibility="{Binding UnreadCount, Converter={StaticResource CountToVisibility}}"
-                                            Background="{StaticResource Primary}" CornerRadius="8"
-                                            Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding UnreadCount}" FontSize="10"
-                                                   Foreground="White" FontWeight="Bold"/>
-                                    </Border>
+            <DockPanel Grid.Column="0">
+                <!-- Selection toolbar (only in selection mode) -->
+                <Border DockPanel.Dock="Top"
+                        Background="{StaticResource PrimaryLight}" Padding="8,6"
+                        BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
+                        Visibility="{Binding IsSelectionMode, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{StaticResource Primary}" FontWeight="SemiBold" Margin="0,0,6,0">
+                                <Run Text="{Binding CheckedCount, Mode=OneWay}"/>
+                                <Run Text="selected"/>
+                            </TextBlock>
+                            <Button Content="Select All" Command="{Binding SelectAllCommand}"
+                                    Style="{StaticResource GhostButton}" Padding="6,2" FontSize="11"
+                                    Foreground="{StaticResource Primary}" Margin="0,0,2,0"/>
+                            <Button Content="None" Command="{Binding DeselectAllCommand}"
+                                    Style="{StaticResource GhostButton}" Padding="6,2" FontSize="11"
+                                    Foreground="{StaticResource TextSecondary}"/>
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Command="{Binding DeleteSelectedCommand}"
+                                    Style="{StaticResource DangerButton}" Padding="6,3" FontSize="11"
+                                    Margin="0,0,4,0" ToolTip="Delete selected or all">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74D;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="10" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                    <TextBlock Text="Delete" FontSize="11" FontWeight="SemiBold"/>
                                 </StackPanel>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                            </Button>
+                            <Button Content="Cancel" Command="{Binding CancelSelectionCommand}"
+                                    Style="{StaticResource GhostButton}" Padding="6,3" FontSize="11"
+                                    Foreground="{StaticResource TextSecondary}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <ListBox ItemsSource="{Binding Threads}"
+                         SelectedItem="{Binding SelectedThread}"
+                         Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="8,8" BorderBrush="{StaticResource Divider}" BorderThickness="0,0,0,1"
+                                    Background="{StaticResource Surface}" Cursor="Hand">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <!-- Checkbox only visible in selection mode -->
+                                    <CheckBox Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                                              IsChecked="{Binding IsChecked}"
+                                              VerticalAlignment="Center" Margin="0,0,6,0"
+                                              Visibility="{Binding DataContext.IsSelectionMode,
+                                                  RelativeSource={RelativeSource AncestorType=ListBox},
+                                                  Converter={StaticResource BoolToVisibility}}"/>
+                                    <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
+                                            Width="36" Height="36" CornerRadius="18"
+                                            Background="{StaticResource Primary}" Margin="0,0,10,0"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding AvatarLetter}" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="White" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding DisplayName}"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding LastMessageTime}"
+                                               FontSize="10.5" Foreground="{StaticResource TextMuted}"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                                Orientation="Horizontal" Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding LastMessageBody}" FontSize="11.5"
+                                                   Foreground="{StaticResource TextSecondary}"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+                                        <Border Visibility="{Binding UnreadCount, Converter={StaticResource CountToVisibility}}"
+                                                Background="{StaticResource Primary}" CornerRadius="7"
+                                                Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding UnreadCount}" FontSize="9.5"
+                                                       Foreground="White" FontWeight="Bold"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
 
             <!-- Column 1: Thread content or placeholder -->
             <Grid Grid.Column="1" Background="{StaticResource Bg}">

@@ -18,9 +18,9 @@ public sealed class ThreadRepository : IThreadRepository
         _db = db;
     }
 
-    // Upserts a thread by (StoreId, IdentityId). If identityId is null,
-    // always creates a new thread (phone-only threads can't be deduplicated).
-    public async Task<Thread> FindOrCreateAsync(int storeId, int? identityId,
+    // Upserts a thread by (StoreId, IdentityId), then falls back to (StoreId, CustomerId).
+    // This ensures unknown contacts (identityId=null) still reuse existing threads.
+    public async Task<Thread> FindOrCreateAsync(int storeId, int? identityId, int? customerId = null,
         CancellationToken cancellationToken = default)
     {
         if (identityId is not null)
@@ -34,10 +34,22 @@ public sealed class ThreadRepository : IThreadRepository
                 return MapToDomain(existing);
         }
 
+        if (customerId is not null && customerId != 0)
+        {
+            ThreadEntity? existing = await _db.Threads
+                .FirstOrDefaultAsync(
+                    t => t.StoreId == storeId && t.CustomerId == customerId,
+                    cancellationToken);
+
+            if (existing is not null)
+                return MapToDomain(existing);
+        }
+
         ThreadEntity entity = new ThreadEntity
         {
             StoreId = storeId,
             IdentityId = identityId,
+            CustomerId = customerId,
             Status = "Open",
             UnreadCount = 0,
             CreatedAt = DateTime.UtcNow
@@ -128,6 +140,19 @@ public sealed class ThreadRepository : IThreadRepository
                 cancellationToken);
 
         return entity is null ? null : MapToDomain(entity);
+    }
+
+    public async Task UpdateCustomerIdAsync(int threadId, int customerId,
+        CancellationToken cancellationToken = default)
+    {
+        ThreadEntity? entity = await _db.Threads
+            .FirstOrDefaultAsync(t => t.ThreadId == threadId, cancellationToken);
+
+        if (entity is null)
+            return;
+
+        entity.CustomerId = customerId;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task UpdateLastMessageAtAsync(int threadId, DateTime utcNow,

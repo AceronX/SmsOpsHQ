@@ -113,22 +113,9 @@
                                    VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </StackPanel>
 
-                    <!-- Compose button -->
-                    <Border Margin="12,0,12,16">
-                        <Button Command="{Binding NavigateCommand}" CommandParameter="Compose"
-                                Style="{StaticResource PrimaryButton}"
-                                HorizontalContentAlignment="Center" Padding="0,9">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE70F;" FontFamily="{StaticResource IconFont}"
-                                           FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="Compose" FontSize="13" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
-                    </Border>
-
                     <!-- Nav section label -->
                     <TextBlock Text="NAVIGATION" FontSize="10" FontWeight="SemiBold"
-                               Foreground="#4A4D57" Margin="20,0,0,6"/>
+                               Foreground="#4A4D57" Margin="20,12,0,6"/>
 
                     <!-- Inbox -->
                     <Button Command="{Binding NavigateCommand}" CommandParameter="Inbox">

@@ -126,6 +126,9 @@ public sealed class ThreadsController : ControllerBase
         if (thread is null)
             return Problem(statusCode: 404, detail: "Thread not found");
 
+        if (thread.UnreadCount > 0)
+            await _threadRepo.MarkReadAsync(threadId, cancellationToken);
+
         // Load messages (up to 200)
         List<Message> messages = await _messageRepo.GetByThreadAsync(storeId, threadId, 200, cancellationToken);
 
@@ -155,6 +158,8 @@ public sealed class ThreadsController : ControllerBase
             {
                 id = m.MessageId,
                 direction = m.Direction,
+                from_phone = m.FromE164,
+                to_phone = m.ToE164,
                 body = m.Body,
                 category = m.Category,
                 created_at = m.CreatedAt.ToString("o"),

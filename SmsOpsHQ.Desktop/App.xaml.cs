@@ -55,6 +55,7 @@ public partial class App : Application
             AppState appState = sp.GetRequiredService<AppState>();
             return new SignalRClient(apiBaseUrl, appState);
         });
+        services.AddSingleton<ISendSmsDialogService, SendSmsDialogService>();
 
         // Navigation service: resolves ViewModels from the DI container.
         services.AddSingleton<NavigationService>(sp =>
@@ -68,7 +69,8 @@ public partial class App : Application
             sp.GetRequiredService<AppState>(),
             sp.GetRequiredService<NavigationService>(),
             sp.GetRequiredService<SignalRClient>(),
-            sp.GetRequiredService<XBlueService>()));
+            sp.GetRequiredService<XBlueService>(),
+            sp.GetRequiredService<ISendSmsDialogService>()));
 
         services.AddTransient<TemplatesViewModel>(sp => new TemplatesViewModel(
             sp.GetRequiredService<ApiClient>(),

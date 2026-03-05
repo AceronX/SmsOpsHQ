@@ -23,79 +23,155 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Header: Back + customer -->
-            <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,14"
+            <!-- Header: avatar + customer info -->
+            <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,10"
                     BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Command="{Binding GoBackCommand}"
-                            Style="{StaticResource GhostButton}"
-                            Padding="8,6" Margin="0,0,16,0" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE72B;" FontFamily="{StaticResource IconFont}"
-                                       FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <TextBlock Text="Back" FontSize="13" FontWeight="Medium"
-                                       Foreground="{StaticResource Primary}"/>
-                        </StackPanel>
-                    </Button>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding CustomerName}" FontSize="16" FontWeight="Bold"
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="36" Height="36" CornerRadius="18"
+                            Background="{StaticResource Primary}" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
+                                   FontSize="16" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center" Margin="12,0,0,0">
+                        <TextBlock Text="{Binding CustomerName}" FontSize="15" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimary}"/>
-                        <TextBlock Text="{Binding CustomerPhone}" FontSize="12"
-                                   Foreground="{StaticResource TextMuted}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding CustomerPhone}" FontSize="11.5"
+                                   Foreground="{StaticResource TextMuted}" Margin="0,1,0,0"/>
                     </StackPanel>
-                </Grid>
+                </StackPanel>
             </Border>
 
             <!-- Messages -->
             <ScrollViewer Grid.Row="1" x:Name="MessageScroller"
                           VerticalScrollBarVisibility="Auto"
-                          Background="#F0F2F5" Padding="28,20">
+                          Background="#F0F2F5" Padding="24,16">
                 <ItemsControl ItemsSource="{Binding Messages}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,8">
-                                <Border HorizontalAlignment="{Binding Direction, Converter={StaticResource DirToAlign}}"
-                                        Background="{Binding Direction, Converter={StaticResource DirToBubbleColor}}"
-                                        CornerRadius="18" Padding="18,14" MaxWidth="420"
-                                        BorderThickness="0">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.06"/>
-                                    </Border.Effect>
+                            <Grid Margin="0,3">
+                                <!-- Inbound messages: avatar + bubble (left-aligned) -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Top"
+                                            HorizontalAlignment="Left" MaxWidth="420">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Direction}" Value="Outbound">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Direction}" Value="Note">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Border Width="28" Height="28" CornerRadius="14"
+                                            Background="#E5E7EB" VerticalAlignment="Bottom" Margin="0,0,8,0">
+                                        <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="12" Foreground="#6B7280"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="14.5"
-                                                   Foreground="{Binding Direction, Converter={StaticResource DirToTextColor}}"
-                                                   LineHeight="24"/>
-                                        <TextBlock Text="View attachment" FontSize="12"
-                                                   Cursor="Hand" Margin="0,8,0,0"
-                                                   TextDecorations="Underline"
-                                                   Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
-                                                   MouseLeftButtonDown="MediaLink_Click">
+                                        <Border Background="#FFFFFF"
+                                                CornerRadius="4,16,16,16" Padding="14,10" MaxWidth="360">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.06"/>
+                                            </Border.Effect>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13.5"
+                                                           Foreground="#111827" LineHeight="20"/>
+                                                <TextBlock Text="View attachment" FontSize="11"
+                                                           Cursor="Hand" Margin="0,6,0,0"
+                                                           TextDecorations="Underline"
+                                                           Foreground="{StaticResource Primary}"
+                                                           Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
+                                                           MouseLeftButtonDown="MediaLink_Click"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Text="{Binding CreatedAt}" FontSize="10" Margin="4,3,0,0"
+                                                   Foreground="#9CA3AF"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Outbound messages: bubble + status (right-aligned) -->
+                                <StackPanel HorizontalAlignment="Right" MaxWidth="420">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Direction}" Value="Outbound">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Border Background="#2563EB"
+                                            CornerRadius="16,4,16,16" Padding="14,10" MaxWidth="360">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.08"/>
+                                        </Border.Effect>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13.5"
+                                                       Foreground="White" LineHeight="20"/>
+                                            <TextBlock Text="View attachment" FontSize="11"
+                                                       Cursor="Hand" Margin="0,6,0,0"
+                                                       TextDecorations="Underline"
+                                                       Foreground="#BFDBFE"
+                                                       Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
+                                                       MouseLeftButtonDown="MediaLink_Click"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,3,4,0">
+                                        <TextBlock Text="{Binding CreatedAt}" FontSize="10" Foreground="#9CA3AF"/>
+                                        <TextBlock FontSize="10" Margin="6,0,0,0" Foreground="#9CA3AF">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                                    <Setter Property="Text" Value="&#xE73E;"/>
+                                                    <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Direction}" Value="Outbound">
-                                                            <Setter Property="Foreground" Value="#BFDBFE"/>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                            <Setter Property="Text" Value="&#xE783;"/>
+                                                            <Setter Property="Foreground" Value="{StaticResource Error}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Queued">
+                                                            <Setter Property="Text" Value="&#xE823;"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <TextBlock Text="{Binding CreatedAt}" FontSize="11"
-                                                       Foreground="{Binding Direction, Converter={StaticResource DirToTextColor}}"
-                                                       Opacity="0.85"/>
-                                            <TextBlock Text="{Binding Status}" FontSize="11"
-                                                       Margin="10,0,0,0"
-                                                       Foreground="{Binding Direction, Converter={StaticResource DirToTextColor}}"
-                                                       Opacity="0.7"/>
-                                        </StackPanel>
                                     </StackPanel>
-                                </Border>
+                                </StackPanel>
+
+                                <!-- Note messages: centered -->
+                                <StackPanel HorizontalAlignment="Center" MaxWidth="420">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Direction}" Value="Note">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Border Background="#FEF3C7" CornerRadius="12" Padding="14,8">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <TextBlock Text="&#xE70B;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="10" Foreground="#92400E" Margin="0,0,6,0"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Text="Internal Note" FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="#92400E"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13"
+                                                       Foreground="#78350F" LineHeight="18"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Text="{Binding CreatedAt}" FontSize="10" Margin="0,3,0,0"
+                                               Foreground="#9CA3AF" HorizontalAlignment="Center"/>
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -103,20 +179,24 @@
             </ScrollViewer>
 
             <!-- Compose bar -->
-            <Border Grid.Row="2" Background="{StaticResource Surface}" Padding="24,16"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,2,0,0">
+            <Border Grid.Row="2" Background="{StaticResource Surface}" Padding="16,12"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
                 <StackPanel>
-                    <DockPanel Margin="0,0,0,12"
-                               Visibility="{Binding QuickTemplates.Count, Converter={StaticResource CountToVisibility}}">
-                        <TextBlock DockPanel.Dock="Left" Text="Quick reply:" FontSize="12"
-                                   Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"
-                                   Margin="0,0,10,0"/>
-                        <ComboBox ItemsSource="{Binding QuickTemplates}"
-                                  SelectedItem="{Binding SelectedQuickTemplate}"
-                                  DisplayMemberPath="Name" FontSize="12" Padding="10,6"
-                                  MinWidth="160"/>
-                    </DockPanel>
-                    <Border Background="#F3F4F6" CornerRadius="24" Padding="4,4"
+                    <Border Background="{StaticResource Bg}" CornerRadius="8" Padding="12,10" Margin="0,0,0,10"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            Visibility="{Binding QuickTemplates.Count, Converter={StaticResource CountToVisibility}}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="Quick reply:" FontSize="13"
+                                       FontWeight="Medium"
+                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
+                                       Margin="0,0,12,0"/>
+                            <ComboBox ItemsSource="{Binding QuickTemplates}"
+                                      SelectedItem="{Binding SelectedQuickTemplate}"
+                                      DisplayMemberPath="Name" FontSize="13" Padding="10,7"
+                                      MinWidth="180"/>
+                        </DockPanel>
+                    </Border>
+                    <Border Background="#F3F4F6" CornerRadius="22" Padding="4,3"
                             BorderBrush="{StaticResource Border}" BorderThickness="1">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -126,16 +206,59 @@
                             <TextBox Grid.Column="0" Text="{Binding ComposeText, UpdateSourceTrigger=PropertyChanged}"
                                      AcceptsReturn="False" VerticalContentAlignment="Center"
                                      KeyDown="ComposeBox_KeyDown"
-                                     Padding="20,12" FontSize="14" BorderThickness="0" Background="Transparent"/>
+                                     Padding="16,9" FontSize="13.5">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                        <Setter Property="CaretBrush" Value="{StaticResource TextPrimary}"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="TextBox">
+                                                    <ScrollViewer x:Name="PART_ContentHost"
+                                                                  Margin="{TemplateBinding Padding}"
+                                                                  Background="Transparent"
+                                                                  VerticalAlignment="Center"/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
                             <Button Grid.Column="1" Command="{Binding SendMessageCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    Padding="20,10" Margin="6,0,0,0"
-                                    VerticalAlignment="Stretch">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Send" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}"
-                                               FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                </StackPanel>
+                                    ToolTip="Send message (Enter)"
+                                    Width="36" Height="36" Margin="2,0,2,0"
+                                    VerticalAlignment="Center">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bd" Width="36" Height="36" CornerRadius="18"
+                                                            Background="Transparent"
+                                                            SnapsToDevicePixels="True">
+                                                        <TextBlock x:Name="Icon" Text="&#xE724;" FontFamily="{StaticResource IconFont}"
+                                                                   FontSize="16" Foreground="{StaticResource Primary}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Primary}"/>
+                                                            <Setter TargetName="Icon" Property="Foreground" Value="White"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource PrimaryHover}"/>
+                                                            <Setter TargetName="Icon" Property="Foreground" Value="White"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter Property="Opacity" Value="0.35"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
                             </Button>
                         </Grid>
                     </Border>
@@ -143,7 +266,7 @@
             </Border>
 
             <!-- Error -->
-            <Border Grid.Row="3" Background="{StaticResource ErrorLight}" Padding="16,7"
+            <Border Grid.Row="3" Background="{StaticResource ErrorLight}" Padding="12,6"
                     Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}" FontSize="12"/>
             </Border>

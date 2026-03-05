@@ -83,29 +83,28 @@ public sealed class MessagesController : ControllerBase
         }
         else
         {
-            // Resolve identity from phone
+            // Try to resolve identity from phone index (XPD-synced CustomerPhones).
+            // If the phone is not in the database, identityId will be null — that's fine;
+            // we still create a thread and customer so SMS can be sent to anyone.
             int? identityId = await _identityResolver.ResolveIdentityIdAsync(
                 request.StoreId, request.ToPhone, cancellationToken);
 
             if (identityId is null)
             {
-                _logger.LogError(
-                    "Cannot resolve identity for phone {Phone} in store {StoreId}",
+                _logger.LogInformation(
+                    "Phone {Phone} not found in XPD for store {StoreId}; sending to unknown contact",
                     request.ToPhone, request.StoreId);
-                return Problem(statusCode: 400,
-                    detail: "Cannot resolve customer identity. Phone not found in XPD database.");
             }
 
-            thread = await _threadRepo.FindOrCreateAsync(request.StoreId, identityId, cancellationToken);
-
-            // Legacy: create/update customer for backward compatibility
             Customer customer = await _customerRepo.FindOrCreateAsync(
                 request.StoreId, request.ToPhone, cancellationToken);
 
-            // Update thread with CustomerId if not set (backward compatibility)
+            thread = await _threadRepo.FindOrCreateAsync(
+                request.StoreId, identityId, customer.CustomerId, cancellationToken);
+
             if (thread.CustomerId is null || thread.CustomerId == 0)
             {
-                thread.CustomerId = customer.CustomerId;
+                await _threadRepo.UpdateCustomerIdAsync(thread.ThreadId, customer.CustomerId, cancellationToken);
             }
         }
 

@@ -6,8 +6,9 @@ namespace SmsOpsHQ.Core.Repositories;
 // Data-access contract for Thread entities.
 public interface IThreadRepository
 {
-    // Find an existing thread or create a new one by (StoreId, IdentityId).
-    Task<Thread> FindOrCreateAsync(int storeId, int? identityId,
+    // Find an existing thread or create a new one.
+    // Looks up by (StoreId, IdentityId) first, then falls back to (StoreId, CustomerId).
+    Task<Thread> FindOrCreateAsync(int storeId, int? identityId, int? customerId = null,
         CancellationToken cancellationToken = default);
 
     // Get inbox threads for a store, ordered by LastMessageAt DESC.
@@ -20,6 +21,10 @@ public interface IThreadRepository
 
     // Get a single thread with store isolation.
     Task<Thread?> GetByIdAsync(int storeId, int threadId,
+        CancellationToken cancellationToken = default);
+
+    // Link a customer to a thread (persists CustomerId).
+    Task UpdateCustomerIdAsync(int threadId, int customerId,
         CancellationToken cancellationToken = default);
 
     // Bump the thread's last-message timestamp.

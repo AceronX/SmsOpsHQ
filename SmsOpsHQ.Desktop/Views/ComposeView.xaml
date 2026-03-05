@@ -8,77 +8,129 @@
              mc:Ignorable="d"
              Loaded="OnLoaded">
 
-    <Border Padding="28,24" Background="{StaticResource Bg}">
-        <Grid MaxWidth="600" HorizontalAlignment="Left">
+    <Border Background="{StaticResource Bg}" Padding="0">
+        <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Title -->
-            <TextBlock Grid.Row="0" Text="New Message" FontSize="20" FontWeight="Bold"
-                       Foreground="{StaticResource TextPrimary}" Margin="0,0,0,20"/>
+            <!-- Header -->
+            <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="16,12"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="32" Height="32" CornerRadius="8"
+                            Background="{StaticResource Primary}" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE70F;" FontFamily="{StaticResource IconFont}"
+                                   FontSize="15" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="New Message" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimary}"
+                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </StackPanel>
+            </Border>
 
-            <!-- To phone -->
-            <StackPanel Grid.Row="1" Margin="0,0,0,16">
-                <TextBlock Text="Recipient Phone Number" FontSize="12" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
-                <TextBox Text="{Binding ToPhone, UpdateSourceTrigger=PropertyChanged}"/>
-            </StackPanel>
+            <!-- Form content -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="16,12,16,8">
+                    <!-- To -->
+                    <TextBlock Text="To" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondary}" Margin="2,0,0,5"/>
+                    <TextBox Text="{Binding ToPhone, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="13" Padding="10,8" Margin="0,0,0,12"
+                             VerticalContentAlignment="Center"/>
 
-            <!-- Template selector -->
-            <StackPanel Grid.Row="2" Margin="0,0,0,16">
-                <TextBlock Text="Quick Template (optional)" FontSize="12" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
-                <ComboBox ItemsSource="{Binding Templates}"
-                          SelectedItem="{Binding SelectedTemplate}"
-                          FontSize="13" Padding="8,6">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Name}" FontWeight="Medium" Margin="0,0,8,0"/>
-                                <TextBlock Text="{Binding Hotkey}" FontSize="11"
-                                           Foreground="{StaticResource TextMuted}"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-            </StackPanel>
+                    <!-- Template -->
+                    <TextBlock Text="Template (optional)" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondary}" Margin="2,0,0,5"/>
+                    <ComboBox ItemsSource="{Binding Templates}"
+                              SelectedItem="{Binding SelectedTemplate}"
+                              FontSize="12" Padding="10,7" Margin="0,0,0,12"
+                              MinHeight="32">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Name}" FontWeight="Medium" FontSize="12"/>
+                                    <TextBlock Text="{Binding Hotkey}" FontSize="10"
+                                               Foreground="{StaticResource TextMuted}"
+                                               Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
 
-            <!-- Message body -->
-            <DockPanel Grid.Row="3" Margin="0,0,0,16">
-                <TextBlock DockPanel.Dock="Top" Text="Message" FontSize="12" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
-                <TextBox Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
-                         TextWrapping="Wrap" AcceptsReturn="True"
-                         VerticalScrollBarVisibility="Auto"
-                         MinHeight="140"/>
-            </DockPanel>
+                    <!-- Message -->
+                    <Grid Margin="0,0,0,5">
+                        <TextBlock Text="Message" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   VerticalAlignment="Center" Margin="2,0,0,0"/>
+                        <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Text="{Binding SmsSegmentLabel}"
+                                   FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                    </Grid>
+                    <TextBox Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap" AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             MinHeight="90" MaxHeight="160"
+                             FontSize="13" Padding="10,8" Margin="0,0,0,8"/>
 
-            <!-- Status messages -->
-            <StackPanel Grid.Row="4" Margin="0,0,0,12">
-                <Border Background="{StaticResource ErrorLight}" CornerRadius="5" Padding="12,8"
-                        Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
-                    <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}" FontSize="12"/>
-                </Border>
-                <Border Background="{StaticResource SuccessLight}" CornerRadius="5" Padding="12,8"
-                        Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Text="Message sent successfully." Foreground="{StaticResource Success}"
-                               FontSize="12" FontWeight="Medium"/>
-                </Border>
-            </StackPanel>
+                    <!-- Error / Success -->
+                    <Border Background="{StaticResource ErrorLight}" CornerRadius="6" Padding="10,8"
+                            Margin="0,0,0,8"
+                            Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE783;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="13" Foreground="{StaticResource Error}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Error}"
+                                       FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource SuccessLight}" CornerRadius="6" Padding="10,8"
+                            Margin="0,0,0,8"
+                            Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="13" Foreground="{StaticResource Success}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="Sent!" Foreground="{StaticResource Success}"
+                                       FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
 
-            <!-- Send button -->
-            <StackPanel Grid.Row="5" Orientation="Horizontal">
-                <Button Content="Send Message" Command="{Binding SendCommand}"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
-                        Style="{StaticResource PrimaryButton}"
-                        FontSize="14" Padding="24,10"/>
-            </StackPanel>
+            <!-- Actions -->
+            <Border Grid.Row="2" Background="{StaticResource Surface}" Padding="16,10"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Command="{Binding CancelCommand}"
+                            Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Left"
+                            Padding="12,8" FontSize="12"
+                            ToolTip="Close without sending">
+                        <TextBlock Text="Cancel" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Grid.Column="1" Command="{Binding SendCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                            Style="{StaticResource PrimaryButton}"
+                            Padding="18,8" FontSize="13" FontWeight="SemiBold"
+                            HorizontalAlignment="Right">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding IsBusy, Converter={StaticResource BusyToButtonText}, ConverterParameter='Send|Sending...'}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
         </Grid>
     </Border>
 </UserControl>

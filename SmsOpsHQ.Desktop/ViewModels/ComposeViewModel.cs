@@ -3,6 +3,7 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Core.DTOs;
+using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Desktop.Services;
 
 namespace SmsOpsHQ.Desktop.ViewModels;
@@ -23,6 +24,11 @@ public sealed partial class ComposeViewModel : ViewModelBase
     private readonly ApiClient _apiClient;
     private readonly AppState _appState;
     private readonly Action? _onMessageSent;
+    private readonly Action? _onCancelRequested;
+    private readonly Action<string?>? _onPhoneForPreview;
+
+    private CancellationTokenSource? _phonePreviewCts;
+    private const int PhonePreviewDebounceMs = 450;
 
     [ObservableProperty]
     private string _toPhone = string.Empty;
@@ -42,11 +48,68 @@ public sealed partial class ComposeViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSent;
 
-    public ComposeViewModel(ApiClient apiClient, AppState appState, Action? onMessageSent = null)
+    /// <summary>Character count of Body (for UX display).</summary>
+    [ObservableProperty]
+    private int _bodyCharacterCount;
+
+    /// <summary>e.g. "1 SMS" or "2 SMS" for segment hint.</summary>
+    [ObservableProperty]
+    private string _smsSegmentLabel = "0 chars";
+
+    public ComposeViewModel(ApiClient apiClient, AppState appState, Action? onMessageSent = null, Action? onCancelRequested = null, Action<string?>? onPhoneForPreview = null)
     {
         _apiClient = apiClient;
         _appState = appState;
         _onMessageSent = onMessageSent;
+        _onCancelRequested = onCancelRequested;
+        _onPhoneForPreview = onPhoneForPreview;
+    }
+
+    partial void OnToPhoneChanged(string value)
+    {
+        if (_onPhoneForPreview is null) return;
+
+        _phonePreviewCts?.Cancel();
+
+        bool validPhone = !string.IsNullOrWhiteSpace(value) && PhoneUtils.ExtractLast10Digits(value) is not null;
+        if (!validPhone)
+        {
+            System.Windows.Application.Current?.Dispatcher.Invoke(() => _onPhoneForPreview(null));
+            return;
+        }
+
+        _phonePreviewCts = new CancellationTokenSource();
+        CancellationToken ct = _phonePreviewCts.Token;
+        string capturedPhone = value.Trim();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(PhonePreviewDebounceMs, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            System.Windows.Application.Current?.Dispatcher.Invoke(() => _onPhoneForPreview(capturedPhone));
+        }, ct);
+    }
+
+    partial void OnBodyChanged(string value)
+    {
+        string s = value ?? "";
+        BodyCharacterCount = s.Length;
+        SmsSegmentLabel = GetSmsSegmentLabel(s.Length);
+    }
+
+    private static string GetSmsSegmentLabel(int length)
+    {
+        if (length == 0) return "0 chars";
+        if (length <= 160) return $"{length} / 160 · 1 SMS";
+        int segments = 1 + (int)Math.Ceiling((length - 160) / 153.0);
+        return $"{length} chars · {segments} SMS";
     }
 
     partial void OnSelectedTemplateChanged(TemplateItem? value)
@@ -119,5 +182,11 @@ public sealed partial class ComposeViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        _onCancelRequested?.Invoke();
     }
 }

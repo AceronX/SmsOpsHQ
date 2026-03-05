@@ -24,10 +24,17 @@ public sealed class RealtimeService : IRealtimeService
         CancellationToken cancellationToken = default)
     {
         string group = SmsOpsHub.StoreGroupName(storeId);
+
+        // Client registers On<JsonElement, JsonElement>("MessageNew") — must send exactly 2 args.
+        // Include threadId at top level so the client can filter by thread.
+        object messagePayload = new { storeId, threadId, message.MessageId, message.Direction,
+            message.FromE164, message.ToE164, message.Body, message.Status,
+            message.TwilioSid, message.MediaJson, message.Category, message.CreatedAt };
+        object threadPayload = new { thread.ThreadId, thread.StoreId, thread.Status,
+            thread.LastMessageAt, thread.UnreadCount };
+
         await _hubContext.Clients.Group(group).SendAsync(
-            "MessageNew",
-            new { storeId, threadId, message, thread },
-            cancellationToken);
+            "MessageNew", messagePayload, threadPayload, cancellationToken);
 
         _logger.LogDebug("Pushed MessageNew to group {Group} for thread {ThreadId}",
             group, threadId);
@@ -38,10 +45,10 @@ public sealed class RealtimeService : IRealtimeService
         CancellationToken cancellationToken = default)
     {
         string group = SmsOpsHub.StoreGroupName(storeId);
+
+        // Client registers On<int, int, string, string?>("MessageStatus")
         await _hubContext.Clients.Group(group).SendAsync(
-            "MessageStatus",
-            new { storeId, threadId, messageId, twilioSid, status, errorCode },
-            cancellationToken);
+            "MessageStatus", storeId, messageId, status, errorCode ?? "", cancellationToken);
 
         _logger.LogDebug("Pushed MessageStatus to group {Group}: SID={Sid} Status={Status}",
             group, twilioSid, status);
@@ -52,10 +59,10 @@ public sealed class RealtimeService : IRealtimeService
         CancellationToken cancellationToken = default)
     {
         string group = SmsOpsHub.StoreGroupName(storeId);
+
+        // Client registers On<string, string, string>("SystemAlert")
         await _hubContext.Clients.Group(group).SendAsync(
-            "SystemAlert",
-            new { storeId, code, message, severity },
-            cancellationToken);
+            "SystemAlert", code, message, severity, cancellationToken);
 
         _logger.LogInformation("Pushed SystemAlert to group {Group}: {Code} [{Severity}]",
             group, code, severity);

@@ -13,11 +13,20 @@ public sealed class InvertBoolConverter : IValueConverter
         value is bool b ? !b : false;
 }
 
-// Converts IsBusy bool to button text: true -> "Signing in...", false -> "Sign In".
+// Converts IsBusy bool to button text. Parameter optional: "NormalText|BusyText" (e.g. "Send|Sending...").
+// Default: "Sign In" / "Signing in...".
 public sealed class BusyToButtonTextConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value is true ? "Signing in..." : "Sign In";
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        bool busy = value is true;
+        if (parameter is string param && param.Contains('|'))
+        {
+            string[] parts = param.Split('|');
+            return busy ? (parts.Length > 1 ? parts[1].Trim() : parts[0]) : parts[0].Trim();
+        }
+        return busy ? "Signing in..." : "Sign In";
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();

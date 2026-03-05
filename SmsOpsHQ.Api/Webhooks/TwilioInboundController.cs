@@ -8,7 +8,7 @@ using SmsOpsHQ.Core.Utilities;
 namespace SmsOpsHQ.Api.Webhooks;
 
 // Handles inbound SMS from Twilio. No [Authorize] -- Twilio sends unauthenticated webhooks.
-// Route: POST /twilio/inbound
+// Route: POST /twilio-sms
 //
 // Full inbound pipeline:
 //   1. Idempotency check (duplicate SID)
@@ -24,7 +24,7 @@ namespace SmsOpsHQ.Api.Webhooks;
 //  11. Push realtime update
 //  12. Return TwiML acknowledgement
 [ApiController]
-[Route("twilio")]
+[Route("twilio-sms")]
 public sealed class TwilioInboundController : ControllerBase
 {
     private readonly IMessageRepository _messageRepo;
@@ -64,7 +64,7 @@ public sealed class TwilioInboundController : ControllerBase
         _logger = logger;
     }
 
-    [HttpPost("inbound")]
+    [HttpPost]
     public async Task<IActionResult> HandleInbound(CancellationToken cancellationToken)
     {
         IFormCollection form = await Request.ReadFormAsync(cancellationToken);
@@ -132,37 +132,28 @@ public sealed class TwilioInboundController : ControllerBase
             await _optOutRepo.AddAsync(store.StoreId, fromPhone, "TwilioSTOP", cancellationToken);
         }
 
-        // 5. Resolve customer identity
+        // 5. Resolve customer identity (optional — unknown phones are allowed)
         int? identityId = await _identityResolver.ResolveIdentityIdAsync(
             store.StoreId, fromPhone, cancellationToken);
 
         if (identityId is null)
         {
-            _logger.LogWarning(
-                "Identity resolution failed for {From} in store {StoreId}. Quarantining. Sid={Sid}",
+            _logger.LogInformation(
+                "Phone {From} not found in XPD for store {StoreId}; accepting as unknown contact. Sid={Sid}",
                 fromPhone, store.StoreId, messageSid);
-
-            try
-            {
-                await _quarantineService.QuarantineMessageAsync(
-                    store.StoreId, fromPhone, toPhone, body, null, messageSid,
-                    "identity_resolution_failed", cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to quarantine message {Sid}", messageSid);
-            }
-
-            return TwimlOk();
         }
 
-        // 6. Find/create thread by IdentityId
-        Core.Entities.Thread thread = await _threadRepo.FindOrCreateAsync(
-            store.StoreId, identityId, cancellationToken);
-
-        // Legacy: create/update customer for backward compatibility
+        // 6. Find/create customer first, then find/create thread by identity OR customer
         Customer customer = await _customerRepo.FindOrCreateAsync(
             store.StoreId, fromPhone, cancellationToken);
+
+        Core.Entities.Thread thread = await _threadRepo.FindOrCreateAsync(
+            store.StoreId, identityId, customer.CustomerId, cancellationToken);
+
+        if (thread.CustomerId is null || thread.CustomerId == 0)
+        {
+            await _threadRepo.UpdateCustomerIdAsync(thread.ThreadId, customer.CustomerId, cancellationToken);
+        }
 
         // 7. Reopen thread if closed
         if (thread.Status == "Closed")

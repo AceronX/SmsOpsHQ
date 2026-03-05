@@ -6,12 +6,12 @@ using SmsOpsHQ.Core.Services;
 namespace SmsOpsHQ.Api.Webhooks;
 
 // Handles Twilio delivery status callbacks. No [Authorize] -- Twilio sends these.
-// Route: POST /twilio/status
+// Route: POST /twilio-sms/status
 //
 // Updates message delivery status (delivered, failed, undelivered, etc.)
 // and pushes a realtime notification so the desktop client updates the UI.
 [ApiController]
-[Route("twilio")]
+[Route("twilio-sms")]
 public sealed class TwilioStatusController : ControllerBase
 {
     private readonly IMessageRepository _messageRepo;

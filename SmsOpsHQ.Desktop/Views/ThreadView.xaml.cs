@@ -7,19 +7,43 @@ namespace SmsOpsHQ.Desktop.Views;
 
 public partial class ThreadView : UserControl
 {
+    private ThreadViewModel? _subscribedVm;
+
     public ThreadView()
     {
         InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (DataContext is ThreadViewModel vm)
+        UnsubscribeCurrentVm();
+
+        if (e.NewValue is ThreadViewModel vm)
         {
+            _subscribedVm = vm;
             vm.MessagesLoaded += ScrollToBottom;
             await vm.LoadMessagesCommand.ExecuteAsync(null);
             await vm.LoadTemplatesCommand.ExecuteAsync(null);
         }
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ThreadViewModel vm && _subscribedVm != vm)
+        {
+            _subscribedVm = vm;
+            vm.MessagesLoaded += ScrollToBottom;
+            await vm.LoadMessagesCommand.ExecuteAsync(null);
+            await vm.LoadTemplatesCommand.ExecuteAsync(null);
+        }
+    }
+
+    private void UnsubscribeCurrentVm()
+    {
+        if (_subscribedVm is null) return;
+        _subscribedVm.MessagesLoaded -= ScrollToBottom;
+        _subscribedVm = null;
     }
 
     private void ScrollToBottom()
@@ -38,8 +62,7 @@ public partial class ThreadView : UserControl
 
     private void MediaLink_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement element &&
-            element.DataContext is MessageBubbleItem item &&
+        if (sender is FrameworkElement { DataContext: MessageBubbleItem item } &&
             DataContext is ThreadViewModel vm)
         {
             vm.OpenMediaViewerCommand.Execute(item);
