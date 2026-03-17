@@ -185,7 +185,7 @@ Function FormatSqlVal(v, adoType)
     Case 2, 3, 4, 5, 6, 14, 16, 17, 18, 19, 20, 21, 131
       FormatSqlVal = Replace(CStr(v), ",", ".")
     Case 11
-      If v Then FormatSqlVal = "-1" Else FormatSqlVal = "0"
+      If v Then FormatSqlVal = "1" Else FormatSqlVal = "0"
     Case 7
       FormatSqlVal = "'" & Replace(FormatISODate(v), "'", "''") & "'"
     Case Else
