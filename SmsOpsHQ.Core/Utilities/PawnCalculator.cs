@@ -99,9 +99,8 @@ public static class PawnCalculator
 
         foreach (Ticket ticket in tickets)
         {
-            // PFX (forfeited) tickets are counted separately
-            if (ticket.HowClosed is not null &&
-                ticket.HowClosed.StartsWith("PFX", StringComparison.OrdinalIgnoreCase))
+            // PFX (forfeited) tickets are counted separately — exact match on "PFX-"
+            if (ticket.HowClosed == "PFX-")
             {
                 pfxCount++;
                 pfxTickets.Add(new PfxTicketInfo
@@ -190,7 +189,7 @@ public static class PawnCalculator
         }
         else
         {
-            riskLevel = "No History";
+            riskLevel = "Low Risk";
         }
 
         // Sort late tickets by worst first
@@ -297,22 +296,16 @@ public static class PawnCalculator
     }
 
     // Assess risk level from late payment rate and PFX count.
-    //   High Risk: lateRate > 50% OR pfxCount >= 3
-    //   Medium Risk: lateRate > 25% OR pfxCount >= 2
-    //   Low Risk: lateRate > 0% OR pfxCount >= 1
-    //   Excellent: lateRate == 0% AND pfxCount == 0
+    // Matches Python: > 50 or pfx >= 3 → High, > 20 or pfx >= 1 → Medium, else Low.
     public static string AssessRisk(double latePaymentRate, int pfxCount)
     {
         if (latePaymentRate > 50.0 || pfxCount >= 3)
             return "High Risk";
 
-        if (latePaymentRate > 25.0 || pfxCount >= 2)
+        if (latePaymentRate > 20.0 || pfxCount >= 1)
             return "Medium Risk";
 
-        if (latePaymentRate > 0.0 || pfxCount >= 1)
-            return "Low Risk";
-
-        return "Excellent";
+        return "Low Risk";
     }
 
     // Try to parse an XPD date string ("M/d/yyyy" or "M/d/yyyy h:mm:ss tt").

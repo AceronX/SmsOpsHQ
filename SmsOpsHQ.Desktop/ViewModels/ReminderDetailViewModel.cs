@@ -12,6 +12,8 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
     private readonly AppState _appState;
     private readonly NavigationService _navigation;
     private readonly XBlueService? _xblueService;
+    private readonly ISendSmsDialogService? _sendSmsDialogService;
+    private readonly CustomerQualityQueryService? _qualityQueryService;
     private readonly Action<CustomerPanelViewModel?>? _setRightPanel;
     private readonly Action? _onCloseRequested;
 
@@ -43,7 +45,7 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
     private string _sentAtText = string.Empty;
 
     [ObservableProperty]
-    private object? _customerPanel;
+    private CustomerPanelViewModel? _customerPanel;
 
     public ReminderDetailViewModel(
         ApiClient apiClient,
@@ -58,6 +60,8 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
         string? dueDate,
         string reminderType,
         XBlueService? xblueService = null,
+        ISendSmsDialogService? sendSmsDialogService = null,
+        CustomerQualityQueryService? qualityQueryService = null,
         Action<CustomerPanelViewModel?>? setRightPanel = null,
         Action? onCloseRequested = null)
     {
@@ -65,6 +69,8 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
         _appState = appState;
         _navigation = navigation;
         _xblueService = xblueService;
+        _sendSmsDialogService = sendSmsDialogService;
+        _qualityQueryService = qualityQueryService;
         _setRightPanel = setRightPanel;
         _onCloseRequested = onCloseRequested;
         ReminderId = reminderId;
@@ -97,7 +103,7 @@ public sealed partial class ReminderDetailViewModel : ViewModelBase
             return;
         }
 
-        var panel = new CustomerPanelViewModel(_apiClient, _xblueService);
+        var panel = new CustomerPanelViewModel(_apiClient, _xblueService, _sendSmsDialogService, _qualityQueryService);
         CustomerPanel = panel;
         _setRightPanel?.Invoke(panel);
         await panel.LoadByPhoneAsync(Phone);

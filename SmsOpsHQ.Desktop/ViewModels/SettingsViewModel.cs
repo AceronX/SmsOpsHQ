@@ -27,7 +27,7 @@ public sealed class StoreItem
     public int DefaultNumberId { get; set; } = 0; // 0 means no Twilio number set
 }
 
-// Settings ViewModel with 6 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP.
+// Settings ViewModel with 7 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP, Quality.
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
@@ -163,11 +163,25 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _xblueEnabled;
 
-    public SettingsViewModel(ApiClient apiClient, AppState appState, TwilioConfigService twilioConfig)
+    // Tab 6: Quality
+    private CustomerQualityQueryService? _qualityQueryService;
+
+    [ObservableProperty]
+    private string _qualityQuery = string.Empty;
+
+    [ObservableProperty]
+    private string _qualitySaveMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _qualityErrorMessage = string.Empty;
+
+    public SettingsViewModel(ApiClient apiClient, AppState appState, TwilioConfigService twilioConfig,
+        CustomerQualityQueryService? qualityQueryService = null)
     {
         _apiClient = apiClient;
         _appState = appState;
         _twilioConfig = twilioConfig;
+        _qualityQueryService = qualityQueryService;
         SelectedStoreId = _appState.CurrentStoreId;
         LoadTwilioConfigFromFile();
     }
@@ -780,6 +794,55 @@ public sealed partial class SettingsViewModel : ViewModelBase
         {
             SetError($"Stop scheduler failed: {ex.Message}");
         }
+    }
+
+    [RelayCommand]
+    private void LoadQualityQuery()
+    {
+        QualitySaveMessage = string.Empty;
+        QualityErrorMessage = string.Empty;
+        if (_qualityQueryService is null)
+        {
+            QualityErrorMessage = "Quality query service not available.";
+            return;
+        }
+        QualityQuery = _qualityQueryService.LoadQuery();
+    }
+
+    [RelayCommand]
+    private void SaveQualityQuery()
+    {
+        QualitySaveMessage = string.Empty;
+        QualityErrorMessage = string.Empty;
+        if (_qualityQueryService is null)
+        {
+            QualityErrorMessage = "Quality query service not available.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(QualityQuery))
+        {
+            QualityErrorMessage = "Query cannot be empty.";
+            return;
+        }
+        try
+        {
+            _qualityQueryService.SaveQuery(QualityQuery);
+            QualitySaveMessage = "Quality query saved. Changes apply on next customer load.";
+        }
+        catch (Exception ex)
+        {
+            QualityErrorMessage = $"Save failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void ResetQualityQuery()
+    {
+        QualitySaveMessage = string.Empty;
+        QualityErrorMessage = string.Empty;
+        if (_qualityQueryService is null) return;
+        QualityQuery = _qualityQueryService.GetDefaultQuery();
+        QualitySaveMessage = "Reset to default. Click Save to persist.";
     }
 
 }

@@ -58,9 +58,6 @@ public sealed partial class MainViewModel : ViewModelBase
             case "Late":
                 _navigation.NavigateTo<LateCustomersViewModel>();
                 break;
-            case "PFX":
-                _navigation.NavigateTo<PfxCustomersViewModel>();
-                break;
             case "Templates":
                 _navigation.NavigateTo<TemplatesViewModel>();
                 break;

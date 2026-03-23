@@ -32,6 +32,8 @@ public sealed partial class RemindersViewModel : ViewModelBase
     private readonly NavigationService _navigation;
     private readonly AppState _appState;
     private readonly XBlueService? _xblueService;
+    private readonly ISendSmsDialogService? _sendSmsDialogService;
+    private readonly CustomerQualityQueryService? _qualityQueryService;
 
     [ObservableProperty]
     private ObservableCollection<ReminderListItem> _reminders = new();
@@ -55,12 +57,16 @@ public sealed partial class RemindersViewModel : ViewModelBase
         ApiClient apiClient,
         NavigationService navigation,
         AppState appState,
-        XBlueService? xblueService)
+        XBlueService? xblueService,
+        ISendSmsDialogService? sendSmsDialogService = null,
+        CustomerQualityQueryService? qualityQueryService = null)
     {
         _apiClient = apiClient;
         _navigation = navigation;
         _appState = appState;
         _xblueService = xblueService;
+        _sendSmsDialogService = sendSmsDialogService;
+        _qualityQueryService = qualityQueryService;
     }
 
     partial void OnSelectedReminderChanged(ReminderListItem? value)
@@ -167,6 +173,8 @@ public sealed partial class RemindersViewModel : ViewModelBase
             item.DueDate,
             item.ReminderType,
             _xblueService,
+            sendSmsDialogService: _sendSmsDialogService,
+            qualityQueryService: _qualityQueryService,
             setRightPanel: p => CustomerPanel = p,
             onCloseRequested: () =>
             {

@@ -226,4 +226,10 @@ public partial class SettingsView : UserControl
         if (DataContext is SettingsViewModel vm)
             vm.LoadSchedulerStatusCommand.Execute(null);
     }
+
+    private void QualityTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+            vm.LoadQualityQueryCommand.Execute(null);
+    }
 }

@@ -177,25 +177,7 @@
                         </Button.Style>
                     </Button>
 
-                    <!-- PFX Report -->
-                    <Button Command="{Binding NavigateCommand}" CommandParameter="PFX">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE7C3;" FontFamily="{StaticResource IconFont}"
-                                       FontSize="14" VerticalAlignment="Center"
-                                       Width="22"/>
-                            <TextBlock Text="PFX Report" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                        </StackPanel>
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource NavButton}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavItem}" Value="PFX">
-                                        <Setter Property="Background" Value="{StaticResource SidebarActive}"/>
-                                        <Setter Property="Foreground" Value="{StaticResource SidebarTextActive}"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
+
 
                     <!-- Templates -->
                     <Button Command="{Binding NavigateCommand}" CommandParameter="Templates">

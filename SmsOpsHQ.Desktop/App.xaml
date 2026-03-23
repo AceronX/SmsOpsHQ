@@ -38,9 +38,6 @@
             <DataTemplate DataType="{x:Type vm:LateCustomersViewModel}">
                 <views:LateCustomersView/>
             </DataTemplate>
-            <DataTemplate DataType="{x:Type vm:PfxCustomersViewModel}">
-                <views:PfxCustomersView/>
-            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:RemindersViewModel}">
                 <views:RemindersView/>
             </DataTemplate>

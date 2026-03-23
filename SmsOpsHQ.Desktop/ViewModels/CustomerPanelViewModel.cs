@@ -29,11 +29,21 @@ public sealed class ActiveTicketDisplayItem
     public string CardBackground => IsLate ? "#FEF2F2" : "#FFFFFF";
 }
 
+// One quality metric derived from the configurable quality SQL query.
+public sealed class QualityMetricItem
+{
+    public string Label { get; set; } = string.Empty;
+    public string Value { get; set; } = "0";
+    public string Color { get; set; } = "#64748B";
+}
+
 // Right-hand panel: resolves conversation phone to customer via phone map, then shows full XPD context.
 public sealed partial class CustomerPanelViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
     private XBlueService? _xblueService;
+    private ISendSmsDialogService? _sendSmsDialogService;
+    private CustomerQualityQueryService? _qualityQueryService;
 
     [ObservableProperty] private int? _customerKey;
     [ObservableProperty] private int? _customerId;
@@ -58,6 +68,8 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _cpuColor = "#059669";
     [ObservableProperty] private string _pfxLateDisplay = string.Empty;
     [ObservableProperty] private string _pfxLateColor = "#059669";
+    [ObservableProperty] private ObservableCollection<QualityMetricItem> _qualityMetrics = new();
+    [ObservableProperty] private bool _hasQualityMetrics;
 
     [ObservableProperty] private bool _hasPaymentHistory;
     [ObservableProperty] private string _lateRateDisplay = string.Empty;
@@ -85,10 +97,13 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _callStatus = string.Empty;
     public bool CanClickToCall => _xblueService is not null && _xblueService.IsConfigured;
 
-    public CustomerPanelViewModel(ApiClient apiClient, XBlueService? xblueService = null)
+    public CustomerPanelViewModel(ApiClient apiClient, XBlueService? xblueService = null,
+        ISendSmsDialogService? sendSmsDialogService = null, CustomerQualityQueryService? qualityQueryService = null)
     {
         _apiClient = apiClient;
         _xblueService = xblueService;
+        _sendSmsDialogService = sendSmsDialogService;
+        _qualityQueryService = qualityQueryService;
     }
 
     public void SetXBlueService(XBlueService service)
@@ -122,7 +137,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             }
 
             IsCustomerFound = true;
-            PopulateFromResponse(response);
+            await PopulateFromResponse(response);
         }
         catch (Exception ex)
         {
@@ -167,7 +182,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     }
 
     // Map API response (customer, stats, quality, tickets, notes) to display properties.
-    private void PopulateFromResponse(JsonElement response)
+    private async Task PopulateFromResponse(JsonElement response)
     {
         if (!response.TryGetProperty("customer", out JsonElement customerElement))
             return;
@@ -228,7 +243,11 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         if (firstTransaction.Contains(' ')) firstTransaction = firstTransaction.Split(' ')[0];
         SinceDate = !string.IsNullOrEmpty(firstTransaction) ? "Customer since: " + firstTransaction : string.Empty;
 
-        WarningText = GetString(customerElement, "warning");
+        string rawWarning = GetString(customerElement, "warning");
+        WarningText = rawWarning.Equals("False", StringComparison.OrdinalIgnoreCase)
+                   || rawWarning.Equals("True", StringComparison.OrdinalIgnoreCase)
+                   || rawWarning == "0" || rawWarning == "-1" || rawWarning == "1"
+            ? string.Empty : rawWarning;
 
         CustomerNotes = DefaultIfEmpty(GetString(customerElement, "notes"), "No notes.");
         TicketNotes = DefaultIfEmpty(GetString(response, "ticket_notes"), "No ticket notes.");
@@ -243,7 +262,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             int cpuCount = GetInt(statsElement, "cpu_count");
             AllTimeCount = GetInt(statsElement, "all_time_count");
 
-            CpuDisplay = "CPU Closures: " + cpuCount;
+            CpuDisplay = "CPU Count: " + cpuCount;
             CpuColor = cpuCount > 0 ? "#D97706" : "#059669";
 
             string everLateText = LateCount > 0 ? "Yes" : "No";
@@ -268,7 +287,9 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         StatsBorderColor = IsFirstTimeCustomer ? "#FBC02D" : "#E5E7EB";
 
         PopulateActiveTickets(response);
-        PopulateClosedTickets(response);
+
+        if (CustomerKey.HasValue)
+            await LoadQualityMetricsAsync(CustomerKey.Value);
     }
 
     // Fill late rate, PFX sample, and worst late ticket from payment_history (supports camelCase or snake_case).
@@ -410,31 +431,119 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         HasActiveTickets = ticketItems.Count > 0;
     }
 
-    // Merge CPU and PFX closed ticket numbers into one comma-separated list.
-    private void PopulateClosedTickets(JsonElement response)
+    // Use when API does not return quality; derive risk from PFX count and late count from stats.
+    private async Task LoadQualityMetricsAsync(int customerKey)
     {
-        List<string> closedTransNoList = new List<string>();
-        if (response.TryGetProperty("cpu_tickets", out JsonElement cpuTicketsArray))
+        QualityMetrics.Clear();
+        HasQualityMetrics = false;
+
+        if (_qualityQueryService is null) return;
+
+        try
         {
-            foreach (JsonElement cpuTicket in cpuTicketsArray.EnumerateArray())
+            string query = _qualityQueryService.LoadQuery();
+            JsonElement result = await _apiClient.GetCustomerQualityAsync(customerKey, query);
+
+            if (result.TryGetProperty("error", out JsonElement errorEl))
+                return;
+
+            var items = new List<QualityMetricItem>();
+            double avgDaysLate = 0;
+            int pfxCount = 0;
+            int lateTickets = 0;
+
+            foreach (JsonProperty prop in result.EnumerateObject())
             {
-                int transNo = GetInt(cpuTicket, "trans_no");
-                if (transNo > 0) closedTransNoList.Add(transNo.ToString());
+                string label = FormatMetricLabel(prop.Name);
+                string value;
+
+                if (prop.Value.ValueKind == JsonValueKind.Number)
+                {
+                    double num = prop.Value.GetDouble();
+                    value = num == Math.Floor(num) ? ((int)num).ToString() : num.ToString("N1");
+
+                    if (prop.Name.Contains("avg_days_late", StringComparison.OrdinalIgnoreCase))
+                        avgDaysLate = num;
+                    else if (prop.Name.Contains("pfx", StringComparison.OrdinalIgnoreCase))
+                        pfxCount = (int)num;
+                    else if (prop.Name.Contains("late", StringComparison.OrdinalIgnoreCase))
+                        lateTickets = (int)num;
+                }
+                else
+                {
+                    value = prop.Value.ToString() ?? "0";
+                }
+
+                string color = DetermineMetricColor(prop.Name, value);
+                items.Add(new QualityMetricItem { Label = label, Value = value, Color = color });
             }
+
+            QualityMetrics = new ObservableCollection<QualityMetricItem>(items);
+            HasQualityMetrics = items.Count > 0;
+
+            ApplyQualityRiskLevel(avgDaysLate, pfxCount, lateTickets);
         }
-        if (response.TryGetProperty("pfx_tickets", out JsonElement pfxTicketsArray))
+        catch
         {
-            foreach (JsonElement pfxTicket in pfxTicketsArray.EnumerateArray())
-            {
-                int transNo = GetInt(pfxTicket, "trans_no");
-                if (transNo > 0) closedTransNoList.Add(transNo.ToString());
-            }
+            HasQualityMetrics = false;
         }
-        ClosedTicketsText = string.Join(", ", closedTransNoList);
-        HasClosedTickets = closedTransNoList.Count > 0;
     }
 
-    // Use when API does not return quality; derive risk from PFX count and late count from stats.
+    private static string FormatMetricLabel(string columnName)
+    {
+        return columnName
+            .Replace("_", " ")
+            .Replace("  ", " ")
+            .Trim()
+            .ToUpperInvariant();
+    }
+
+    private static string DetermineMetricColor(string columnName, string value)
+    {
+        if (!double.TryParse(value, out double num))
+            return "#64748B";
+
+        string lower = columnName.ToLowerInvariant();
+
+        if (lower.Contains("late") || lower.Contains("overdue"))
+        {
+            if (num > 30) return "#DC2626";
+            if (num > 0) return "#D97706";
+            return "#059669";
+        }
+
+        if (lower.Contains("pfx") || lower.Contains("forfeit"))
+        {
+            if (num >= 3) return "#DC2626";
+            if (num >= 1) return "#D97706";
+            return "#059669";
+        }
+
+        if (lower.Contains("closed") || lower.Contains("cpu"))
+            return num > 0 ? "#059669" : "#64748B";
+
+        return "#64748B";
+    }
+
+    private void ApplyQualityRiskLevel(double avgDaysLate, int pfxCount, int lateTickets)
+    {
+        if (avgDaysLate > 30 || pfxCount >= 3 || lateTickets >= 3)
+        {
+            RiskLevel = "High Risk";
+            RiskColor = "#DC2626";
+        }
+        else if (avgDaysLate > 7 || pfxCount >= 1 || lateTickets >= 1)
+        {
+            RiskLevel = "Medium Risk";
+            RiskColor = "#F59E0B";
+        }
+        else
+        {
+            RiskLevel = "Low Risk";
+            RiskColor = "#059669";
+        }
+    }
+
     private void ApplyFallbackRiskLevel(int pfxCount, int lateCount)
     {
         if (pfxCount >= 3 || lateCount >= 2)
@@ -477,6 +586,15 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         {
             IsSavingNote = false;
         }
+    }
+
+    [RelayCommand]
+    private void SendSms()
+    {
+        if (_sendSmsDialogService is null || string.IsNullOrEmpty(CustomerPhone))
+            return;
+
+        _sendSmsDialogService.ShowDialog(prefillPhone: CustomerPhone);
     }
 
     [RelayCommand]

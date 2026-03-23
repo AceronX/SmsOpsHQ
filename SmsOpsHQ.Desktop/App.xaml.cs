@@ -49,6 +49,7 @@ public partial class App : Application
         services.AddSingleton<CacheService>();
         services.AddSingleton<TwilioConfigService>();
         services.AddSingleton<LateCustomersQueryService>();
+        services.AddSingleton<CustomerQualityQueryService>();
         services.AddSingleton<XBlueService>();
         services.AddSingleton(sp =>
         {
@@ -70,7 +71,8 @@ public partial class App : Application
             sp.GetRequiredService<NavigationService>(),
             sp.GetRequiredService<SignalRClient>(),
             sp.GetRequiredService<XBlueService>(),
-            sp.GetRequiredService<ISendSmsDialogService>()));
+            sp.GetRequiredService<ISendSmsDialogService>(),
+            sp.GetRequiredService<CustomerQualityQueryService>()));
 
         services.AddTransient<TemplatesViewModel>(sp => new TemplatesViewModel(
             sp.GetRequiredService<ApiClient>(),
@@ -79,20 +81,20 @@ public partial class App : Application
         services.AddTransient<SettingsViewModel>(sp => new SettingsViewModel(
             sp.GetRequiredService<ApiClient>(),
             sp.GetRequiredService<AppState>(),
-            sp.GetRequiredService<TwilioConfigService>()));
+            sp.GetRequiredService<TwilioConfigService>(),
+            sp.GetRequiredService<CustomerQualityQueryService>()));
 
         services.AddTransient<LateCustomersViewModel>(sp => new LateCustomersViewModel(
             sp.GetRequiredService<ApiClient>(),
             sp.GetRequiredService<LateCustomersQueryService>()));
 
-        services.AddTransient<PfxCustomersViewModel>(sp => new PfxCustomersViewModel(
-            sp.GetRequiredService<ApiClient>()));
-
         services.AddTransient<RemindersViewModel>(sp => new RemindersViewModel(
             sp.GetRequiredService<ApiClient>(),
             sp.GetRequiredService<NavigationService>(),
             sp.GetRequiredService<AppState>(),
-            sp.GetRequiredService<XBlueService>()));
+            sp.GetRequiredService<XBlueService>(),
+            sp.GetRequiredService<ISendSmsDialogService>(),
+            sp.GetRequiredService<CustomerQualityQueryService>()));
 
         services.AddTransient<ComposeViewModel>(sp => new ComposeViewModel(
             sp.GetRequiredService<ApiClient>(),

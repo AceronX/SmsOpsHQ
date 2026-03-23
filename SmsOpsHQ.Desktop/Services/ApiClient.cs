@@ -153,6 +153,12 @@ public sealed class ApiClient : IDisposable
         return await PostJsonAsync("/api/customers/append-note-xpd", request);
     }
 
+    public async Task<JsonElement> GetCustomerQualityAsync(int customerKey, string query)
+    {
+        var request = new { customerKey, query };
+        return await PostJsonAsync("/api/customers/quality", request);
+    }
+
     public async Task<JsonElement> TestSqliteAsync(string? path = null)
     {
         string url = string.IsNullOrWhiteSpace(path)

@@ -45,6 +45,7 @@ public sealed partial class InboxViewModel : ViewModelBase
     private readonly SignalRClient _signalRClient;
     private readonly XBlueService? _xblueService;
     private readonly ISendSmsDialogService _sendSmsDialogService;
+    private readonly CustomerQualityQueryService? _qualityQueryService;
 
     private CancellationTokenSource? _searchDebounce;
 
@@ -73,7 +74,8 @@ public sealed partial class InboxViewModel : ViewModelBase
         NavigationService navigation,
         SignalRClient signalRClient,
         XBlueService? xblueService,
-        ISendSmsDialogService sendSmsDialogService)
+        ISendSmsDialogService sendSmsDialogService,
+        CustomerQualityQueryService? qualityQueryService = null)
     {
         _apiClient = apiClient;
         _appState = appState;
@@ -81,6 +83,7 @@ public sealed partial class InboxViewModel : ViewModelBase
         _signalRClient = signalRClient;
         _xblueService = xblueService;
         _sendSmsDialogService = sendSmsDialogService;
+        _qualityQueryService = qualityQueryService;
 
         _signalRClient.MessageReceived += OnSignalRMessageReceived;
     }
@@ -178,7 +181,7 @@ public sealed partial class InboxViewModel : ViewModelBase
                     CustomerPanel = null;
                     return;
                 }
-                var panel = new CustomerPanelViewModel(_apiClient, _xblueService);
+                var panel = new CustomerPanelViewModel(_apiClient, _xblueService, _sendSmsDialogService, _qualityQueryService);
                 CustomerPanel = panel;
                 _ = panel.LoadByPhoneAsync(phone);
             });
@@ -266,6 +269,8 @@ public sealed partial class InboxViewModel : ViewModelBase
         var threadVm = new ThreadViewModel(
             _apiClient, _appState, _navigation, _signalRClient,
             item.ThreadId, item.CustomerName, _xblueService,
+            sendSmsDialogService: _sendSmsDialogService,
+            qualityQueryService: _qualityQueryService,
             setRightPanel: p => CustomerPanel = p,
             onCloseRequested: () => { CurrentThreadViewModel = null; CustomerPanel = null; },
             onMessagesLoaded: () => { item.UnreadCount = 0; });

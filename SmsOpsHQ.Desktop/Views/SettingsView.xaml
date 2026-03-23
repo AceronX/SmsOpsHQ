@@ -837,6 +837,96 @@
                     </ScrollViewer>
                 </TabItem>
 
+                <!-- Quality -->
+                <TabItem Header="Quality" Loaded="QualityTab_Loaded">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+                        <StackPanel MaxWidth="720">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="&#xE9D9;" FontFamily="{StaticResource IconFont}"
+                                           FontSize="18" Foreground="{StaticResource Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="Customer Quality Query" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Define a custom SQL query that runs per customer to compute quality metrics. The query must use @customerKey as a parameter and return a single row. Each column becomes a metric displayed in the customer panel."
+                                       FontSize="12" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,20"/>
+
+                            <Border Background="{StaticResource Surface}" CornerRadius="10" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" Padding="20,18" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <TextBlock Text="SQL Query" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding QualityQuery, UpdateSourceTrigger=PropertyChanged}"
+                                             TextWrapping="Wrap" AcceptsReturn="True" AcceptsTab="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             FontFamily="Consolas" FontSize="13"
+                                             MinHeight="200" MaxHeight="400"
+                                             Padding="12,10" Margin="0,0,0,16"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button Command="{Binding SaveQualityQueryCommand}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Padding="16,10" Margin="0,0,10,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextOnPrimary}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="Save query" FontSize="13" Foreground="{StaticResource TextOnPrimary}"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding ResetQualityQueryCommand}"
+                                                Style="{StaticResource GhostButton}"
+                                                Padding="16,10">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextSecondary}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="Reset to default" FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{StaticResource SuccessLight}" CornerRadius="8" Padding="14,10"
+                                    Margin="0,0,0,6"
+                                    Visibility="{Binding QualitySaveMessage, Converter={StaticResource StringToVisibility}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="14" Foreground="{StaticResource Success}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding QualitySaveMessage}" Foreground="{StaticResource Success}"
+                                               FontSize="13" FontWeight="Medium" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource ErrorLight}" CornerRadius="8" Padding="14,10"
+                                    Margin="0,0,0,6"
+                                    Visibility="{Binding QualityErrorMessage, Converter={StaticResource StringToVisibility}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE783;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="14" Foreground="{StaticResource Error}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding QualityErrorMessage}" Foreground="{StaticResource Error}"
+                                               FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{StaticResource Surface}" CornerRadius="8" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" Padding="14,12" Margin="0,10,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE946;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="14" Foreground="{StaticResource TextMuted}" VerticalAlignment="Top" Margin="0,0,8,0"/>
+                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextMuted}">
+                                        <Run Text="Use @customerKey as the parameter. Return one row with named columns (e.g. tickets_closed, pfx_count, late_tickets, avg_days_late)."/>
+                                        <LineBreak/>
+                                        <Run Text="Risk is auto-classified: avg_days_late > 30 or pfx ≥ 3 or late ≥ 3 = High, > 7 or pfx/late ≥ 1 = Medium, else Low."/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
             </TabControl>
         </Grid>
     </Border>

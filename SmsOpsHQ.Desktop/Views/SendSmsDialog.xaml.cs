@@ -8,7 +8,7 @@ public partial class SendSmsDialog : Window
 {
     private readonly Action<string?>? _onPhoneForPreview;
 
-    public SendSmsDialog(Action? onSent, Action<string?>? onPhoneForPreview = null)
+    public SendSmsDialog(Action? onSent, Action<string?>? onPhoneForPreview = null, string? prefillPhone = null)
     {
         InitializeComponent();
         _onPhoneForPreview = onPhoneForPreview;
@@ -31,6 +31,9 @@ public partial class SendSmsDialog : Window
                 Close();
             },
             onPhoneForPreview: onPhoneForPreview);
+
+        if (!string.IsNullOrWhiteSpace(prefillPhone))
+            vm.ToPhone = prefillPhone;
 
         DataContext = vm;
         Loaded += async (_, _) => await vm.LoadTemplatesCommand.ExecuteAsync(null);

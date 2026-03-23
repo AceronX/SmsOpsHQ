@@ -200,8 +200,7 @@ public sealed class CustomersController : ControllerBase
             }
         }
 
-        int pfxCount = allTickets.Count(t =>
-            t.HowClosed is not null && t.HowClosed.StartsWith("PFX", StringComparison.OrdinalIgnoreCase));
+        int pfxCount = allTickets.Count(t => t.HowClosed == "PFX-");
 
         // Calculate payment history using PawnCalculator
         LatePaymentHistory paymentHistory = PawnCalculator.CalculateLatePaymentHistory(allTickets, today);
@@ -716,7 +715,7 @@ public sealed class CustomersController : ControllerBase
 
         foreach (Ticket t in allTickets)
         {
-            bool isActive = t.Active == 1;
+            bool isActive = t.Active == 1 && t.Type != 0;
             bool isCpu = !isActive && t.HowClosed == "CPU";
             bool isPfx = !isActive && t.HowClosed == "PFX-";
 
@@ -796,7 +795,7 @@ public sealed class CustomersController : ControllerBase
         // Collect ticket notes from Tickets.Notes and item notes from Items.Notes for active tickets only.
         List<string> ticketNotesList = new();
         List<int> activeTicketKeys = new();
-        foreach (Ticket t in allTickets.Where(t => t.Active == 1))
+        foreach (Ticket t in allTickets.Where(t => t.Active == 1 && t.Type != 0))
         {
             activeTicketKeys.Add(t.Key);
             if (!string.IsNullOrWhiteSpace(t.Notes))
@@ -963,6 +962,67 @@ public sealed class CustomersController : ControllerBase
         {
             _logger.LogError(ex, "Error appending note to customer key {Key}", request.CustomerKey);
             return Problem(statusCode: 500, detail: ex.Message);
+        }
+    }
+
+    // POST /api/customers/quality
+    // Executes a configurable SQL query for one customer to return quality metrics.
+    // The query must use @customerKey as a parameter and return a single row.
+    [HttpPost("customers/quality")]
+    public async Task<IActionResult> GetCustomerQuality(
+        [FromBody] CustomerQualityRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query))
+            return Problem(statusCode: 400, detail: "Query is required");
+
+        try
+        {
+            DbConnection connection = _db.Database.GetDbConnection();
+            if (connection.State != ConnectionState.Open)
+                await connection.OpenAsync(cancellationToken);
+
+            using DbCommand cmd = connection.CreateCommand();
+            cmd.CommandText = request.Query;
+
+            DbParameter keyParam = cmd.CreateParameter();
+            keyParam.ParameterName = "@customerKey";
+            keyParam.Value = request.CustomerKey;
+            cmd.Parameters.Add(keyParam);
+
+            using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                return Ok(new Dictionary<string, object>());
+
+            var result = new Dictionary<string, object>();
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                string name = reader.GetName(i);
+                if (reader.IsDBNull(i))
+                {
+                    result[name] = 0;
+                    continue;
+                }
+
+                object raw = reader.GetValue(i);
+                if (raw is long l)
+                    result[name] = l;
+                else if (raw is double d)
+                    result[name] = Math.Round(d, 1);
+                else if (raw is decimal dec)
+                    result[name] = Math.Round((double)dec, 1);
+                else if (raw is int intVal)
+                    result[name] = intVal;
+                else
+                    result[name] = raw.ToString() ?? "";
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error executing customer quality query for key {Key}", request.CustomerKey);
+            return Ok(new Dictionary<string, object> { ["error"] = ex.Message });
         }
     }
 
@@ -1141,5 +1201,12 @@ public sealed class AppendNoteXpdRequest
 // Request body for POST /api/customers/late.
 public sealed class LateCustomersQueryRequest
 {
+    public string? Query { get; set; }
+}
+
+// Request body for POST /api/customers/quality.
+public sealed class CustomerQualityRequest
+{
+    public int CustomerKey { get; set; }
     public string? Query { get; set; }
 }
