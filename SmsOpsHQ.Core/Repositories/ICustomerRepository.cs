@@ -9,6 +9,10 @@ public interface ICustomerRepository
     Task<Customer> FindOrCreateAsync(int storeId, string phoneE164,
         CancellationToken cancellationToken = default);
 
+    // Find an existing customer by phone without creating one. Returns null if not found.
+    Task<Customer?> FindByPhoneAsync(int storeId, string phoneE164,
+        CancellationToken cancellationToken = default);
+
     // Get a single customer with store isolation.
     Task<Customer?> GetByIdAsync(int storeId, int customerId,
         CancellationToken cancellationToken = default);

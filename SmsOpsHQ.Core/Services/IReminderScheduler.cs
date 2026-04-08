@@ -25,6 +25,14 @@ public sealed class SchedulerStatus
     public int DailySent { get; set; }
     public int DailyLimit { get; set; }
     public string? LastResetDate { get; set; }
+
+    // Live progress for the current/last run.
+    public bool IsRunInProgress { get; set; }
+    public int RunSent { get; set; }
+    public int RunFailed { get; set; }
+    public int RunSkipped { get; set; }
+    public int RunTotalEligible { get; set; }
+    public string? RunCurrentPhase { get; set; }
 }
 
 public sealed class AutoReminderResult

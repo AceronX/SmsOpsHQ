@@ -61,6 +61,38 @@ public sealed class ThreadRepository : IThreadRepository
         return MapToDomain(entity);
     }
 
+    // Find an existing open thread for a customer without creating one.
+    // Checks by IdentityId first, then CustomerId -- same precedence as FindOrCreateAsync.
+    public async Task<Thread?> FindOpenByCustomerAsync(int storeId, int? identityId, int? customerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (identityId is not null)
+        {
+            ThreadEntity? byIdentity = await _db.Threads
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.StoreId == storeId && t.IdentityId == identityId && t.Status == "Open",
+                    cancellationToken);
+
+            if (byIdentity is not null)
+                return MapToDomain(byIdentity);
+        }
+
+        if (customerId is not null && customerId != 0)
+        {
+            ThreadEntity? byCustomer = await _db.Threads
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.StoreId == storeId && t.CustomerId == customerId && t.Status == "Open",
+                    cancellationToken);
+
+            if (byCustomer is not null)
+                return MapToDomain(byCustomer);
+        }
+
+        return null;
+    }
+
     // Get inbox threads for a store, ordered by LastMessageAt DESC.
     // Supports filter (all/unread/open/closed), search by customer name/phone,
     // and optional Twilio number filtering.

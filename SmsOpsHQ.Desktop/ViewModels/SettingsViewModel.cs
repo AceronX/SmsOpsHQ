@@ -162,6 +162,27 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _runNowBusy;
 
+    [ObservableProperty]
+    private bool _reminderRunActive;
+
+    [ObservableProperty]
+    private int _reminderProgressSent;
+
+    [ObservableProperty]
+    private int _reminderProgressFailed;
+
+    [ObservableProperty]
+    private int _reminderProgressSkipped;
+
+    [ObservableProperty]
+    private int _reminderProgressTotal;
+
+    [ObservableProperty]
+    private int _reminderProgressProcessed;
+
+    [ObservableProperty]
+    private string _reminderProgressPhase = string.Empty;
+
     // Tab 5: VoIP
     [ObservableProperty]
     private string _xblueIp = string.Empty;
@@ -766,6 +787,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 SchedulerNextRun = status.NextRunTime ?? "N/A";
                 DailySent = status.DailySent;
                 DailyLimit = status.DailyLimit;
+                ApplyRunProgress(status);
+
+                if (status.IsRunInProgress && !RunNowBusy)
+                {
+                    RunNowBusy = true;
+                    RunNowResult = string.Empty;
+                    _ = PollRunProgressAsync();
+                }
             }
         }
         catch (Exception ex)
@@ -807,27 +836,80 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         RunNowResult = string.Empty;
         RunNowBusy = true;
+        ReminderRunActive = true;
+        ReminderProgressSent = 0;
+        ReminderProgressFailed = 0;
+        ReminderProgressSkipped = 0;
+        ReminderProgressTotal = 0;
+        ReminderProgressProcessed = 0;
+        ReminderProgressPhase = "Starting...";
+
         try
         {
-            var result = await _apiClient.RunAutoRemindersAsync();
-            int sent = result.TryGetProperty("sentCount", out var s) ? s.GetInt32() : 0;
-            int failed = result.TryGetProperty("failedCount", out var f) ? f.GetInt32() : 0;
-            int skipped = result.TryGetProperty("skippedCount", out var sk) ? sk.GetInt32() : 0;
-
-            RunNowResult = sent > 0 || failed > 0
-                ? $"Done: {sent} sent, {failed} failed, {skipped} skipped"
-                : "Done: No eligible tickets found for today's reminder dates.";
-
-            await LoadSchedulerStatusAsync();
+            await _apiClient.RunAutoRemindersAsync();
+            await PollRunProgressAsync();
         }
         catch (Exception ex)
         {
-            RunNowResult = $"Error: {ex.Message}";
+            string msg = ex.Message;
+            if (msg.Contains("409") || msg.Contains("Conflict") || msg.Contains("already in progress", StringComparison.OrdinalIgnoreCase))
+            {
+                RunNowResult = "A run is already in progress.";
+                await PollRunProgressAsync();
+            }
+            else
+            {
+                RunNowResult = $"Error: {msg}";
+                ReminderRunActive = false;
+                RunNowBusy = false;
+            }
+        }
+    }
+
+    private async Task PollRunProgressAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(2000);
+                SchedulerStatus? status = await _apiClient.GetSchedulerStatusAsync();
+                if (status is null) break;
+
+                ApplyRunProgress(status);
+
+                if (!status.IsRunInProgress)
+                {
+                    RunNowResult = status.RunSent > 0 || status.RunFailed > 0
+                        ? $"Done: {status.RunSent} sent, {status.RunFailed} failed, {status.RunSkipped} skipped"
+                        : "Done: No eligible tickets found for today's reminder dates.";
+
+                    DailySent = status.DailySent;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            RunNowResult = $"Polling error: {ex.Message}";
         }
         finally
         {
+            ReminderRunActive = false;
             RunNowBusy = false;
+            await LoadSchedulerStatusAsync();
         }
+    }
+
+    private void ApplyRunProgress(SchedulerStatus status)
+    {
+        ReminderRunActive = status.IsRunInProgress;
+        ReminderProgressSent = status.RunSent;
+        ReminderProgressFailed = status.RunFailed;
+        ReminderProgressSkipped = status.RunSkipped;
+        ReminderProgressTotal = status.RunTotalEligible;
+        ReminderProgressProcessed = status.RunSent + status.RunFailed + status.RunSkipped;
+        ReminderProgressPhase = status.RunCurrentPhase ?? string.Empty;
     }
 
     [RelayCommand]

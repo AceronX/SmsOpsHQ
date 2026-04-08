@@ -19,6 +19,9 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
     private readonly int _scheduleMinute;
     private readonly int _maxRemindersPerRun;
     private readonly int _dailySmsLimit;
+    private readonly int _sendDelayMs;
+    private readonly int _batchSize;
+    private readonly int _batchPauseMs;
 
     private Timer? _dailyTimer;
     private Timer? _midnightResetTimer;
@@ -27,6 +30,14 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
     private DateOnly? _lastResetDate;
     private DateTime? _lastRunTime;
     private readonly object _lock = new();
+
+    // Live progress tracking for the current run.
+    private volatile bool _runInProgress;
+    private int _runSent;
+    private int _runFailed;
+    private int _runSkipped;
+    private int _runTotalEligible;
+    private string? _runCurrentPhase;
 
     // Reminder intervals to process in order.
     private static readonly int[] ReminderIntervals = { -7, 0, 7, 14, 30 };
@@ -52,6 +63,9 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
         _scheduleMinute = configuration.GetValue("Reminders:ScheduleMinute", 0);
         _maxRemindersPerRun = configuration.GetValue("Reminders:MaxPerRun", 200);
         _dailySmsLimit = configuration.GetValue("Reminders:DailyLimit", 500);
+        _sendDelayMs = configuration.GetValue("Reminders:SendDelayMs", 2000);
+        _batchSize = configuration.GetValue("Reminders:BatchSize", 10);
+        _batchPauseMs = configuration.GetValue("Reminders:BatchPauseMs", 30000);
     }
 
     // ── Start / Stop ─────────────────────────────────────────────────
@@ -126,7 +140,13 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
                 LastRunTime = _lastRunTime?.ToString("yyyy-MM-dd HH:mm:ss"),
                 DailySent = _dailySentCount,
                 DailyLimit = _dailySmsLimit,
-                LastResetDate = _lastResetDate?.ToString("yyyy-MM-dd")
+                LastResetDate = _lastResetDate?.ToString("yyyy-MM-dd"),
+                IsRunInProgress = _runInProgress,
+                RunSent = _runSent,
+                RunFailed = _runFailed,
+                RunSkipped = _runSkipped,
+                RunTotalEligible = _runTotalEligible,
+                RunCurrentPhase = _runCurrentPhase
             };
         }
     }
@@ -160,6 +180,9 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
 
     private async Task<AutoReminderResult> ExecuteReminderRunAsync(CancellationToken cancellationToken)
     {
+        if (_runInProgress)
+            return new AutoReminderResult { Error = "run_already_in_progress" };
+
         ResetDailyCounter();
 
         if (_dailySentCount >= _dailySmsLimit)
@@ -168,41 +191,68 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
             return new AutoReminderResult { Error = "daily_limit_reached" };
         }
 
+        lock (_lock)
+        {
+            _runInProgress = true;
+            _runSent = 0;
+            _runFailed = 0;
+            _runSkipped = 0;
+            _runTotalEligible = 0;
+            _runCurrentPhase = "Starting";
+        }
+
         _logger.LogInformation("Starting automatic reminder run");
 
         AutoReminderResult results = new();
         DateTime today = DateTime.Now.Date;
 
-        using IServiceScope scope = _scopeFactory.CreateScope();
-        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        IReminderService reminderService = scope.ServiceProvider.GetRequiredService<IReminderService>();
-
-        foreach (int daysDiff in ReminderIntervals)
+        try
         {
-            if (_dailySentCount >= _dailySmsLimit)
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            IReminderService reminderService = scope.ServiceProvider.GetRequiredService<IReminderService>();
+
+            int preCount = await CountAllEligibleAsync(db, today, cancellationToken);
+            lock (_lock) { _runTotalEligible = preCount; }
+            _logger.LogInformation("Pre-counted {Total} eligible tickets across all phases", preCount);
+
+            foreach (int daysDiff in ReminderIntervals)
             {
-                _logger.LogWarning("Daily limit reached during processing");
-                break;
+                if (_dailySentCount >= _dailySmsLimit)
+                {
+                    _logger.LogWarning("Daily limit reached during processing");
+                    break;
+                }
+
+                string reminderType = $"reminder_{daysDiff}";
+                lock (_lock) { _runCurrentPhase = ReminderDescriptions.GetValueOrDefault(daysDiff, $"{daysDiff} days"); }
+
+                AutoReminderTypeResult typeResult = await ProcessReminderTypeAsync(
+                    db, reminderService, daysDiff, today, cancellationToken);
+
+                results.SentCount += typeResult.Sent;
+                results.FailedCount += typeResult.Failed;
+                results.SkippedCount += typeResult.Skipped;
+                results.ByType[reminderType] = typeResult;
+
+                lock (_lock) { _dailySentCount += typeResult.Sent; }
             }
 
-            string reminderType = $"reminder_{daysDiff}";
-            AutoReminderTypeResult typeResult = await ProcessReminderTypeAsync(
-                db, reminderService, daysDiff, today, cancellationToken);
+            lock (_lock) { _lastRunTime = DateTime.Now; }
 
-            results.SentCount += typeResult.Sent;
-            results.FailedCount += typeResult.Failed;
-            results.SkippedCount += typeResult.Skipped;
-            results.ByType[reminderType] = typeResult;
-
-            lock (_lock) { _dailySentCount += typeResult.Sent; }
+            _logger.LogInformation(
+                "Reminder run complete: Sent={Sent} Failed={Failed} Skipped={Skipped} DailyTotal={Daily}/{Limit}",
+                results.SentCount, results.FailedCount, results.SkippedCount,
+                _dailySentCount, _dailySmsLimit);
         }
-
-        lock (_lock) { _lastRunTime = DateTime.Now; }
-
-        _logger.LogInformation(
-            "Reminder run complete: Sent={Sent} Failed={Failed} Skipped={Skipped} DailyTotal={Daily}/{Limit}",
-            results.SentCount, results.FailedCount, results.SkippedCount,
-            _dailySentCount, _dailySmsLimit);
+        finally
+        {
+            lock (_lock)
+            {
+                _runInProgress = false;
+                _runCurrentPhase = null;
+            }
+        }
 
         return results;
     }
@@ -252,15 +302,17 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
 
         _logger.LogInformation("Found {Count} tickets for {DaysDiff} day reminders", tickets.Count, daysDiff);
 
+        int sendCountInBatch = 0;
+
         foreach (var ticket in tickets)
         {
             if (ticket.Phone is null)
             {
                 result.Skipped++;
+                lock (_lock) { _runSkipped++; }
                 continue;
             }
 
-            // Check if already sent
             bool alreadySent = await db.SmsReminders
                 .AsNoTracking()
                 .AnyAsync(r => r.TicketKey == ticket.Key
@@ -272,12 +324,14 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
             if (alreadySent)
             {
                 result.Skipped++;
+                lock (_lock) { _runSkipped++; }
                 continue;
             }
 
             if (await reminderService.IsPhoneExcludedAsync(ticket.Phone, cancellationToken))
             {
                 result.Skipped++;
+                lock (_lock) { _runSkipped++; }
                 continue;
             }
 
@@ -295,13 +349,28 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
             if (sendResult.Success)
             {
                 result.Sent++;
+                sendCountInBatch++;
+                lock (_lock) { _runSent++; }
                 _logger.LogInformation(
                     "Sent to {Name} ({Phone}) - Ticket #{Trans}",
                     ticket.CustomerName?.Trim(), ticket.Phone, ticket.TransNo);
+
+                if (_batchSize > 0 && sendCountInBatch % _batchSize == 0)
+                {
+                    _logger.LogInformation(
+                        "Batch pause: {Count} sent, waiting {PauseMs}ms",
+                        sendCountInBatch, _batchPauseMs);
+                    await Task.Delay(_batchPauseMs, cancellationToken);
+                }
+                else if (_sendDelayMs > 0)
+                {
+                    await Task.Delay(_sendDelayMs, cancellationToken);
+                }
             }
             else
             {
                 result.Failed++;
+                lock (_lock) { _runFailed++; }
                 _logger.LogWarning(
                     "Failed: {Name} ({Phone}) - {Message}",
                     ticket.CustomerName?.Trim(), ticket.Phone, sendResult.Message);
@@ -316,6 +385,41 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
     }
 
     // ── Utility ──────────────────────────────────────────────────────
+
+    private async Task<int> CountAllEligibleAsync(
+        AppDbContext db, DateTime today, CancellationToken cancellationToken)
+    {
+        int total = 0;
+        int[] allowedTypes = { 3, 4, 5 };
+
+        foreach (int daysDiff in ReminderIntervals)
+        {
+            DateTime targetDate = today.AddDays(-daysDiff);
+            string isoPrefix = targetDate.ToString("yyyy-MM-dd");
+            string usFormat = $"{targetDate.Month}/{targetDate.Day}/{targetDate.Year}";
+            string usFormatPadded = targetDate.ToString("MM/dd/yyyy");
+
+            int count = await db.Tickets
+                .AsNoTracking()
+                .Where(t => t.Active == 1
+                          && t.Type != null && allowedTypes.Contains(t.Type.Value)
+                          && t.DueDate != null
+                          && (t.DueDate.StartsWith(isoPrefix)
+                              || t.DueDate == usFormat
+                              || t.DueDate == usFormatPadded))
+                .Join(db.Customers.AsNoTracking(),
+                    t => t.CustomerKey,
+                    c => c.CustomerKey,
+                    (t, c) => new { t.Key, Phone = c.ResPhone ?? c.BusPhone })
+                .Where(x => x.Phone != null)
+                .Take(500)
+                .CountAsync(cancellationToken);
+
+            total += count;
+        }
+
+        return total;
+    }
 
     private void ResetDailyCounter()
     {

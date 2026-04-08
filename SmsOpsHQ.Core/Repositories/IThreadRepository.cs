@@ -11,6 +11,10 @@ public interface IThreadRepository
     Task<Thread> FindOrCreateAsync(int storeId, int? identityId, int? customerId = null,
         CancellationToken cancellationToken = default);
 
+    // Find an existing open thread for a customer. Returns null if no open thread exists.
+    Task<Thread?> FindOpenByCustomerAsync(int storeId, int? identityId, int? customerId,
+        CancellationToken cancellationToken = default);
+
     // Get inbox threads for a store, ordered by LastMessageAt DESC.
     Task<List<Thread>> GetInboxAsync(int storeId, string? filter, string? search,
         int? twilioNumberId, CancellationToken cancellationToken = default);

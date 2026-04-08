@@ -35,6 +35,9 @@ public sealed class ReminderService : IReminderService
     };
 
     private readonly bool _testMode;
+    private readonly int _sendDelayMs;
+    private readonly int _batchSize;
+    private readonly int _batchPauseMs;
 
     public ReminderService(
         AppDbContext db,
@@ -56,6 +59,9 @@ public sealed class ReminderService : IReminderService
         _customerRepo = customerRepo;
         _identityResolver = identityResolver;
         _testMode = configuration?.GetValue("Reminders:TestMode", false) ?? false;
+        _sendDelayMs = configuration?.GetValue("Reminders:SendDelayMs", 2000) ?? 2000;
+        _batchSize = configuration?.GetValue("Reminders:BatchSize", 10) ?? 10;
+        _batchPauseMs = configuration?.GetValue("Reminders:BatchPauseMs", 30000) ?? 30000;
     }
 
     // ── Send Single Reminder ─────────────────────────────────────────
@@ -102,10 +108,12 @@ public sealed class ReminderService : IReminderService
         string? toE164 = PhoneUtils.NormalizeToE164(request.Phone);
         if (toE164 is null)
         {
+            await AddToExcludedAsync(request.Phone, "Invalid number - failed validation", null, cancellationToken);
+            _logger.LogInformation("Auto-excluded invalid phone {Phone}", request.Phone);
             return new ReminderSendResult
             {
                 Success = false,
-                Message = "Invalid phone number format"
+                Message = "Invalid phone number format (auto-excluded)"
             };
         }
 
@@ -183,10 +191,12 @@ public sealed class ReminderService : IReminderService
         string? toE164 = PhoneUtils.NormalizeToE164(request.Phone);
         if (toE164 is null)
         {
+            await AddToExcludedAsync(request.Phone, "Invalid number - failed validation", null, cancellationToken);
+            _logger.LogInformation("Auto-excluded invalid phone {Phone}", request.Phone);
             return new ReminderSendResult
             {
                 Success = false,
-                Message = "Invalid phone number format"
+                Message = "Invalid phone number format (auto-excluded)"
             };
         }
 
@@ -339,11 +349,14 @@ public sealed class ReminderService : IReminderService
             });
         }
 
-        // Send reminders per customer (single or combined).
+        int sendCountInBatch = 0;
+
         foreach (CustomerTicketGroup group in customerTickets.Values)
         {
             if (results.SentCount >= maxCount)
                 break;
+
+            bool sent;
 
             if (group.Tickets.Count == 1)
             {
@@ -360,7 +373,8 @@ public sealed class ReminderService : IReminderService
                     StoreId = storeId
                 }, cancellationToken);
 
-                if (result.Success) results.SentCount++; else results.FailedCount++;
+                sent = result.Success;
+                if (sent) results.SentCount++; else results.FailedCount++;
 
                 results.Details.Add(new BatchReminderDetail
                 {
@@ -383,7 +397,8 @@ public sealed class ReminderService : IReminderService
                     StoreId = storeId
                 }, cancellationToken);
 
-                if (result.Success)
+                sent = result.Success;
+                if (sent)
                 {
                     results.SentCount++;
                     results.CombinedCount += group.Tickets.Count;
@@ -403,6 +418,22 @@ public sealed class ReminderService : IReminderService
                     Success = result.Success,
                     Message = result.Message
                 });
+            }
+
+            if (sent)
+            {
+                sendCountInBatch++;
+                if (_batchSize > 0 && sendCountInBatch % _batchSize == 0)
+                {
+                    _logger.LogInformation(
+                        "Batch throttle pause: {Count} sent, waiting {PauseMs}ms",
+                        sendCountInBatch, _batchPauseMs);
+                    await Task.Delay(_batchPauseMs, cancellationToken);
+                }
+                else if (_sendDelayMs > 0)
+                {
+                    await Task.Delay(_sendDelayMs, cancellationToken);
+                }
             }
         }
 
@@ -644,20 +675,34 @@ public sealed class ReminderService : IReminderService
     {
         if (_threadRepo is null || _messageRepo is null || _customerRepo is null)
         {
-            _logger.LogDebug("Conversation repos not available; skipping thread creation");
+            _logger.LogDebug("Conversation repos not available; skipping thread lookup");
             return;
         }
 
         try
         {
-            var customer = await _customerRepo.FindOrCreateAsync(storeId, toE164, cancellationToken);
+            var customer = await _customerRepo.FindByPhoneAsync(storeId, toE164, cancellationToken);
 
             int? identityId = _identityResolver is not null
                 ? await _identityResolver.ResolveIdentityIdAsync(storeId, toE164, cancellationToken)
                 : null;
 
-            var thread = await _threadRepo.FindOrCreateAsync(
-                storeId, identityId, customer.CustomerId, cancellationToken);
+            if (customer is null && identityId is null)
+            {
+                _logger.LogInformation(
+                    "No existing customer or identity for {Phone}; reminder is reminders-tab only", toE164);
+                return;
+            }
+
+            var thread = await _threadRepo.FindOpenByCustomerAsync(
+                storeId, identityId, customer?.CustomerId, cancellationToken);
+
+            if (thread is null)
+            {
+                _logger.LogInformation(
+                    "No open conversation thread for {Phone}; reminder is reminders-tab only", toE164);
+                return;
+            }
 
             var message = await _messageRepo.CreateOutboundAsync(
                 storeId, thread.ThreadId, fromE164,
@@ -671,7 +716,7 @@ public sealed class ReminderService : IReminderService
                 await _messageRepo.UpdateSentAsync(message.MessageId, twilioSid, "Sent", cancellationToken);
 
             _logger.LogInformation(
-                "Added reminder to conversation thread {ThreadId} for {Phone}",
+                "Appended reminder to existing thread {ThreadId} for {Phone}",
                 thread.ThreadId, toE164);
         }
         catch (Exception ex)

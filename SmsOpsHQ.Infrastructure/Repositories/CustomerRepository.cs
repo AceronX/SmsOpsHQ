@@ -43,6 +43,18 @@ public sealed class CustomerRepository : ICustomerRepository
         return MapToDomain(entity);
     }
 
+    public async Task<Customer?> FindByPhoneAsync(int storeId, string phoneE164,
+        CancellationToken cancellationToken = default)
+    {
+        CustomerEntity? existing = await _db.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                c => c.StoreId == storeId && c.PhoneE164 == phoneE164,
+                cancellationToken);
+
+        return existing is null ? null : MapToDomain(existing);
+    }
+
     public async Task<Customer?> GetByIdAsync(int storeId, int customerId,
         CancellationToken cancellationToken = default)
     {

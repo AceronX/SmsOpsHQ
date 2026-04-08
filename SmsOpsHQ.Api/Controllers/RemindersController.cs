@@ -65,10 +65,14 @@ public sealed class RemindersController : ControllerBase
     // ── 3. POST /api/reminders/auto ──────────────────────────────────
 
     [HttpPost("auto")]
-    public async Task<IActionResult> RunAutomaticReminders(CancellationToken cancellationToken)
+    public IActionResult RunAutomaticReminders()
     {
-        AutoReminderResult result = await _scheduler.RunNowAsync(cancellationToken);
-        return Ok(result);
+        SchedulerStatus status = _scheduler.GetStatus();
+        if (status.IsRunInProgress)
+            return Conflict(new { message = "A reminder run is already in progress" });
+
+        _ = Task.Run(() => _scheduler.RunNowAsync(CancellationToken.None));
+        return Accepted(new { message = "Reminder run started" });
     }
 
     // ── 4. GET /api/reminders/scheduler/status ───────────────────────

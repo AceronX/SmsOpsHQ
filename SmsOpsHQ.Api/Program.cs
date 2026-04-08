@@ -298,10 +298,8 @@ try
         env = env.EnvironmentName
     }));
 
-    // Daily reminder scheduler: disabled for testing.
-    // Uncomment the lines below to enable automatic 3pm daily reminders.
-    // IReminderScheduler reminderScheduler = app.Services.GetRequiredService<IReminderScheduler>();
-    // reminderScheduler.Start();
+    IReminderScheduler reminderScheduler = app.Services.GetRequiredService<IReminderScheduler>();
+    reminderScheduler.Start();
 
     Log.Information("SmsOps HQ API starting...");
     app.Run();
