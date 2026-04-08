@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -62,7 +63,15 @@ public class ReminderServiceTests : IDisposable
 
         ILogger<ReminderService> logger = NullLogger<ReminderService>.Instance;
 
-        _service = new ReminderService(_db, twilioService, storePhoneResolver, logger);
+        IConfiguration testConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "Reminders:TestMode", "true" }
+            })
+            .Build();
+
+        _service = new ReminderService(_db, twilioService, storePhoneResolver, logger,
+            configuration: testConfig);
     }
 
     public void Dispose()

@@ -96,7 +96,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280" MinWidth="200"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="340" MinWidth="280"/>
+                <ColumnDefinition Width="Auto" MinWidth="280"/>
             </Grid.ColumnDefinitions>
 
             <!-- Column 0: Reminder list -->

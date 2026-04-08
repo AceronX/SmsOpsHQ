@@ -5,7 +5,7 @@
              d:DataContext="{d:DesignInstance vm:CustomerPanelViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" Width="340">
+             mc:Ignorable="d" MinWidth="240">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{StaticResource Bg}">
         <StackPanel Margin="16,20,16,24">
             <!-- Customer name from XPD (or "Not in XPD" when not found). -->
@@ -87,45 +87,34 @@
             </Border>
 
             <!-- Active, late, and all-time ticket counts; border highlights yellow for first-time customers. -->
-            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14"
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="12,10"
                     BorderBrush="{Binding StatsBorderColor, Converter={StaticResource HexToBrushConverter}}"
-                    BorderThickness="1" Margin="0,0,0,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition/>
-                        <RowDefinition/>
-                        <RowDefinition/>
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Active Tickets" FontSize="13"
-                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ActiveCount}" FontSize="14"
-                               FontWeight="Bold" Foreground="{StaticResource TextPrimary}"
-                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Late Tickets" FontSize="13"
-                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
-                               Margin="0,8,0,0"/>
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LateCount}" FontSize="14"
-                               FontWeight="Bold" Foreground="{StaticResource Error}"
-                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8,0,0"/>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="All-Time Tickets" FontSize="13"
-                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
-                               Margin="0,8,0,0"/>
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AllTimeCount}" FontSize="14"
-                               FontWeight="Bold" Foreground="{StaticResource TextPrimary}"
-                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                </Grid>
+                    BorderThickness="1" Margin="0,0,0,10">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveCount}" FontSize="13"
+                                   FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                        <TextBlock Text="Active Tickets" FontSize="12"
+                                   Foreground="{StaticResource TextSecondary}"/>
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding LateCount}" FontSize="13"
+                                   FontWeight="Bold" Foreground="{StaticResource Error}"/>
+                        <TextBlock Text="Late Tickets" FontSize="12"
+                                   Foreground="{StaticResource TextSecondary}"/>
+                    </DockPanel>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding AllTimeCount}" FontSize="13"
+                                   FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                        <TextBlock Text="All-Time Tickets" FontSize="12"
+                                   Foreground="{StaticResource TextSecondary}"/>
+                    </DockPanel>
+                </StackPanel>
             </Border>
 
             <!-- Risk level and dynamic quality metrics from configurable query. -->
-            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14"
-                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,12">
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="12,10"
+                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,10">
                 <StackPanel>
                     <TextBlock Text="CUSTOMER QUALITY" FontSize="10" FontWeight="SemiBold"
                                Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
@@ -133,17 +122,6 @@
                             CornerRadius="6" Padding="10,5" HorizontalAlignment="Left" Margin="0,0,0,8">
                         <TextBlock Text="{Binding RiskLevel}" Foreground="White" FontSize="12" FontWeight="Bold"/>
                     </Border>
-                    <!-- Static stats-based lines -->
-                    <TextBlock FontSize="13" Margin="0,0,0,4"
-                               Foreground="{Binding CpuColor, Converter={StaticResource HexToBrushConverter}}"
-                               Visibility="{Binding CpuDisplay, Converter={StaticResource StringToVisibility}}">
-                        <Run Text="&#x2022; "/><Run Text="{Binding CpuDisplay, Mode=OneWay}"/>
-                    </TextBlock>
-                    <TextBlock FontSize="13" Margin="0,0,0,4"
-                               Foreground="{Binding PfxLateColor, Converter={StaticResource HexToBrushConverter}}"
-                               Visibility="{Binding PfxLateDisplay, Converter={StaticResource StringToVisibility}}">
-                        <Run Text="&#x2022; "/><Run Text="{Binding PfxLateDisplay, Mode=OneWay}"/>
-                    </TextBlock>
                     <!-- Dynamic quality metrics from configurable SQL query -->
                     <ItemsControl ItemsSource="{Binding QualityMetrics}"
                                   Visibility="{Binding HasQualityMetrics, Converter={StaticResource BoolToVisibility}}">
@@ -161,8 +139,8 @@
             </Border>
 
             <!-- Late rate, late/on-time counts, PFX sample, and worst late ticket; hidden when no payment history. -->
-            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14"
-                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,12"
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="12,10"
+                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,10"
                     Visibility="{Binding HasPaymentHistory, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>
                     <TextBlock Text="PAYMENT HISTORY" FontSize="10" FontWeight="SemiBold"

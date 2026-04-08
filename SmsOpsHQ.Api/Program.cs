@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
+using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Infrastructure;
 using SmsOpsHQ.Infrastructure.Hubs;
 using SmsOpsHQ.Infrastructure.Persistence;
@@ -296,6 +297,11 @@ try
         service = "SmsOps HQ",
         env = env.EnvironmentName
     }));
+
+    // Daily reminder scheduler: disabled for testing.
+    // Uncomment the lines below to enable automatic 3pm daily reminders.
+    // IReminderScheduler reminderScheduler = app.Services.GetRequiredService<IReminderScheduler>();
+    // reminderScheduler.Start();
 
     Log.Information("SmsOps HQ API starting...");
     app.Run();

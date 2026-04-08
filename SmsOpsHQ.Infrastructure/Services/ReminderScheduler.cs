@@ -48,7 +48,7 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
         _scopeFactory = scopeFactory;
         _logger = logger;
 
-        _scheduleHour = configuration.GetValue("Reminders:ScheduleHour", 10);
+        _scheduleHour = configuration.GetValue("Reminders:ScheduleHour", 15);
         _scheduleMinute = configuration.GetValue("Reminders:ScheduleMinute", 0);
         _maxRemindersPerRun = configuration.GetValue("Reminders:MaxPerRun", 200);
         _dailySmsLimit = configuration.GetValue("Reminders:DailyLimit", 500);
@@ -212,19 +212,27 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
         int daysDiff, DateTime today, CancellationToken cancellationToken)
     {
         DateTime targetDate = today.AddDays(-daysDiff);
-        string targetDateStr = $"{targetDate.Month}/{targetDate.Day}/{targetDate.Year}";
+        string isoPrefix = targetDate.ToString("yyyy-MM-dd");
+        string usFormat = $"{targetDate.Month}/{targetDate.Day}/{targetDate.Year}";
+        string usFormatPadded = targetDate.ToString("MM/dd/yyyy");
         string reminderType = $"reminder_{daysDiff}";
 
         _logger.LogInformation(
-            "Processing {Description}: target due date {TargetDate}",
+            "Processing {Description}: target due date {TargetDate} (ISO: {Iso})",
             ReminderDescriptions.GetValueOrDefault(daysDiff, $"{daysDiff} days"),
-            targetDateStr);
+            usFormat, isoPrefix);
 
         AutoReminderTypeResult result = new();
 
+        int[] allowedTypes = { 3, 4, 5 };
         var tickets = await db.Tickets
             .AsNoTracking()
-            .Where(t => t.Active == 1 && t.Type != 0 && t.DueDate == targetDateStr)
+            .Where(t => t.Active == 1
+                      && t.Type != null && allowedTypes.Contains(t.Type.Value)
+                      && t.DueDate != null
+                      && (t.DueDate.StartsWith(isoPrefix)
+                          || t.DueDate == usFormat
+                          || t.DueDate == usFormatPadded))
             .Join(db.Customers.AsNoTracking(),
                 t => t.CustomerKey,
                 c => c.CustomerKey,
@@ -235,7 +243,8 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
                     t.TransNo,
                     t.DueDate,
                     Phone = c.ResPhone ?? c.BusPhone,
-                    CustomerName = (c.FirstName ?? "") + " " + (c.LastName ?? "")
+                    CustomerName = (c.FirstName ?? "") + " " + (c.LastName ?? ""),
+                    c.StoreId
                 })
             .Where(x => x.Phone != null)
             .Take(500)
@@ -280,7 +289,7 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
                 TransNo = ticket.TransNo?.ToString() ?? "",
                 DueDate = ticket.DueDate ?? "",
                 DaysDiff = daysDiff,
-                StoreId = 1
+                StoreId = ticket.StoreId
             }, cancellationToken);
 
             if (sendResult.Success)

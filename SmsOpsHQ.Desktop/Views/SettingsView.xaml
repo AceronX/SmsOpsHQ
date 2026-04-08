@@ -777,7 +777,7 @@
 
                             <TextBlock Text="Controls" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"/>
-                            <StackPanel Orientation="Horizontal">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                 <Button Command="{Binding StartSchedulerCommand}"
                                         Style="{StaticResource SuccessButton}"
                                         Padding="18,10" Margin="0,0,10,0">
@@ -797,6 +797,41 @@
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
+
+                            <TextBlock Text="Manual Run" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"/>
+                            <TextBlock Text="Run reminders immediately without waiting for the scheduled time. Processes all eligible tickets across all stores."
+                                       FontSize="12" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <Button Command="{Binding RunRemindersNowCommand}"
+                                    IsEnabled="{Binding RunNowBusy, Converter={StaticResource InvertBool}}"
+                                    Padding="18,10" Margin="0,0,0,8">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Background" Value="{StaticResource Primary}"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </Style>
+                                </Button.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="13" Foreground="White" Margin="0,0,6,0"/>
+                                    <TextBlock FontSize="13" Foreground="White">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="Run reminders now"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding RunNowBusy}" Value="True">
+                                                        <Setter Property="Text" Value="Running..."/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="{Binding RunNowResult}" FontSize="13"
+                                       Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"
+                                       Visibility="{Binding RunNowResult, Converter={StaticResource StringToVisibility}}"
+                                       Margin="0,4,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

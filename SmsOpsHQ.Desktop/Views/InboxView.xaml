@@ -178,7 +178,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="250" MinWidth="200"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="300" MinWidth="240"/>
+                <ColumnDefinition Width="Auto" MinWidth="280"/>
             </Grid.ColumnDefinitions>
 
             <!-- Column 0: Conversation list -->

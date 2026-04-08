@@ -156,6 +156,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _dailyLimit;
 
+    [ObservableProperty]
+    private string _runNowResult = string.Empty;
+
+    [ObservableProperty]
+    private bool _runNowBusy;
+
     // Tab 5: VoIP
     [ObservableProperty]
     private string _xblueIp = string.Empty;
@@ -793,6 +799,34 @@ public sealed partial class SettingsViewModel : ViewModelBase
         catch (Exception ex)
         {
             SetError($"Stop scheduler failed: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task RunRemindersNowAsync()
+    {
+        RunNowResult = string.Empty;
+        RunNowBusy = true;
+        try
+        {
+            var result = await _apiClient.RunAutoRemindersAsync();
+            int sent = result.TryGetProperty("sentCount", out var s) ? s.GetInt32() : 0;
+            int failed = result.TryGetProperty("failedCount", out var f) ? f.GetInt32() : 0;
+            int skipped = result.TryGetProperty("skippedCount", out var sk) ? sk.GetInt32() : 0;
+
+            RunNowResult = sent > 0 || failed > 0
+                ? $"Done: {sent} sent, {failed} failed, {skipped} skipped"
+                : "Done: No eligible tickets found for today's reminder dates.";
+
+            await LoadSchedulerStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            RunNowResult = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            RunNowBusy = false;
         }
     }
 

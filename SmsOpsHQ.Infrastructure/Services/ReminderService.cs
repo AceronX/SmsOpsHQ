@@ -1,6 +1,8 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using SmsOpsHQ.Core.Repositories;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Infrastructure.Persistence;
@@ -9,15 +11,18 @@ using SmsOpsHQ.Infrastructure.Persistence.Entities;
 namespace SmsOpsHQ.Infrastructure.Services;
 
 // Sends, tracks, and queries pawn SMS reminders.
-// Ported from Python reminder_service.py.
+// Ported from Python reminder_service.py / main.py.
 public sealed class ReminderService : IReminderService
 {
     private readonly AppDbContext _db;
     private readonly ITwilioService _twilioService;
     private readonly IStorePhoneResolver _storePhoneResolver;
     private readonly ILogger<ReminderService> _logger;
+    private readonly IThreadRepository? _threadRepo;
+    private readonly IMessageRepository? _messageRepo;
+    private readonly ICustomerRepository? _customerRepo;
+    private readonly IIdentityResolver? _identityResolver;
 
-    // Reminder intervals relative to due date. Negative = before due, positive = after.
     private static readonly int[] ReminderIntervals = { -7, 0, 7, 14, 30 };
 
     private static readonly Dictionary<int, string> ReminderDescriptions = new()
@@ -29,20 +34,28 @@ public sealed class ReminderService : IReminderService
         { 30, "30 Days After Expiration (Final Notice)" }
     };
 
-    // TEST_MODE: when true, reminders are logged but not sent via Twilio.
-    // Toggle at deployment time. Not const to avoid unreachable-code warnings.
-    private static readonly bool TestMode = true;
+    private readonly bool _testMode;
 
     public ReminderService(
         AppDbContext db,
         ITwilioService twilioService,
         IStorePhoneResolver storePhoneResolver,
-        ILogger<ReminderService> logger)
+        ILogger<ReminderService> logger,
+        IConfiguration? configuration = null,
+        IThreadRepository? threadRepo = null,
+        IMessageRepository? messageRepo = null,
+        ICustomerRepository? customerRepo = null,
+        IIdentityResolver? identityResolver = null)
     {
         _db = db;
         _twilioService = twilioService;
         _storePhoneResolver = storePhoneResolver;
         _logger = logger;
+        _threadRepo = threadRepo;
+        _messageRepo = messageRepo;
+        _customerRepo = customerRepo;
+        _identityResolver = identityResolver;
+        _testMode = configuration?.GetValue("Reminders:TestMode", false) ?? false;
     }
 
     // ── Send Single Reminder ─────────────────────────────────────────
@@ -96,17 +109,20 @@ public sealed class ReminderService : IReminderService
             };
         }
 
-        if (TestMode)
+        if (_testMode)
         {
             _logger.LogInformation(
                 "TEST MODE reminder: To={To} Type={Type} Body={Body}",
                 toE164, reminderType, messageBody.Length > 100 ? messageBody[..100] + "..." : messageBody);
 
-            string testSid = $"TEST_{DateTime.UtcNow:yyyyMMddHHmmss}";
+            string testSid = $"TEST_{DateTime.UtcNow:yyyyMMddHHmmssfff}";
             await LogReminderAsync(
                 request.TicketKey, request.CustomerKey, request.DueDate,
                 toE164, reminderType, messageBody, true, testSid, null,
                 request.UserId, request.StoreId, fromE164, cancellationToken);
+
+            await AddToConversationThreadAsync(
+                request.StoreId, fromE164, toE164, messageBody, null, cancellationToken);
 
             return new ReminderSendResult
             {
@@ -127,6 +143,13 @@ public sealed class ReminderService : IReminderService
             request.TicketKey, request.CustomerKey, request.DueDate,
             toE164, reminderType, messageBody, success, twilioResult.TwilioSid,
             twilioResult.ErrorMessage, request.UserId, request.StoreId, fromE164, cancellationToken);
+
+        if (success)
+        {
+            await AddToConversationThreadAsync(
+                request.StoreId, fromE164, toE164, messageBody,
+                twilioResult.TwilioSid, cancellationToken);
+        }
 
         return new ReminderSendResult
         {
@@ -167,13 +190,13 @@ public sealed class ReminderService : IReminderService
             };
         }
 
-        if (TestMode)
+        if (_testMode)
         {
             _logger.LogInformation(
                 "TEST MODE combined reminder: To={To} Tickets={Count}",
                 toE164, request.Tickets.Count);
 
-            string testSid = $"TEST_COMBINED_{DateTime.UtcNow:yyyyMMddHHmmss}";
+            string testSid = $"TEST_COMBINED_{DateTime.UtcNow:yyyyMMddHHmmssfff}";
             foreach (CombinedTicketInfo ticket in request.Tickets)
             {
                 string combinedType = $"combined_{ticket.NextReminder.DaysDiff}";
@@ -182,6 +205,9 @@ public sealed class ReminderService : IReminderService
                     toE164, combinedType, messageBody, true, testSid, null,
                     request.UserId, request.StoreId, fromE164, cancellationToken);
             }
+
+            await AddToConversationThreadAsync(
+                request.StoreId, fromE164, toE164, messageBody, null, cancellationToken);
 
             return new ReminderSendResult
             {
@@ -208,6 +234,13 @@ public sealed class ReminderService : IReminderService
                 twilioResult.ErrorMessage, request.UserId, request.StoreId, fromE164, cancellationToken);
         }
 
+        if (success)
+        {
+            await AddToConversationThreadAsync(
+                request.StoreId, fromE164, toE164, messageBody,
+                twilioResult.TwilioSid, cancellationToken);
+        }
+
         return new ReminderSendResult
         {
             Success = success,
@@ -229,9 +262,11 @@ public sealed class ReminderService : IReminderService
         BatchReminderResult results = new();
 
         // Load active tickets with customer phone info. Request extra rows to account for skips.
+        int[] allowedTypes = { 3, 4, 5 };
         var tickets = await _db.Tickets
             .AsNoTracking()
-            .Where(t => t.Active == 1 && t.Type != 0
+            .Where(t => t.Active == 1
+                         && t.Type != null && allowedTypes.Contains(t.Type.Value)
                          && t.DueDate != null && t.DueDate != "")
             .Join(_db.Customers.AsNoTracking(),
                 t => t.CustomerKey,
@@ -601,6 +636,49 @@ public sealed class ReminderService : IReminderService
                         && r.ReminderType == reminderType
                         && r.Status == 1,
                 cancellationToken);
+    }
+
+    private async Task AddToConversationThreadAsync(
+        int storeId, string fromE164, string toE164, string body,
+        string? twilioSid, CancellationToken cancellationToken)
+    {
+        if (_threadRepo is null || _messageRepo is null || _customerRepo is null)
+        {
+            _logger.LogDebug("Conversation repos not available; skipping thread creation");
+            return;
+        }
+
+        try
+        {
+            var customer = await _customerRepo.FindOrCreateAsync(storeId, toE164, cancellationToken);
+
+            int? identityId = _identityResolver is not null
+                ? await _identityResolver.ResolveIdentityIdAsync(storeId, toE164, cancellationToken)
+                : null;
+
+            var thread = await _threadRepo.FindOrCreateAsync(
+                storeId, identityId, customer.CustomerId, cancellationToken);
+
+            var message = await _messageRepo.CreateOutboundAsync(
+                storeId, thread.ThreadId, fromE164,
+                fromE164, toE164, body,
+                null, "reminder", null,
+                cancellationToken);
+
+            await _threadRepo.UpdateLastMessageAtAsync(thread.ThreadId, message.CreatedAt, cancellationToken);
+
+            if (!string.IsNullOrEmpty(twilioSid))
+                await _messageRepo.UpdateSentAsync(message.MessageId, twilioSid, "Sent", cancellationToken);
+
+            _logger.LogInformation(
+                "Added reminder to conversation thread {ThreadId} for {Phone}",
+                thread.ThreadId, toE164);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to add reminder to conversation thread for {Phone}", toE164);
+        }
     }
 
     private async Task LogReminderAsync(
