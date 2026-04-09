@@ -94,6 +94,38 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private bool _isFirstTimeCustomer;
     [ObservableProperty] private string _statsBorderColor = "#E5E7EB";
 
+    [ObservableProperty] private bool _hasDecisionCard;
+    [ObservableProperty] private int _decisionScore;
+    [ObservableProperty] private string _decisionScoreColor = "#64748B";
+    [ObservableProperty] private string _decisionBand = string.Empty;
+    [ObservableProperty] private string _decisionBandColor = "#64748B";
+    [ObservableProperty] private string _decisionAction = string.Empty;
+    [ObservableProperty] private string _decisionPrimaryReason = string.Empty;
+    [ObservableProperty] private string _decisionReviewReasons = string.Empty;
+    [ObservableProperty] private string _decisionActiveDisplay = string.Empty;
+    [ObservableProperty] private string _decisionOverdueDisplay = string.Empty;
+    [ObservableProperty] private string _decisionAllTimeDisplay = string.Empty;
+    [ObservableProperty] private string _decisionCpuDisplay = string.Empty;
+    [ObservableProperty] private string _decisionPfxDisplay = string.Empty;
+    [ObservableProperty] private string _decisionEverLateDisplay = string.Empty;
+    [ObservableProperty] private string _decisionAvgDaysLateDisplay = string.Empty;
+    [ObservableProperty] private string _decisionLateRateDisplay = string.Empty;
+    [ObservableProperty] private string _idStatus = string.Empty;
+    [ObservableProperty] private string _idStatusColor = "#059669";
+    [ObservableProperty] private string _addressStatus = string.Empty;
+    [ObservableProperty] private string _addressStatusColor = "#059669";
+    [ObservableProperty] private string _contactStatus = string.Empty;
+    [ObservableProperty] private string _contactStatusColor = "#059669";
+
+    [ObservableProperty] private ObservableCollection<string> _decisionReviewReasonsList = new();
+    [ObservableProperty] private bool _hasDecisionReviewReasons;
+    [ObservableProperty] private string _decisionOverdueColor = "#64748B";
+    [ObservableProperty] private string _decisionPfxColor = "#64748B";
+    [ObservableProperty] private string _decisionEverLateColor = "#059669";
+    [ObservableProperty] private string _decisionAvgDaysLateColor = "#059669";
+    [ObservableProperty] private string _decisionLateRateColor = "#64748B";
+    [ObservableProperty] private string _decisionScoreBg = "#F8FAFC";
+
     [ObservableProperty] private string _callStatus = string.Empty;
     public bool CanClickToCall => _xblueService is not null && _xblueService.IsConfigured;
 
@@ -179,6 +211,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         HasClosedTickets = false;
         IsFirstTimeCustomer = false;
         StatsBorderColor = "#E5E7EB";
+        HasDecisionCard = false;
     }
 
     // Map API response (customer, stats, quality, tickets, notes) to display properties.
@@ -282,6 +315,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         }
 
         PopulatePaymentHistory(response);
+        PopulateDecisionCard(response);
 
         IsFirstTimeCustomer = AllTimeCount == 1;
         StatsBorderColor = IsFirstTimeCustomer ? "#FBC02D" : "#E5E7EB";
@@ -321,10 +355,18 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         int pfxForfeitedCount = GetInt(paymentHistoryElement, "pfxCount");
         if (pfxForfeitedCount == 0) pfxForfeitedCount = GetInt(paymentHistoryElement, "pfx_count");
 
-        LateRateDisplay = latePaymentRate.ToString("N1") + "% Late Payment Rate";
-        if (latePaymentRate > 50 || pfxForfeitedCount >= 3) LateRateColor = "#DC2626";
-        else if (latePaymentRate > 20 || pfxForfeitedCount >= 1) LateRateColor = "#D97706";
-        else LateRateColor = "#059669";
+        if (latePaymentsCount + onTimePaymentsCount == 0)
+        {
+            LateRateDisplay = "N/A — no redemption history";
+            LateRateColor = "#64748B";
+        }
+        else
+        {
+            LateRateDisplay = latePaymentRate.ToString("N1") + "% Late Payment Rate";
+            if (latePaymentRate > 50 || pfxForfeitedCount >= 3) LateRateColor = "#DC2626";
+            else if (latePaymentRate > 20 || pfxForfeitedCount >= 1) LateRateColor = "#D97706";
+            else LateRateColor = "#059669";
+        }
 
         PaymentStatsDisplay = "Late: " + latePaymentsCount + " | On-Time: " + onTimePaymentsCount;
 
@@ -377,6 +419,103 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             WorstLateDisplay = "No late payments";
             WorstLateColor = "#059669";
         }
+    }
+
+    // Fill decision card fields from the decision_card block in the API response.
+    private void PopulateDecisionCard(JsonElement response)
+    {
+        if (!response.TryGetProperty("decision_card", out JsonElement dc))
+        {
+            HasDecisionCard = false;
+            return;
+        }
+
+        HasDecisionCard = true;
+
+        int score = GetInt(dc, "customerScore");
+        DecisionScore = score;
+
+        string band = GetString(dc, "scoreBand");
+        DecisionBand = band;
+
+        string bandColor = band switch
+        {
+            "STANDARD" => "#10B981",
+            "VERIFY" => "#F59E0B",
+            "VERIFY + MANAGER" => "#F97316",
+            "MANAGER ONLY" => "#EF4444",
+            _ => "#64748B"
+        };
+        DecisionScoreColor = bandColor;
+        DecisionBandColor = bandColor;
+
+        DecisionScoreBg = band switch
+        {
+            "STANDARD" => "#F0FDF4",
+            "VERIFY" => "#FFFBEB",
+            "VERIFY + MANAGER" => "#FFF7ED",
+            "MANAGER ONLY" => "#FEF2F2",
+            _ => "#F8FAFC"
+        };
+
+        DecisionAction = GetString(dc, "recommendedAction");
+        DecisionPrimaryReason = GetString(dc, "primaryReason");
+
+        string reviewReasons = GetString(dc, "reviewReasons");
+        DecisionReviewReasons = reviewReasons;
+        var reasonsList = new ObservableCollection<string>();
+        if (!string.IsNullOrWhiteSpace(reviewReasons))
+        {
+            foreach (string r in reviewReasons.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                reasonsList.Add(r);
+        }
+        DecisionReviewReasonsList = reasonsList;
+        HasDecisionReviewReasons = reasonsList.Count > 0;
+
+        int activeTicketCount = GetInt(dc, "activeTickets");
+        int overdueCount = GetInt(dc, "overdueActiveTickets");
+        int pfxCountDc = GetInt(dc, "pfxCount");
+
+        DecisionActiveDisplay = activeTicketCount.ToString();
+        DecisionOverdueDisplay = overdueCount.ToString();
+        DecisionAllTimeDisplay = GetInt(dc, "allTimeTickets").ToString();
+        DecisionCpuDisplay = GetInt(dc, "cpuCount").ToString();
+        DecisionPfxDisplay = pfxCountDc.ToString();
+
+        DecisionOverdueColor = overdueCount > 0 ? "#DC2626" : "#64748B";
+        DecisionPfxColor = pfxCountDc > 0 ? "#DC2626" : "#64748B";
+
+        bool everLate = dc.TryGetProperty("everLate", out JsonElement elBool) && elBool.ValueKind == JsonValueKind.True;
+        DecisionEverLateDisplay = everLate ? "Yes" : "No";
+        DecisionEverLateColor = everLate ? "#D97706" : "#059669";
+
+        double avgDaysLateVal = GetDouble(dc, "avgDaysLate");
+        DecisionAvgDaysLateDisplay = avgDaysLateVal.ToString("N1");
+        DecisionAvgDaysLateColor = avgDaysLateVal > 30 ? "#DC2626" : avgDaysLateVal > 7 ? "#D97706" : "#059669";
+
+        if (dc.TryGetProperty("latePaymentRate", out JsonElement lrEl) && lrEl.ValueKind == JsonValueKind.Number)
+        {
+            double lr = lrEl.GetDouble();
+            DecisionLateRateDisplay = lr.ToString("N1") + "%";
+            DecisionLateRateColor = lr > 50 ? "#DC2626" : lr > 20 ? "#D97706" : "#059669";
+        }
+        else
+        {
+            DecisionLateRateDisplay = "N/A";
+            DecisionLateRateColor = "#64748B";
+        }
+
+        bool missingId = dc.TryGetProperty("flagMissingID", out JsonElement idEl) && idEl.ValueKind == JsonValueKind.True;
+        IdStatus = missingId ? "No ID on file" : "ID on file";
+        IdStatusColor = missingId ? "#DC2626" : "#059669";
+
+        bool missingAddr = dc.TryGetProperty("flagMissingAddress", out JsonElement addrEl) && addrEl.ValueKind == JsonValueKind.True;
+        AddressStatus = missingAddr ? "Address missing" : "Address complete";
+        AddressStatusColor = missingAddr ? "#DC2626" : "#059669";
+
+        bool missingContact = dc.TryGetProperty("flagMissingContact", out JsonElement contEl) && contEl.ValueKind == JsonValueKind.True;
+        ContactStatus = missingContact ? "No contact info" : "Contact available";
+        ContactStatusColor = missingContact ? "#DC2626" : "#059669";
     }
 
     // Build active ticket cards; compute IsLate and DaysLate from due date vs today.
@@ -650,6 +789,36 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         HasClosedTickets = false;
         IsFirstTimeCustomer = false;
         StatsBorderColor = "#E5E7EB";
+        HasDecisionCard = false;
+        DecisionScore = 0;
+        DecisionScoreColor = "#64748B";
+        DecisionBand = string.Empty;
+        DecisionBandColor = "#64748B";
+        DecisionAction = string.Empty;
+        DecisionPrimaryReason = string.Empty;
+        DecisionReviewReasons = string.Empty;
+        DecisionActiveDisplay = string.Empty;
+        DecisionOverdueDisplay = string.Empty;
+        DecisionAllTimeDisplay = string.Empty;
+        DecisionCpuDisplay = string.Empty;
+        DecisionPfxDisplay = string.Empty;
+        DecisionEverLateDisplay = string.Empty;
+        DecisionAvgDaysLateDisplay = string.Empty;
+        DecisionLateRateDisplay = string.Empty;
+        IdStatus = string.Empty;
+        IdStatusColor = "#059669";
+        AddressStatus = string.Empty;
+        AddressStatusColor = "#059669";
+        ContactStatus = string.Empty;
+        ContactStatusColor = "#059669";
+        DecisionReviewReasonsList = new ObservableCollection<string>();
+        HasDecisionReviewReasons = false;
+        DecisionOverdueColor = "#64748B";
+        DecisionPfxColor = "#64748B";
+        DecisionEverLateColor = "#059669";
+        DecisionAvgDaysLateColor = "#059669";
+        DecisionLateRateColor = "#64748B";
+        DecisionScoreBg = "#F8FAFC";
     }
 
     // Safe read of a string property from JSON; returns empty string if missing or not a string.

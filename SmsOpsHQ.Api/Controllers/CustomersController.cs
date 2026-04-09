@@ -630,6 +630,7 @@ public sealed class CustomersController : ControllerBase
         int primaryCustomerKey = customerKeys[0];
 
         // Load name, address, and phones for the first resolved key (used as the main display customer).
+        string custIdNo = "", custAddress = "", custResPhone = "", custBusPhone = "";
         object? customerData = null;
         try
         {
@@ -676,6 +677,11 @@ public sealed class CustomersController : ControllerBase
                     phone = ReadStringOrEmpty("ResPhone").Length > 0
                         ? ReadStringOrEmpty("ResPhone") : ReadStringOrEmpty("BusPhone")
                 };
+
+                custIdNo = ReadStringOrEmpty("IDNo");
+                custAddress = ReadStringOrEmpty("Address");
+                custResPhone = ReadStringOrEmpty("ResPhone");
+                custBusPhone = ReadStringOrEmpty("BusPhone");
             }
         }
         catch (Exception ex)
@@ -792,6 +798,15 @@ public sealed class CustomersController : ControllerBase
         // Step 5: Calculate late payment history
         LatePaymentHistory paymentHistory = PawnCalculator.CalculateLatePaymentHistory(allTickets, today);
 
+        // Step 6: Build decision card
+        var profileFlags = new ProfileFlags
+        {
+            HasID = !string.IsNullOrWhiteSpace(custIdNo),
+            HasAddress = !string.IsNullOrWhiteSpace(custAddress),
+            HasContact = !string.IsNullOrWhiteSpace(custResPhone) || !string.IsNullOrWhiteSpace(custBusPhone)
+        };
+        DecisionCardResult decisionCard = PawnCalculator.CalculateDecisionCard(allTickets, profileFlags, today);
+
         // Collect ticket notes from Tickets.Notes and item notes from Items.Notes for active tickets only.
         List<string> ticketNotesList = new();
         List<int> activeTicketKeys = new();
@@ -812,6 +827,7 @@ public sealed class CustomersController : ControllerBase
             stats,
             quality,
             payment_history = paymentHistory,
+            decision_card = decisionCard,
             ticket_notes = ticketNotesStr,
             item_notes = itemNotesStr,
             active_tickets = activeTickets,

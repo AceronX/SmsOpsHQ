@@ -49,6 +49,37 @@ public sealed class CpuScoreResult
     public bool SevereOverdue { get; set; }
 }
 
+// Lightweight input for profile-level flags (built by the controller from customer data).
+public sealed class ProfileFlags
+{
+    public bool HasID { get; set; }
+    public bool HasAddress { get; set; }
+    public bool HasContact { get; set; }
+}
+
+// Result of CalculateDecisionCard — unified scoring across history, profile, and risk.
+public sealed class DecisionCardResult
+{
+    public int CustomerScore { get; set; }
+    public string ScoreBand { get; set; } = string.Empty;
+    public string RecommendedAction { get; set; } = string.Empty;
+    public string PrimaryReason { get; set; } = string.Empty;
+    public string ReviewReasons { get; set; } = string.Empty;
+    public int ActiveTickets { get; set; }
+    public int OverdueActiveTickets { get; set; }
+    public int AllTimeTickets { get; set; }
+    public int CpuCount { get; set; }
+    public int PfxCount { get; set; }
+    public bool EverLate { get; set; }
+    public double AvgDaysLate { get; set; }
+    public int LateRedeemedCount { get; set; }
+    public int OnTimeRedeemedCount { get; set; }
+    public double? LatePaymentRate { get; set; }
+    public bool FlagMissingID { get; set; }
+    public bool FlagMissingAddress { get; set; }
+    public bool FlagMissingContact { get; set; }
+}
+
 // Pawn ticket business logic: days-late, CPU scoring, late payment
 // history, customer quality, and risk assessment.
 // Ported from Python routes_customers.py and PAWN_LOGIC.md.
@@ -292,6 +323,199 @@ public static class PawnCalculator
             CpuScore = cpuScore,
             PfxPenalty = pfxPenalty,
             SevereOverdue = hasSevereOverdue
+        };
+    }
+
+    // Unified decision card: consolidates ticket history, profile checks, and scoring
+    // into a single result with a 0-100 score, band, action, and review reasons.
+    public static DecisionCardResult CalculateDecisionCard(
+        List<Ticket> tickets, ProfileFlags profileFlags, DateTime today)
+    {
+        int activeCount = 0;
+        int overdueActiveCount = 0;
+        int pfxCount = 0;
+        int cpuCount = 0;
+        int lateRedeemedCount = 0;
+        int onTimeRedeemedCount = 0;
+        double totalDaysLate = 0;
+        int daysLateEntries = 0;
+
+        foreach (Ticket t in tickets)
+        {
+            if (t.HowClosed == "PFX-")
+            {
+                pfxCount++;
+                continue;
+            }
+
+            if (t.Active == 1 && t.Type != 0)
+            {
+                activeCount++;
+                if (TryParseXpdDate(t.DueDate, out DateTime dueDt) && dueDt < today.Date)
+                {
+                    overdueActiveCount++;
+                    totalDaysLate += (today.Date - dueDt).Days;
+                    daysLateEntries++;
+                }
+                continue;
+            }
+
+            if (t.Active == 1)
+                continue;
+
+            if (t.HowClosed == "CPU")
+                cpuCount++;
+
+            if (!TryParseXpdDate(t.DueDate, out DateTime closedDueDt))
+                continue;
+
+            if (TryParseXpdDate(t.DateClosed, out DateTime closedDt))
+            {
+                if (closedDt > closedDueDt)
+                {
+                    lateRedeemedCount++;
+                    totalDaysLate += (closedDt - closedDueDt).Days;
+                    daysLateEntries++;
+                }
+                else
+                {
+                    onTimeRedeemedCount++;
+                }
+            }
+            else
+            {
+                onTimeRedeemedCount++;
+            }
+        }
+
+        int completedTickets = lateRedeemedCount + onTimeRedeemedCount;
+        bool everLate = lateRedeemedCount > 0 || overdueActiveCount > 0;
+        double avgDaysLate = daysLateEntries > 0 ? totalDaysLate / daysLateEntries : 0;
+        double? latePaymentRate = completedTickets > 0
+            ? (double)lateRedeemedCount / completedTickets * 100.0
+            : null;
+
+        // Scoring: start at 100 and subtract penalties.
+        int score = 100;
+        var reasons = new List<(string tag, int penalty)>();
+
+        if (pfxCount > 0)
+        {
+            int penalty = Math.Min(pfxCount * 10, 40);
+            score -= penalty;
+            reasons.Add(($"{pfxCount} PFX", penalty));
+        }
+
+        if (overdueActiveCount > 0)
+        {
+            int penalty = Math.Min(overdueActiveCount * 10, 30);
+            score -= penalty;
+            reasons.Add(("OVERDUE ACTIVE", penalty));
+        }
+
+        if (latePaymentRate.HasValue)
+        {
+            if (latePaymentRate.Value > 50)
+            {
+                score -= 15;
+                reasons.Add(("HIGH LATE RATE", 15));
+            }
+            else if (latePaymentRate.Value > 20)
+            {
+                score -= 8;
+                reasons.Add(("ELEVATED LATE RATE", 8));
+            }
+        }
+
+        if (avgDaysLate > 30)
+        {
+            score -= 10;
+            reasons.Add(("HIGH AVG DAYS LATE", 10));
+        }
+        else if (avgDaysLate > 7)
+        {
+            score -= 5;
+            reasons.Add(("ELEVATED AVG DAYS LATE", 5));
+        }
+
+        if (completedTickets == 0)
+        {
+            score -= 5;
+            reasons.Add(("FIRST-TIME CUSTOMER", 5));
+        }
+
+        var reviewFlags = new List<string>();
+        foreach (var (tag, _) in reasons)
+            reviewFlags.Add(tag);
+
+        if (!profileFlags.HasID) reviewFlags.Add("NO ID");
+        if (!profileFlags.HasAddress) reviewFlags.Add("NO ADDRESS");
+        if (!profileFlags.HasContact) reviewFlags.Add("NO CONTACT");
+
+        score = Math.Max(0, score);
+
+        string band;
+        string action;
+        if (score >= 80)
+        {
+            band = "STANDARD";
+            action = "No action needed";
+        }
+        else if (score >= 60)
+        {
+            band = "VERIFY";
+            action = "Verify photo ID and current address";
+        }
+        else if (score >= 40)
+        {
+            band = "VERIFY + MANAGER";
+            action = "Verify ID and address; request manager review";
+        }
+        else
+        {
+            band = "MANAGER ONLY";
+            action = "Manager approval required before proceeding";
+        }
+
+        string primaryReason = reasons.Count > 0
+            ? reasons.OrderByDescending(r => r.penalty).First().tag
+            : (reviewFlags.Count > 0 ? reviewFlags[0] : "No issues found");
+
+        primaryReason = primaryReason switch
+        {
+            var r when r.Contains("PFX") => "Prior forfeiture history",
+            "OVERDUE ACTIVE" => "Multiple overdue active tickets",
+            "HIGH LATE RATE" => "High late payment rate",
+            "ELEVATED LATE RATE" => "Elevated late payment rate",
+            "HIGH AVG DAYS LATE" => "High average days late",
+            "ELEVATED AVG DAYS LATE" => "Elevated average days late",
+            "FIRST-TIME CUSTOMER" => "First-time customer — no history",
+            "NO ID" => "Missing ID on file",
+            "NO ADDRESS" => "Missing address on file",
+            "NO CONTACT" => "Missing contact information",
+            _ => primaryReason
+        };
+
+        return new DecisionCardResult
+        {
+            CustomerScore = score,
+            ScoreBand = band,
+            RecommendedAction = action,
+            PrimaryReason = primaryReason,
+            ReviewReasons = string.Join("; ", reviewFlags),
+            ActiveTickets = activeCount,
+            OverdueActiveTickets = overdueActiveCount,
+            AllTimeTickets = tickets.Count,
+            CpuCount = cpuCount,
+            PfxCount = pfxCount,
+            EverLate = everLate,
+            AvgDaysLate = Math.Round(avgDaysLate, 1),
+            LateRedeemedCount = lateRedeemedCount,
+            OnTimeRedeemedCount = onTimeRedeemedCount,
+            LatePaymentRate = latePaymentRate.HasValue ? Math.Round(latePaymentRate.Value, 1) : null,
+            FlagMissingID = !profileFlags.HasID,
+            FlagMissingAddress = !profileFlags.HasAddress,
+            FlagMissingContact = !profileFlags.HasContact
         };
     }
 
