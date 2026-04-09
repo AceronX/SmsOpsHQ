@@ -1,5 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Core.DTOs;
@@ -22,9 +28,18 @@ public sealed partial class MessageBubbleItem : ObservableObject
     [ObservableProperty] private string _status = string.Empty;
     [ObservableProperty] private string _createdAt = string.Empty;
     [ObservableProperty] private string? _mediaJson;
+    [ObservableProperty] private ImageSource? _mediaThumbnail;
+    [ObservableProperty] private bool _isThumbnailLoading;
+    [ObservableProperty] private string _mediaContentType = string.Empty;
+    [ObservableProperty] private string _mediaLabel = string.Empty;
+    [ObservableProperty] private string _mediaIconGlyph = string.Empty;
+    [ObservableProperty] private bool _isNonImageMedia;
+    [ObservableProperty] private bool _isVideoMedia;
+    public string? TempFilePath { get; set; }
 
     public bool IsOutbound => Direction == "Outbound";
     public bool IsNote => Direction == "Note";
+    public bool HasMedia => !string.IsNullOrEmpty(MediaJson);
 }
 
 /// <summary>
@@ -139,14 +154,38 @@ public sealed partial class ThreadViewModel : ViewModelBase
 
         try
         {
-            var mediaUrls = JsonSerializer.Deserialize<List<string>>(item.MediaJson);
-            if (mediaUrls is null || mediaUrls.Count == 0) return;
-            _ = LoadAndShowMediaAsync(mediaUrls[0]);
+            var (url, contentType) = ExtractFirstMedia(item.MediaJson);
+            if (url is null) return;
+
+            bool isImage = string.IsNullOrEmpty(contentType) || contentType.StartsWith("image/");
+            if (isImage)
+                _ = LoadAndShowMediaAsync(url);
+            else
+                _ = DownloadAndOpenWithSystemAsync(url, contentType!, item.TempFilePath);
         }
         catch
         {
             // Invalid media JSON; ignore.
         }
+    }
+
+    private static (string? Url, string? ContentType) ExtractFirstMedia(string mediaJson)
+    {
+        using var doc = JsonDocument.Parse(mediaJson);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return (null, null);
+
+        foreach (var el in doc.RootElement.EnumerateArray())
+        {
+            if (el.ValueKind == JsonValueKind.String)
+                return (el.GetString(), null);
+            if (el.ValueKind == JsonValueKind.Object &&
+                el.TryGetProperty("url", out var urlEl))
+            {
+                string? ct = el.TryGetProperty("content_type", out var ctEl) ? ctEl.GetString() : null;
+                return (urlEl.GetString(), ct);
+            }
+        }
+        return (null, null);
     }
 
     [RelayCommand]
@@ -172,6 +211,7 @@ public sealed partial class ThreadViewModel : ViewModelBase
 
             bool hadMessages = Messages.Count > 0;
             MergeMessages(freshMessages);
+            LoadThumbnailsForMessages(Messages);
 
             if (!hadMessages || freshMessages.Count > Messages.Count)
                 MessagesLoaded?.Invoke();
@@ -288,6 +328,7 @@ public sealed partial class ThreadViewModel : ViewModelBase
 
             var item = ParseSignalRMessage(message);
             Messages.Add(item);
+            LoadThumbnailsForMessages(new[] { item });
             MessagesLoaded?.Invoke();
             _onMessagesLoaded?.Invoke();
         });
@@ -463,6 +504,207 @@ public sealed partial class ThreadViewModel : ViewModelBase
             // Media load failed; ignore.
         }
     }
+
+    private async Task DownloadAndOpenWithSystemAsync(string mediaUrl, string contentType, string? cachedPath = null)
+    {
+        try
+        {
+            string tempPath;
+            if (!string.IsNullOrEmpty(cachedPath) && File.Exists(cachedPath))
+            {
+                tempPath = cachedPath;
+            }
+            else
+            {
+                byte[] data = await _apiClient.ProxyMediaAsync(mediaUrl);
+                string ext = GetFileExtension(contentType);
+                tempPath = Path.Combine(Path.GetTempPath(), $"SmsOpsHQ_{Guid.NewGuid():N}{ext}");
+                await File.WriteAllBytesAsync(tempPath, data);
+            }
+
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                Process.Start(new ProcessStartInfo(tempPath) { UseShellExecute = true });
+            });
+        }
+        catch
+        {
+            // Download/open failed; ignore.
+        }
+    }
+
+    private static string GetFileExtension(string contentType) => contentType switch
+    {
+        "video/mp4" => ".mp4",
+        "video/quicktime" => ".mov",
+        "video/webm" => ".webm",
+        "video/3gpp" => ".3gp",
+        "audio/mpeg" => ".mp3",
+        "audio/ogg" => ".ogg",
+        "audio/wav" => ".wav",
+        "application/pdf" => ".pdf",
+        _ when contentType.Contains("word") => ".docx",
+        _ when contentType.StartsWith("video/") => ".mp4",
+        _ when contentType.StartsWith("audio/") => ".mp3",
+        _ => ".bin"
+    };
+
+    private void LoadThumbnailsForMessages(IEnumerable<MessageBubbleItem> items)
+    {
+        foreach (var item in items)
+        {
+            if (!item.HasMedia || !string.IsNullOrEmpty(item.MediaLabel)) continue;
+
+            var (url, contentType) = ExtractFirstMedia(item.MediaJson!);
+            if (url is null) continue;
+
+            var (label, iconGlyph, isNonImage) = ClassifyMedia(contentType);
+            item.MediaContentType = contentType ?? string.Empty;
+            item.MediaLabel = label;
+            item.MediaIconGlyph = iconGlyph;
+            item.IsNonImageMedia = isNonImage;
+
+            item.IsVideoMedia = contentType?.StartsWith("video/") == true;
+
+            if (!isNonImage)
+                _ = LoadThumbnailAsync(item, url);
+            else
+                _ = LoadNonImageThumbnailAsync(item, url, contentType!);
+        }
+    }
+
+    private static (string Label, string IconGlyph, bool IsNonImage) ClassifyMedia(string? contentType)
+    {
+        if (string.IsNullOrEmpty(contentType) || contentType.StartsWith("image/"))
+            return ("Image", "\uE91B", false);
+        if (contentType.StartsWith("video/"))
+            return ("Video", "\uE714", true);
+        if (contentType.StartsWith("audio/"))
+            return ("Audio", "\uE8D6", true);
+        if (contentType == "application/pdf")
+            return ("PDF Document", "\uE8A5", true);
+        if (contentType.Contains("word") || contentType.Contains("document"))
+            return ("Document", "\uE8A5", true);
+        return ("File", "\uE8A5", true);
+    }
+
+    private async Task LoadThumbnailAsync(MessageBubbleItem item, string mediaUrl)
+    {
+        item.IsThumbnailLoading = true;
+        try
+        {
+            byte[] imageData = await _apiClient.ProxyMediaAsync(mediaUrl);
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.StreamSource = new MemoryStream(imageData);
+                bmp.DecodePixelWidth = 240;
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.EndInit();
+                bmp.Freeze();
+                item.MediaThumbnail = bmp;
+            });
+        }
+        catch
+        {
+            // Thumbnail load failed; "View attachment" link remains as fallback.
+        }
+        finally
+        {
+            item.IsThumbnailLoading = false;
+        }
+    }
+
+    private async Task LoadNonImageThumbnailAsync(MessageBubbleItem item, string mediaUrl, string contentType)
+    {
+        item.IsThumbnailLoading = true;
+        try
+        {
+            byte[] data = await _apiClient.ProxyMediaAsync(mediaUrl);
+            string ext = GetFileExtension(contentType);
+            string tempPath = Path.Combine(Path.GetTempPath(), $"SmsOpsHQ_{Guid.NewGuid():N}{ext}");
+            await File.WriteAllBytesAsync(tempPath, data);
+            item.TempFilePath = tempPath;
+
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                BitmapSource? thumb = GetShellThumbnail(tempPath, 240);
+                if (thumb is not null)
+                    item.MediaThumbnail = thumb;
+            });
+        }
+        catch
+        {
+            // Shell thumbnail failed; icon placeholder remains.
+        }
+        finally
+        {
+            item.IsThumbnailLoading = false;
+        }
+    }
+
+    #region Shell Thumbnail (Windows Explorer-style preview)
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SHCreateItemFromParsingName(
+        string pszPath, IntPtr pbc, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory ppv);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b")]
+    private interface IShellItemImageFactory
+    {
+        [PreserveSig]
+        int GetImage(NativeSize size, int flags, out IntPtr phbm);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeSize(int w, int h)
+    {
+        public int Width = w;
+        public int Height = h;
+    }
+
+    private static BitmapSource? GetShellThumbnail(string filePath, int size)
+    {
+        try
+        {
+            Guid iid = new("bcc18b79-ba16-442f-80c4-8a59c30c463b");
+            SHCreateItemFromParsingName(filePath, IntPtr.Zero, ref iid, out var factory);
+
+            var nativeSize = new NativeSize(size, size);
+            int hr = factory.GetImage(nativeSize, 0x08, out IntPtr hBitmap);
+            if (hr != 0 || hBitmap == IntPtr.Zero)
+            {
+                hr = factory.GetImage(nativeSize, 0x00, out hBitmap);
+                if (hr != 0 || hBitmap == IntPtr.Zero) return null;
+            }
+
+            try
+            {
+                var source = Imaging.CreateBitmapSourceFromHBitmap(
+                    hBitmap, IntPtr.Zero, System.Windows.Int32Rect.Empty,
+                    BitmapSizeOptions.FromEmptyOptions());
+                source.Freeze();
+                return source;
+            }
+            finally
+            {
+                DeleteObject(hBitmap);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    #endregion
 
     #endregion
 }

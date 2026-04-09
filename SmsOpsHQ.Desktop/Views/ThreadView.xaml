@@ -79,14 +79,84 @@
                                                 <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.06"/>
                                             </Border.Effect>
                                             <StackPanel>
+                                                <StackPanel Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
+                                                            Margin="0,0,0,4">
+                                                    <!-- Thumbnail with video play overlay -->
+                                                    <Grid Cursor="Hand" HorizontalAlignment="Left"
+                                                          MouseLeftButtonDown="MediaLink_Click"
+                                                          Visibility="{Binding MediaThumbnail, Converter={StaticResource NullToCollapsed}}">
+                                                        <Image Source="{Binding MediaThumbnail}"
+                                                               MaxWidth="220" MaxHeight="220"
+                                                               Stretch="Uniform"
+                                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                        <Border Width="44" Height="44" CornerRadius="22"
+                                                                Background="#88000000"
+                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                Visibility="{Binding IsVideoMedia, Converter={StaticResource BoolToVisibility}}">
+                                                            <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}"
+                                                                       FontSize="18" Foreground="White"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                       Margin="2,0,0,0"/>
+                                                        </Border>
+                                                    </Grid>
+                                                    <!-- Non-image placeholder (no Shell thumbnail available) -->
+                                                    <Border CornerRadius="8" Background="#1F2937" Padding="14,12" Cursor="Hand"
+                                                            HorizontalAlignment="Left" MinWidth="160"
+                                                            MouseLeftButtonDown="MediaLink_Click">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsNonImageMedia}" Value="True"/>
+                                                                            <Condition Binding="{Binding MediaThumbnail}" Value="{x:Null}"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Border Width="36" Height="36" CornerRadius="18"
+                                                                    Background="#374151" Margin="0,0,10,0">
+                                                                <TextBlock Text="{Binding MediaIconGlyph}"
+                                                                           FontFamily="{StaticResource IconFont}"
+                                                                           FontSize="16" Foreground="White"
+                                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <StackPanel VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding MediaLabel}" FontSize="12"
+                                                                           FontWeight="SemiBold" Foreground="#E5E7EB"/>
+                                                                <TextBlock Text="Click to open" FontSize="10"
+                                                                           Foreground="#6B7280" Margin="0,2,0,0"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Fallback link (image still loading or failed) -->
+                                                    <TextBlock FontSize="11" Cursor="Hand"
+                                                               TextDecorations="Underline"
+                                                               Foreground="{StaticResource Primary}"
+                                                               MouseLeftButtonDown="MediaLink_Click">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Setter Property="Text" Value="&#xE8B9;  View attachment"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding MediaThumbnail}" Value="{x:Null}"/>
+                                                                            <Condition Binding="{Binding IsNonImageMedia}" Value="False"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
                                                 <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13.5"
                                                            Foreground="#111827" LineHeight="20"/>
-                                                <TextBlock Text="View attachment" FontSize="11"
-                                                           Cursor="Hand" Margin="0,6,0,0"
-                                                           TextDecorations="Underline"
-                                                           Foreground="{StaticResource Primary}"
-                                                           Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
-                                                           MouseLeftButtonDown="MediaLink_Click"/>
                                             </StackPanel>
                                         </Border>
                                         <TextBlock Text="{Binding CreatedAt}" FontSize="10" Margin="4,3,0,0"
@@ -112,14 +182,84 @@
                                             <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.08"/>
                                         </Border.Effect>
                                         <StackPanel>
+                                            <StackPanel Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
+                                                        Margin="0,0,0,4">
+                                                <!-- Thumbnail with video play overlay -->
+                                                <Grid Cursor="Hand" HorizontalAlignment="Left"
+                                                      MouseLeftButtonDown="MediaLink_Click"
+                                                      Visibility="{Binding MediaThumbnail, Converter={StaticResource NullToCollapsed}}">
+                                                    <Image Source="{Binding MediaThumbnail}"
+                                                           MaxWidth="220" MaxHeight="220"
+                                                           Stretch="Uniform"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    <Border Width="44" Height="44" CornerRadius="22"
+                                                            Background="#88000000"
+                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                            Visibility="{Binding IsVideoMedia, Converter={StaticResource BoolToVisibility}}">
+                                                        <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}"
+                                                                   FontSize="18" Foreground="White"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Margin="2,0,0,0"/>
+                                                    </Border>
+                                                </Grid>
+                                                <!-- Non-image placeholder (no Shell thumbnail available) -->
+                                                <Border CornerRadius="8" Background="#1D4ED8" Padding="14,12" Cursor="Hand"
+                                                        HorizontalAlignment="Left" MinWidth="160"
+                                                        MouseLeftButtonDown="MediaLink_Click">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsNonImageMedia}" Value="True"/>
+                                                                        <Condition Binding="{Binding MediaThumbnail}" Value="{x:Null}"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="36" Height="36" CornerRadius="18"
+                                                                Background="#2563EB" Margin="0,0,10,0">
+                                                            <TextBlock Text="{Binding MediaIconGlyph}"
+                                                                       FontFamily="{StaticResource IconFont}"
+                                                                       FontSize="16" Foreground="White"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding MediaLabel}" FontSize="12"
+                                                                       FontWeight="SemiBold" Foreground="White"/>
+                                                            <TextBlock Text="Click to open" FontSize="10"
+                                                                       Foreground="#93B4FD" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                                <!-- Fallback link (image still loading or failed) -->
+                                                <TextBlock FontSize="11" Cursor="Hand"
+                                                           TextDecorations="Underline"
+                                                           Foreground="#BFDBFE"
+                                                           MouseLeftButtonDown="MediaLink_Click">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Setter Property="Text" Value="&#xE8B9;  View attachment"/>
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding MediaThumbnail}" Value="{x:Null}"/>
+                                                                        <Condition Binding="{Binding IsNonImageMedia}" Value="False"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
                                             <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="13.5"
                                                        Foreground="White" LineHeight="20"/>
-                                            <TextBlock Text="View attachment" FontSize="11"
-                                                       Cursor="Hand" Margin="0,6,0,0"
-                                                       TextDecorations="Underline"
-                                                       Foreground="#BFDBFE"
-                                                       Visibility="{Binding MediaJson, Converter={StaticResource StringToVisibility}}"
-                                                       MouseLeftButtonDown="MediaLink_Click"/>
                                         </StackPanel>
                                     </Border>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,3,4,0">

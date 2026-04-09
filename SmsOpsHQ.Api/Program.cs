@@ -78,7 +78,11 @@ try
     builder.Services.AddControllers();
 
     // SignalR: real-time hub for SMS operations updates.
-    builder.Services.AddSignalR();
+    builder.Services.AddSignalR()
+        .AddJsonProtocol(options =>
+        {
+            options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        });
 
     // Swagger / OpenAPI (M47)
     builder.Services.AddEndpointsApiExplorer();

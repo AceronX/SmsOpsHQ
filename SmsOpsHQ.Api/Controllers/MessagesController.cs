@@ -83,21 +83,25 @@ public sealed class MessagesController : ControllerBase
         }
         else
         {
+            // Normalize phone to E.164 early so FindOrCreateAsync matches Twilio's
+            // E.164 format and avoids creating duplicate customer/thread records.
+            string normalizedPhone = PhoneUtils.NormalizeToE164(request.ToPhone) ?? request.ToPhone;
+
             // Try to resolve identity from phone index (XPD-synced CustomerPhones).
             // If the phone is not in the database, identityId will be null — that's fine;
             // we still create a thread and customer so SMS can be sent to anyone.
             int? identityId = await _identityResolver.ResolveIdentityIdAsync(
-                request.StoreId, request.ToPhone, cancellationToken);
+                request.StoreId, normalizedPhone, cancellationToken);
 
             if (identityId is null)
             {
                 _logger.LogInformation(
                     "Phone {Phone} not found in XPD for store {StoreId}; sending to unknown contact",
-                    request.ToPhone, request.StoreId);
+                    normalizedPhone, request.StoreId);
             }
 
             Customer customer = await _customerRepo.FindOrCreateAsync(
-                request.StoreId, request.ToPhone, cancellationToken);
+                request.StoreId, normalizedPhone, cancellationToken);
 
             thread = await _threadRepo.FindOrCreateAsync(
                 request.StoreId, identityId, customer.CustomerId, cancellationToken);
