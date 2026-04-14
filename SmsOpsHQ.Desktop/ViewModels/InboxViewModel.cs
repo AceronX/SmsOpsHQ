@@ -187,6 +187,22 @@ public sealed partial class InboxViewModel : ViewModelBase
             });
     }
 
+    [RelayCommand]
+    private void AskForReview()
+    {
+        string? prefillPhone = SelectedThread?.CustomerPhone;
+
+        var dialog = new SmsOpsHQ.Desktop.Views.AskForReviewDialog(
+            onSent: () => LoadInboxCommand.Execute(null),
+            prefillPhone: prefillPhone);
+
+        Window? owner = Application.Current?.MainWindow;
+        if (owner is not null)
+            dialog.Owner = owner;
+
+        dialog.ShowDialog();
+    }
+
     #endregion
 
     #region Commands — Selection Mode

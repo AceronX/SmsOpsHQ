@@ -32,7 +32,19 @@ public sealed class TemplateRepository : ITemplateRepository
     {
         List<TemplateEntity> entities = await _db.Templates
             .AsNoTracking()
-            .Where(t => t.StoreId == storeId)
+            .Where(t => t.StoreId == storeId || t.StoreId == 0)
+            .OrderBy(t => t.Name)
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(MapToDomain).ToList();
+    }
+
+    public async Task<List<Template>> GetByStoreAndCategoryAsync(int storeId, string category,
+        CancellationToken cancellationToken = default)
+    {
+        List<TemplateEntity> entities = await _db.Templates
+            .AsNoTracking()
+            .Where(t => (t.StoreId == storeId || t.StoreId == 0) && t.Category == category)
             .OrderBy(t => t.Name)
             .ToListAsync(cancellationToken);
 
@@ -43,6 +55,13 @@ public sealed class TemplateRepository : ITemplateRepository
         string? hotkey, int? createdByUserId,
         CancellationToken cancellationToken = default)
     {
+        return await CreateAsync(storeId, name, body, hotkey, createdByUserId, "General", cancellationToken);
+    }
+
+    public async Task<Template> CreateAsync(int storeId, string name, string body,
+        string? hotkey, int? createdByUserId, string category,
+        CancellationToken cancellationToken = default)
+    {
         TemplateEntity entity = new TemplateEntity
         {
             StoreId = storeId,
@@ -50,6 +69,7 @@ public sealed class TemplateRepository : ITemplateRepository
             Body = body,
             Hotkey = hotkey,
             CreatedByUserId = createdByUserId,
+            Category = category,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -99,6 +119,7 @@ public sealed class TemplateRepository : ITemplateRepository
             Name = entity.Name,
             Body = entity.Body,
             Hotkey = entity.Hotkey,
+            Category = entity.Category,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };

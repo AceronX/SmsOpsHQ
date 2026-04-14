@@ -9,6 +9,7 @@ public sealed class TemplateEntity
     public string Name { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public string? Hotkey { get; set; }
+    public string Category { get; set; } = "General";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

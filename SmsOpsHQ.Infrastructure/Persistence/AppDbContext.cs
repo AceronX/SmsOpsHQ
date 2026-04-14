@@ -39,6 +39,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<SmsExcludedEntity> SmsExcluded => Set<SmsExcludedEntity>();
     public DbSet<SmsUnsubscribedEntity> SmsUnsubscribed => Set<SmsUnsubscribedEntity>();
 
+    // Review system
+    public DbSet<ReviewChannelEntity> ReviewChannels => Set<ReviewChannelEntity>();
+    public DbSet<ReviewRequestEntity> ReviewRequests => Set<ReviewRequestEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -59,6 +63,8 @@ public sealed class AppDbContext : DbContext
         ConfigureSmsReminders(modelBuilder);
         ConfigureSmsExcluded(modelBuilder);
         ConfigureSmsUnsubscribed(modelBuilder);
+        ConfigureReviewChannels(modelBuilder);
+        ConfigureReviewRequests(modelBuilder);
     }
 
     // ── Stores ────────────────────────────────────────────────────────
@@ -363,6 +369,11 @@ public sealed class AppDbContext : DbContext
             template.Property(t => t.Body).IsRequired();
             template.Property(t => t.Hotkey).HasMaxLength(16);
 
+            template.Property(t => t.Category)
+                .HasMaxLength(32)
+                .IsRequired()
+                .HasDefaultValue("General");
+
             template.Property(t => t.CreatedAt)
                 .IsRequired()
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
@@ -594,6 +605,96 @@ public sealed class AppDbContext : DbContext
                 .HasDefaultValueSql("datetime('now')");
 
             unsub.HasIndex(u => u.Phone);
+        });
+    }
+
+    // ── ReviewChannels ────────────────────────────────────────────────
+
+    private static void ConfigureReviewChannels(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReviewChannelEntity>(rc =>
+        {
+            rc.ToTable("ReviewChannels");
+            rc.HasKey(r => r.ReviewChannelId);
+
+            rc.Property(r => r.PlatformName)
+                .HasMaxLength(64)
+                .IsRequired();
+
+            rc.Property(r => r.ReviewUrl)
+                .HasMaxLength(512)
+                .IsRequired();
+
+            rc.Property(r => r.SortOrder)
+                .IsRequired()
+                .HasDefaultValue(0);
+
+            rc.Property(r => r.IsActive)
+                .IsRequired()
+                .HasDefaultValue(true);
+
+            rc.Property(r => r.CreatedAt)
+                .IsRequired()
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            rc.HasIndex(r => r.StoreId);
+
+            rc.HasOne(r => r.Store)
+                .WithMany()
+                .HasForeignKey(r => r.StoreId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    // ── ReviewRequests ────────────────────────────────────────────────
+
+    private static void ConfigureReviewRequests(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReviewRequestEntity>(rr =>
+        {
+            rr.ToTable("ReviewRequests");
+            rr.HasKey(r => r.ReviewRequestId);
+
+            rr.Property(r => r.PhoneE164)
+                .HasMaxLength(32)
+                .IsRequired();
+
+            rr.Property(r => r.MessageBody).IsRequired();
+
+            rr.Property(r => r.TwilioSid).HasMaxLength(64);
+
+            rr.Property(r => r.Status)
+                .HasMaxLength(32)
+                .IsRequired()
+                .HasDefaultValue("Sent");
+
+            rr.Property(r => r.SentAt)
+                .IsRequired()
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            rr.HasIndex(r => r.StoreId);
+            rr.HasIndex(r => r.CustomerId);
+            rr.HasIndex(r => r.SentAt);
+
+            rr.HasOne(r => r.Store)
+                .WithMany()
+                .HasForeignKey(r => r.StoreId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rr.HasOne(r => r.Customer)
+                .WithMany()
+                .HasForeignKey(r => r.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rr.HasOne(r => r.ReviewChannel)
+                .WithMany()
+                .HasForeignKey(r => r.ReviewChannelId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rr.HasOne(r => r.Template)
+                .WithMany()
+                .HasForeignKey(r => r.TemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

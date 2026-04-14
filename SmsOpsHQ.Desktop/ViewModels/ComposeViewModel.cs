@@ -16,6 +16,7 @@ public sealed class TemplateItem
     public string Body { get; set; } = string.Empty;
     public string? Hotkey { get; set; }
     public bool IsGlobal { get; set; }
+    public string Category { get; set; } = "General";
 }
 
 // Compose ViewModel: send new messages or use quick reply templates.

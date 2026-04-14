@@ -27,7 +27,29 @@ public sealed class StoreItem
     public int DefaultNumberId { get; set; } = 0; // 0 means no Twilio number set
 }
 
-// Settings ViewModel with 7 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP, Quality.
+// Review channel display item.
+public sealed class ReviewChannelItem
+{
+    public int ReviewChannelId { get; set; }
+    public string PlatformName { get; set; } = string.Empty;
+    public string ReviewUrl { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; }
+}
+
+// Review history display item.
+public sealed class ReviewHistoryItem
+{
+    public int ReviewRequestId { get; set; }
+    public string Phone { get; set; } = string.Empty;
+    public string PlatformName { get; set; } = string.Empty;
+    public string MessageBody { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime SentAt { get; set; }
+    public string SentAtText => SentAt.ToString("MMM d, yyyy  h:mm tt");
+}
+
+// Settings ViewModel with 8 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP, Reviews, Quality.
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
@@ -190,7 +212,34 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _xblueEnabled;
 
-    // Tab 6: Quality
+    // Tab 6: Reviews
+    [ObservableProperty]
+    private ObservableCollection<ReviewChannelItem> _reviewChannels = new();
+
+    [ObservableProperty]
+    private ObservableCollection<ReviewHistoryItem> _reviewHistory = new();
+
+    [ObservableProperty]
+    private bool _reviewHistoryLoading;
+
+    [ObservableProperty]
+    private bool _hasMoreHistory;
+
+    private const int HistoryPageSize = 20;
+
+    [ObservableProperty]
+    private string _newPlatformName = "Google";
+
+    [ObservableProperty]
+    private string _newReviewUrl = string.Empty;
+
+    [ObservableProperty]
+    private string _reviewErrorMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _reviewSuccessMessage = string.Empty;
+
+    // Tab 7: Quality
     private CustomerQualityQueryService? _qualityQueryService;
 
     [ObservableProperty]
@@ -959,6 +1008,211 @@ public sealed partial class SettingsViewModel : ViewModelBase
         if (_qualityQueryService is null) return;
         QualityQuery = _qualityQueryService.GetDefaultQuery();
         QualitySaveMessage = "Reset to default. Click Save to persist.";
+    }
+
+    // ── Reviews tab ──────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task LoadReviewChannelsAsync()
+    {
+        ReviewErrorMessage = string.Empty;
+        ReviewSuccessMessage = string.Empty;
+
+        try
+        {
+            int storeId = _appState.CurrentStoreId;
+            if (storeId == 0)
+            {
+                ReviewErrorMessage = "No store selected.";
+                return;
+            }
+
+            JsonElement result = await _apiClient.GetReviewChannelsAsync(storeId);
+            ObservableCollection<ReviewChannelItem> items = new();
+
+            foreach (JsonElement ch in result.EnumerateArray())
+            {
+                items.Add(new ReviewChannelItem
+                {
+                    ReviewChannelId = ch.TryGetProperty("reviewChannelId", out var idE) ? idE.GetInt32() : 0,
+                    PlatformName = ch.TryGetProperty("platformName", out var pnE) ? pnE.GetString() ?? "" : "",
+                    ReviewUrl = ch.TryGetProperty("reviewUrl", out var urlE) ? urlE.GetString() ?? "" : "",
+                    SortOrder = ch.TryGetProperty("sortOrder", out var soE) ? soE.GetInt32() : 0,
+                    IsActive = !ch.TryGetProperty("isActive", out var iaE) || iaE.GetBoolean()
+                });
+            }
+
+            ReviewChannels = items;
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Failed to load channels: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddReviewChannelAsync()
+    {
+        ReviewErrorMessage = string.Empty;
+        ReviewSuccessMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(NewPlatformName))
+        {
+            ReviewErrorMessage = "Platform name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewReviewUrl))
+        {
+            ReviewErrorMessage = "Review URL is required.";
+            return;
+        }
+
+        try
+        {
+            int storeId = _appState.CurrentStoreId;
+            int sortOrder = ReviewChannels.Count;
+
+            await _apiClient.CreateReviewChannelAsync(storeId, NewPlatformName.Trim(), NewReviewUrl.Trim(), sortOrder);
+
+            NewReviewUrl = string.Empty;
+            ReviewSuccessMessage = $"Added {NewPlatformName} channel.";
+            await LoadReviewChannelsAsync();
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Failed to add channel: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteReviewChannelAsync(int channelId)
+    {
+        ReviewErrorMessage = string.Empty;
+        ReviewSuccessMessage = string.Empty;
+
+        try
+        {
+            await _apiClient.DeleteReviewChannelAsync(channelId);
+            ReviewSuccessMessage = "Channel deleted.";
+            await LoadReviewChannelsAsync();
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Failed to delete channel: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task LoadReviewHistoryAsync()
+    {
+        try
+        {
+            int storeId = _appState.CurrentStoreId;
+            if (storeId == 0) return;
+
+            ReviewHistoryLoading = true;
+            JsonElement result = await _apiClient.GetReviewHistoryAsync(storeId, 0, HistoryPageSize + 1);
+            ObservableCollection<ReviewHistoryItem> items = new();
+
+            int count = 0;
+            foreach (JsonElement r in result.EnumerateArray())
+            {
+                count++;
+                if (count > HistoryPageSize) break;
+                items.Add(ParseHistoryItem(r));
+            }
+
+            ReviewHistory = items;
+            HasMoreHistory = count > HistoryPageSize;
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Failed to load history: {ex.Message}";
+        }
+        finally
+        {
+            ReviewHistoryLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task LoadMoreReviewHistoryAsync()
+    {
+        try
+        {
+            int storeId = _appState.CurrentStoreId;
+            if (storeId == 0) return;
+
+            ReviewHistoryLoading = true;
+            int skip = ReviewHistory.Count;
+            JsonElement result = await _apiClient.GetReviewHistoryAsync(storeId, skip, HistoryPageSize + 1);
+
+            int count = 0;
+            foreach (JsonElement r in result.EnumerateArray())
+            {
+                count++;
+                if (count > HistoryPageSize) break;
+                ReviewHistory.Add(ParseHistoryItem(r));
+            }
+
+            HasMoreHistory = count > HistoryPageSize;
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Failed to load more history: {ex.Message}";
+        }
+        finally
+        {
+            ReviewHistoryLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ClearReviewHistoryAsync()
+    {
+        if (ReviewHistory.Count == 0) return;
+
+        System.Windows.MessageBoxResult confirm = System.Windows.MessageBox.Show(
+            "Are you sure you want to delete all review request history for this store? This cannot be undone.",
+            "Clear Review History",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning);
+
+        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
+        ReviewErrorMessage = string.Empty;
+        ReviewSuccessMessage = string.Empty;
+
+        try
+        {
+            int storeId = _appState.CurrentStoreId;
+            await _apiClient.ClearReviewHistoryAsync(storeId);
+            ReviewHistory.Clear();
+            HasMoreHistory = false;
+            ReviewSuccessMessage = "Review history cleared.";
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Failed to clear history: {ex.Message}";
+        }
+    }
+
+    private static ReviewHistoryItem ParseHistoryItem(JsonElement r)
+    {
+        return new ReviewHistoryItem
+        {
+            ReviewRequestId = r.TryGetProperty("reviewRequestId", out var idE) ? idE.GetInt32() : 0,
+            Phone = r.TryGetProperty("phoneE164", out var phE) ? phE.GetString() ?? "" : "",
+            PlatformName = r.TryGetProperty("platformName", out var pnE) && pnE.ValueKind == JsonValueKind.String
+                ? pnE.GetString() ?? "—"
+                : "—",
+            MessageBody = r.TryGetProperty("messageBody", out var mbE) ? mbE.GetString() ?? "" : "",
+            Status = r.TryGetProperty("status", out var stE) ? stE.GetString() ?? "" : "",
+            SentAt = r.TryGetProperty("sentAt", out var saE) && saE.TryGetDateTime(out DateTime dt)
+                ? dt.ToLocalTime()
+                : DateTime.MinValue
+        };
     }
 
 }

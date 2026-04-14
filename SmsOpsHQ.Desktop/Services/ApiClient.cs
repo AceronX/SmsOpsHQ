@@ -169,8 +169,12 @@ public sealed class ApiClient : IDisposable
 
     // ── Templates ────────────────────────────────────────────────────
 
-    public async Task<JsonElement> GetTemplatesAsync(int storeId) =>
-        await GetJsonAsync($"/api/templates?store_id={storeId}");
+    public async Task<JsonElement> GetTemplatesAsync(int storeId, string? category = null)
+    {
+        string url = $"/api/templates?store_id={storeId}";
+        if (!string.IsNullOrEmpty(category)) url += $"&category={Uri.EscapeDataString(category)}";
+        return await GetJsonAsync(url);
+    }
 
     public async Task<JsonElement> CreateTemplateAsync(TemplateCreateRequest request) =>
         await PostJsonAsync("/api/templates", request);
@@ -180,6 +184,38 @@ public sealed class ApiClient : IDisposable
 
     public async Task<JsonElement> DeleteTemplateAsync(int templateId) =>
         await DeleteJsonAsync($"/api/templates/{templateId}");
+
+    // ── Reviews ──────────────────────────────────────────────────────
+
+    public async Task<JsonElement> SendReviewRequestAsync(int storeId, string phone)
+    {
+        var request = new { storeId, customerPhone = phone };
+        return await PostJsonAsync("/api/reviews/send", request);
+    }
+
+    public async Task<JsonElement> GetReviewHistoryAsync(int storeId, int skip = 0, int take = 50) =>
+        await GetJsonAsync($"/api/reviews/history?storeId={storeId}&skip={skip}&take={take}");
+
+    public async Task<JsonElement> ClearReviewHistoryAsync(int storeId) =>
+        await DeleteJsonAsync($"/api/reviews/history?storeId={storeId}");
+
+    public async Task<JsonElement> GetReviewChannelsAsync(int storeId) =>
+        await GetJsonAsync($"/api/reviews/channels?storeId={storeId}");
+
+    public async Task<JsonElement> CreateReviewChannelAsync(int storeId, string platformName, string reviewUrl, int sortOrder)
+    {
+        var request = new { storeId, platformName, reviewUrl, sortOrder };
+        return await PostJsonAsync("/api/reviews/channels", request);
+    }
+
+    public async Task<JsonElement> UpdateReviewChannelAsync(int channelId, string platformName, string reviewUrl, int sortOrder, bool isActive)
+    {
+        var request = new { platformName, reviewUrl, sortOrder, isActive };
+        return await PutJsonAsync($"/api/reviews/channels/{channelId}", request);
+    }
+
+    public async Task<JsonElement> DeleteReviewChannelAsync(int channelId) =>
+        await DeleteJsonAsync($"/api/reviews/channels/{channelId}");
 
     // ── Stores ───────────────────────────────────────────────────────
 

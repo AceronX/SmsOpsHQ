@@ -32,10 +32,28 @@ public sealed partial class TemplatesViewModel : ViewModelBase
     [ObservableProperty]
     private int? _editingTemplateId;
 
+    [ObservableProperty]
+    private string _selectedCategory = "All";
+
+    [ObservableProperty]
+    private string _editCategory = "General";
+
+    public bool IsFilterAll => SelectedCategory == "All";
+    public bool IsFilterGeneral => SelectedCategory == "General";
+    public bool IsFilterReview => SelectedCategory == "Review";
+
     public TemplatesViewModel(ApiClient apiClient, AppState appState)
     {
         _apiClient = apiClient;
         _appState = appState;
+    }
+
+    partial void OnSelectedCategoryChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsFilterAll));
+        OnPropertyChanged(nameof(IsFilterGeneral));
+        OnPropertyChanged(nameof(IsFilterReview));
+        _ = LoadAsync();
     }
 
     partial void OnSelectedTemplateChanged(TemplateItem? value)
@@ -44,6 +62,7 @@ public sealed partial class TemplatesViewModel : ViewModelBase
         {
             EditName = value.Name;
             EditBody = value.Body;
+            EditCategory = value.Category;
             EditingTemplateId = value.TemplateId;
             IsEditing = true;
         }
@@ -57,7 +76,8 @@ public sealed partial class TemplatesViewModel : ViewModelBase
 
         try
         {
-            JsonElement result = await _apiClient.GetTemplatesAsync(_appState.CurrentStoreId);
+            string? categoryFilter = SelectedCategory == "All" ? null : SelectedCategory;
+            JsonElement result = await _apiClient.GetTemplatesAsync(_appState.CurrentStoreId, categoryFilter);
             ObservableCollection<TemplateItem> items = new();
 
             foreach (JsonElement t in result.EnumerateArray())
@@ -68,7 +88,8 @@ public sealed partial class TemplatesViewModel : ViewModelBase
                     Name = t.TryGetProperty("name", out JsonElement nameE) ? nameE.GetString() ?? "" : "",
                     Body = t.TryGetProperty("body", out JsonElement bodyE) ? bodyE.GetString() ?? "" : "",
                     Hotkey = t.TryGetProperty("hotkey", out JsonElement hkE) ? hkE.GetString() : null,
-                    IsGlobal = t.TryGetProperty("is_global", out JsonElement igE) && igE.GetBoolean()
+                    IsGlobal = t.TryGetProperty("is_global", out JsonElement igE) && igE.GetBoolean(),
+                    Category = t.TryGetProperty("category", out JsonElement catE) ? catE.GetString() ?? "General" : "General"
                 });
             }
 
@@ -89,9 +110,16 @@ public sealed partial class TemplatesViewModel : ViewModelBase
     {
         EditName = string.Empty;
         EditBody = string.Empty;
+        EditCategory = SelectedCategory == "All" ? "General" : SelectedCategory;
         EditingTemplateId = null;
         IsEditing = true;
         SelectedTemplate = null;
+    }
+
+    [RelayCommand]
+    private async Task SetCategoryAsync(string category)
+    {
+        SelectedCategory = category;
     }
 
     [RelayCommand]
@@ -112,7 +140,8 @@ public sealed partial class TemplatesViewModel : ViewModelBase
             {
                 Name = EditName,
                 Body = EditBody,
-                StoreId = _appState.CurrentStoreId
+                StoreId = _appState.CurrentStoreId,
+                Category = EditCategory
             };
 
             if (EditingTemplateId.HasValue)

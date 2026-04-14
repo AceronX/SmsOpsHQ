@@ -19,17 +19,24 @@ public sealed class TemplatesController : ControllerBase
         _templateRepo = templateRepo;
     }
 
-    // GET /api/templates?store_id=1
+    // GET /api/templates?store_id=1&category=General
     // Lists all templates for a store. HQ users see global templates.
+    // Optional category filter: "General", "Review", or omit for all.
     [HttpGet("templates")]
     public async Task<IActionResult> GetTemplates(
         [FromQuery(Name = "store_id")] int storeId,
-        CancellationToken cancellationToken)
+        [FromQuery] string? category = null,
+        CancellationToken cancellationToken = default)
     {
         if (!User.CanAccessStore(storeId))
             return Problem(statusCode: 403, detail: "Not authorized for this store");
 
-        List<Template> templates = await _templateRepo.GetByStoreAsync(storeId, cancellationToken);
+        List<Template> templates;
+
+        if (!string.IsNullOrEmpty(category))
+            templates = await _templateRepo.GetByStoreAndCategoryAsync(storeId, category, cancellationToken);
+        else
+            templates = await _templateRepo.GetByStoreAsync(storeId, cancellationToken);
 
         List<object> result = templates.Select(t => (object)new
         {
@@ -37,6 +44,7 @@ public sealed class TemplatesController : ControllerBase
             name = t.Name,
             body = t.Body,
             hotkey = t.Hotkey,
+            category = t.Category,
             is_global = t.StoreId == 0
         }).ToList();
 
@@ -59,13 +67,14 @@ public sealed class TemplatesController : ControllerBase
 
         Template template = await _templateRepo.CreateAsync(
             effectiveStoreId.Value, request.Name, request.Body,
-            null, userId, cancellationToken);
+            null, userId, request.Category, cancellationToken);
 
         return Ok(new
         {
             id = template.TemplateId,
             name = template.Name,
-            body = template.Body
+            body = template.Body,
+            category = template.Category
         });
     }
 

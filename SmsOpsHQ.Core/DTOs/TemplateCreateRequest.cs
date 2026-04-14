@@ -6,4 +6,5 @@ public sealed class TemplateCreateRequest
     public string Name { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public int StoreId { get; set; }
+    public string Category { get; set; } = "General";
 }

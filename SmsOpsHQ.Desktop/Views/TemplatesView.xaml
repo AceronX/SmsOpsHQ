@@ -17,7 +17,7 @@
 
             <!-- Template list -->
             <DockPanel Grid.Column="0" Margin="0,0,12,0">
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                     <Button DockPanel.Dock="Right" Command="{Binding NewTemplateCommand}"
                             Style="{StaticResource PrimaryButton}" Padding="12,6">
                         <StackPanel Orientation="Horizontal">
@@ -30,6 +30,55 @@
                                Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
                 </DockPanel>
 
+                <!-- Category filter pills -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                    <Button Content="All" Command="{Binding SetCategoryCommand}" CommandParameter="All"
+                            Padding="10,4" Margin="0,0,4,0" FontSize="11.5" FontWeight="Medium">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterAll}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="General" Command="{Binding SetCategoryCommand}" CommandParameter="General"
+                            Padding="10,4" Margin="0,0,4,0" FontSize="11.5" FontWeight="Medium">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterGeneral}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="Review" Command="{Binding SetCategoryCommand}" CommandParameter="Review"
+                            Padding="10,4" FontSize="11.5" FontWeight="Medium">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilterReview}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource PrimaryLight}"/>
+                                        <Setter Property="Foreground" Value="{StaticResource Primary}"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+
                 <Border Background="{StaticResource Surface}" CornerRadius="6"
                         BorderBrush="{StaticResource Border}" BorderThickness="1">
                     <ListBox ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}">
@@ -38,8 +87,17 @@
                                 <Border Padding="12,10" BorderBrush="{StaticResource Divider}"
                                         BorderThickness="0,0,0,1" Cursor="Hand">
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimary}"/>
+                                        <DockPanel>
+                                            <Border DockPanel.Dock="Right" Background="{StaticResource PrimaryLight}"
+                                                    CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
+                                                    Margin="6,0,0,0">
+                                                <TextBlock Text="{Binding Category}" FontSize="9.5"
+                                                           Foreground="{StaticResource Primary}" FontWeight="SemiBold"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimary}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
                                         <TextBlock Text="{Binding Body}" FontSize="12"
                                                    Foreground="{StaticResource TextSecondary}"
                                                    TextTrimming="CharacterEllipsis" MaxHeight="18"
@@ -66,11 +124,37 @@
                     <TextBox Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
                              Margin="0,0,0,16"/>
 
+                    <TextBlock Text="Category" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                    <ComboBox SelectedValue="{Binding EditCategory}" SelectedValuePath="Content"
+                              Margin="0,0,0,16" MaxWidth="180" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="General"/>
+                        <ComboBoxItem Content="Review"/>
+                    </ComboBox>
+
                     <TextBlock Text="Message Body" FontSize="12" FontWeight="SemiBold"
                                Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
                     <TextBox Text="{Binding EditBody, UpdateSourceTrigger=PropertyChanged}"
                              TextWrapping="Wrap" AcceptsReturn="True"
-                             MinHeight="120" Margin="0,0,0,20"/>
+                             MinHeight="120" Margin="0,0,0,8"/>
+
+                    <!-- Placeholder hint for review templates -->
+                    <Border Background="{StaticResource PrimaryLight}" CornerRadius="4" Padding="10,6" Margin="0,0,0,16">
+                        <TextBlock FontSize="11" Foreground="{StaticResource Primary}" TextWrapping="Wrap">
+                            <Run FontWeight="SemiBold" Text="Review template placeholders:"/>
+                            <Run Text=" Use {link} for the review URL and {store} for the store name."/>
+                        </TextBlock>
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding EditCategory}" Value="Review">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
 
                     <StackPanel Orientation="Horizontal">
                         <Button Content="Save" Command="{Binding SaveCommand}"

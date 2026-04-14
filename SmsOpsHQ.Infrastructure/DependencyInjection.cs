@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<IOptOutRepository, OptOutRepository>();
         services.AddScoped<ITicketRepository, TicketRepository>();
+        services.AddScoped<IReviewRepository, ReviewRepository>();
 
         // Services
         services.AddScoped<IAuthService, AuthService>();
@@ -49,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<IIdentityResolver, IdentityResolver>();
         services.AddScoped<IQuarantineService, QuarantineService>();
         services.AddScoped<IRealtimeService, RealtimeService>();
+        services.AddScoped<IReviewService, ReviewService>();
 
         // Singleton: XPD sync service maintains sync state across requests.
         services.AddSingleton<IXpdSyncService, XpdSyncService>();

@@ -13,9 +13,18 @@ public interface ITemplateRepository
     Task<List<Template>> GetByStoreAsync(int storeId,
         CancellationToken cancellationToken = default);
 
+    // Get all templates for a store filtered by category.
+    Task<List<Template>> GetByStoreAndCategoryAsync(int storeId, string category,
+        CancellationToken cancellationToken = default);
+
     // Create a new template.
     Task<Template> CreateAsync(int storeId, string name, string body,
         string? hotkey, int? createdByUserId,
+        CancellationToken cancellationToken = default);
+
+    // Create a new template with category.
+    Task<Template> CreateAsync(int storeId, string name, string body,
+        string? hotkey, int? createdByUserId, string category,
         CancellationToken cancellationToken = default);
 
     // Update an existing template.

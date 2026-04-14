@@ -227,6 +227,15 @@ public partial class SettingsView : UserControl
             vm.LoadSchedulerStatusCommand.Execute(null);
     }
 
+    private async void ReviewsTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            await vm.LoadReviewChannelsCommand.ExecuteAsync(null);
+            await vm.LoadReviewHistoryCommand.ExecuteAsync(null);
+        }
+    }
+
     private void QualityTab_Loaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

@@ -20,6 +20,9 @@ public sealed class Template
     // Keyboard shortcut key, e.g. "F1"
     public string? Hotkey { get; set; }
 
+    // "General" or "Review"
+    public string Category { get; set; } = "General";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
