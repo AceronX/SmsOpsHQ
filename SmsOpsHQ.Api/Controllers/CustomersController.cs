@@ -4,6 +4,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using SmsOpsHQ.Api.Extensions;
 using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Entities;
@@ -17,26 +18,29 @@ namespace SmsOpsHQ.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api")]
-public sealed class CustomersController : ControllerBase
+public sealed partial class CustomersController : ControllerBase
 {
     private readonly ICustomerRepository _customerRepo;
     private readonly ITicketRepository _ticketRepo;
     private readonly IIdentityResolver _identityResolver;
     private readonly AppDbContext _db;
     private readonly ILogger<CustomersController> _logger;
+    private readonly IConfiguration _configuration;
 
     public CustomersController(
         ICustomerRepository customerRepo,
         ITicketRepository ticketRepo,
         IIdentityResolver identityResolver,
         AppDbContext db,
-        ILogger<CustomersController> logger)
+        ILogger<CustomersController> logger,
+        IConfiguration configuration)
     {
         _customerRepo = customerRepo;
         _ticketRepo = ticketRepo;
         _identityResolver = identityResolver;
         _db = db;
         _logger = logger;
+        _configuration = configuration;
     }
 
     // GET /api/customers/search?q=john&limit=10
@@ -575,267 +579,6 @@ public sealed class CustomersController : ControllerBase
         return Ok(results);
     }
 
-    // Look up customer by conversation phone: normalize phone, resolve all CustomerKeys from index, then return customer plus tickets and quality.
-    [HttpGet("customer/by-phone")]
-    public async Task<IActionResult> GetCustomerByPhone(
-        [FromQuery] string phone,
-        CancellationToken cancellationToken)
-    {
-        bool isHqUser = User.IsHqUser();
-        int? userStoreId = User.GetStoreId();
-        if (!isHqUser && userStoreId is null)
-            return Problem(statusCode: 403, detail: "No store assigned");
-
-        string? normalizedPhone = PhoneUtils.ExtractLast10Digits(phone);
-        if (string.IsNullOrEmpty(normalizedPhone))
-        {
-            return Ok(new
-            {
-                found = false, customer = (object?)null, stats = (object?)null,
-                quality = (object?)null, active_tickets = Array.Empty<object>(),
-                cpu_tickets = Array.Empty<object>(), pfx_tickets = Array.Empty<object>(),
-                error = "Invalid phone number format"
-            });
-        }
-
-        // Resolve every CustomerKey that has this phone in the index (one customer can have several numbers).
-        List<int> customerKeys = await _identityResolver.ResolveCustomerKeysAsync(
-            phone, cancellationToken);
-
-        if (!isHqUser)
-        {
-            List<int> scopedKeys = await _db.Customers
-                .AsNoTracking()
-                .Where(c => c.StoreId == userStoreId!.Value &&
-                    c.CustomerKey.HasValue &&
-                    customerKeys.Contains(c.CustomerKey.Value))
-                .Select(c => c.CustomerKey!.Value)
-                .Distinct()
-                .OrderBy(k => k)
-                .ToListAsync(cancellationToken);
-
-            customerKeys = scopedKeys;
-        }
-
-        if (customerKeys.Count == 0)
-        {
-            return Ok(new
-            {
-                found = false, customer = (object?)null, stats = (object?)null,
-                quality = (object?)null, active_tickets = Array.Empty<object>(),
-                cpu_tickets = Array.Empty<object>(), pfx_tickets = Array.Empty<object>()
-            });
-        }
-
-        int primaryCustomerKey = customerKeys[0];
-
-        // Load name, address, and phones for the first resolved key (used as the main display customer).
-        string custIdNo = "", custAddress = "", custResPhone = "", custBusPhone = "";
-        object? customerData = null;
-        try
-        {
-            DbConnection connection = _db.Database.GetDbConnection();
-            if (connection.State != ConnectionState.Open)
-                await connection.OpenAsync(cancellationToken);
-
-            using DbCommand cmd = connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT FirstName, LastName, MiddleName, Address, City, State, Zip,
-                       ResPhone, BusPhone, EMailAddress, Notes, FirstTransaction, LastTransaction,
-                       DOB, SSN, IDNo, IDIssueState, Warning
-                FROM Customers WHERE CustomerKey = @key";
-
-            DbParameter keyParam = cmd.CreateParameter();
-            keyParam.ParameterName = "@key";
-            keyParam.Value = primaryCustomerKey;
-            cmd.Parameters.Add(keyParam);
-
-            using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-            {
-                string ReadStringOrEmpty(string col) =>
-                    reader.IsDBNull(reader.GetOrdinal(col)) ? "" : reader.GetString(reader.GetOrdinal(col));
-
-                customerData = new
-                {
-                    key = primaryCustomerKey,
-                    all_keys = customerKeys,
-                    first_name = ReadStringOrEmpty("FirstName"),
-                    last_name = ReadStringOrEmpty("LastName"),
-                    middle_name = ReadStringOrEmpty("MiddleName"),
-                    address = ReadStringOrEmpty("Address"),
-                    city = ReadStringOrEmpty("City"),
-                    state = ReadStringOrEmpty("State"),
-                    zip = ReadStringOrEmpty("Zip"),
-                    res_phone = ReadStringOrEmpty("ResPhone"),
-                    bus_phone = ReadStringOrEmpty("BusPhone"),
-                    email = ReadStringOrEmpty("EMailAddress"),
-                    notes = ReadStringOrEmpty("Notes"),
-                    first_transaction = ReadStringOrEmpty("FirstTransaction"),
-                    last_transaction = ReadStringOrEmpty("LastTransaction"),
-                    warning = ReadStringOrEmpty("Warning"),
-                    phone = ReadStringOrEmpty("ResPhone").Length > 0
-                        ? ReadStringOrEmpty("ResPhone") : ReadStringOrEmpty("BusPhone")
-                };
-
-                custIdNo = ReadStringOrEmpty("IDNo");
-                custAddress = ReadStringOrEmpty("Address");
-                custResPhone = ReadStringOrEmpty("ResPhone");
-                custBusPhone = ReadStringOrEmpty("BusPhone");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error loading XPD customer for key {Key}", primaryCustomerKey);
-        }
-
-        if (customerData is null)
-        {
-            return Ok(new
-            {
-                found = false, customer = (object?)null, stats = (object?)null,
-                quality = (object?)null, active_tickets = Array.Empty<object>(),
-                cpu_tickets = Array.Empty<object>(), pfx_tickets = Array.Empty<object>()
-            });
-        }
-
-        // Resolve app CustomerId when this phone is linked to a local customer
-        int? appCustomerId = null;
-        var appCustomer = await _db.Customers
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.CustomerKey == primaryCustomerKey, cancellationToken);
-        if (appCustomer is not null)
-            appCustomerId = appCustomer.CustomerId;
-
-        // Load tickets for all resolved keys so we show every ticket for this phone (same customer, multiple numbers).
-        List<Ticket> allTickets = await _ticketRepo.GetByCustomerKeysAsync(customerKeys, cancellationToken);
-
-        // Filter to relevant tickets: active OR closed CPU OR closed PFX
-        List<object> activeTickets = new();
-        List<object> cpuTickets = new();
-        List<object> pfxTickets = new();
-        int lateCount = 0;
-        double totalBalance = 0;
-        List<int> cpuOverdueDays = new();
-        DateTime today = DateTime.Now;
-
-        foreach (Ticket t in allTickets)
-        {
-            bool isActive = t.Active == 1 && t.Type != 0;
-            bool isCpu = !isActive && t.HowClosed == "CPU";
-            bool isPfx = !isActive && t.HowClosed == "PFX-";
-
-            if (!isActive && !isCpu && !isPfx)
-                continue;
-
-            // Load items for this ticket
-            string itemsText = await GetTicketItemsTextAsync(t.Key, cancellationToken);
-
-            object ticketData = new
-            {
-                ticket_key = t.Key,
-                customer_key = t.CustomerKey,
-                trans_no = t.TransNo,
-                type = t.Type ?? 1,
-                amount = t.Amount ?? 0,
-                balance = t.CurrentBalance ?? 0,
-                standard_pu = t.StandardPU ?? 0,
-                grace_pu = t.FullTermPU ?? 0,
-                renew_amount = t.FulltermRenew ?? 0,
-                issue_date = t.IssueDate,
-                due_date = t.DueDate,
-                date_closed = t.DateClosed,
-                how_closed = t.HowClosed,
-                items = itemsText,
-                status = isActive ? "ACTIVE" : (isCpu ? "CLOSED_CPU" : "CLOSED_PFX")
-            };
-
-            if (isActive)
-            {
-                activeTickets.Add(ticketData);
-                totalBalance += t.CurrentBalance ?? 0;
-
-                DateTime? dueDate = TryParseDate(t.DueDate);
-                if (dueDate is not null && dueDate.Value.Date < today.Date)
-                    lateCount++;
-            }
-            else if (isCpu)
-            {
-                int overdueDays = PawnCalculator.CalculateCpuOverdueDays(
-                    TryParseDate(t.DateClosed), TryParseDate(t.DueDate));
-                cpuOverdueDays.Add(overdueDays);
-                cpuTickets.Add(ticketData);
-            }
-            else if (isPfx)
-            {
-                pfxTickets.Add(ticketData);
-            }
-        }
-
-        // Step 4: Calculate stats and quality score
-        object stats = new
-        {
-            active_count = activeTickets.Count,
-            late_count = lateCount,
-            pfx_count = pfxTickets.Count,
-            cpu_count = cpuTickets.Count,
-            total_balance = totalBalance,
-            all_time_count = allTickets.Count
-        };
-
-        CpuScoreResult cpuScore = PawnCalculator.CalculateCpuScore(cpuOverdueDays, pfxTickets.Count);
-
-        object quality = new
-        {
-            score = cpuScore.Score,
-            level = cpuScore.Level,
-            color = cpuScore.Color,
-            cpu_score = cpuScore.CpuScore,
-            pfx_penalty = cpuScore.PfxPenalty,
-            severe_overdue = cpuScore.SevereOverdue
-        };
-
-        // Step 5: Calculate late payment history
-        LatePaymentHistory paymentHistory = PawnCalculator.CalculateLatePaymentHistory(allTickets, today);
-
-        // Step 6: Build decision card
-        var profileFlags = new ProfileFlags
-        {
-            HasID = !string.IsNullOrWhiteSpace(custIdNo),
-            HasAddress = !string.IsNullOrWhiteSpace(custAddress),
-            HasContact = !string.IsNullOrWhiteSpace(custResPhone) || !string.IsNullOrWhiteSpace(custBusPhone)
-        };
-        DecisionCardResult decisionCard = PawnCalculator.CalculateDecisionCard(allTickets, profileFlags, today);
-
-        // Collect ticket notes from Tickets.Notes and item notes from Items.Notes for active tickets only.
-        List<string> ticketNotesList = new();
-        List<int> activeTicketKeys = new();
-        foreach (Ticket t in allTickets.Where(t => t.Active == 1 && t.Type != 0))
-        {
-            activeTicketKeys.Add(t.Key);
-            if (!string.IsNullOrWhiteSpace(t.Notes))
-                ticketNotesList.Add($"Ticket #{t.TransNo}: {t.Notes}");
-        }
-        string ticketNotesStr = ticketNotesList.Count > 0 ? string.Join("\n", ticketNotesList) : "";
-        string itemNotesStr = await GetActiveTicketItemNotesAsync(activeTicketKeys, cancellationToken);
-
-        return Ok(new
-        {
-            found = true,
-            customer = customerData,
-            customer_id = appCustomerId,
-            stats,
-            quality,
-            payment_history = paymentHistory,
-            decision_card = decisionCard,
-            ticket_notes = ticketNotesStr,
-            item_notes = itemNotesStr,
-            active_tickets = activeTickets,
-            cpu_tickets = cpuTickets,
-            pfx_tickets = pfxTickets
-        });
-    }
-
     // GET /api/test-sqlite?path=...
     // Tests SQLite/XPD table connectivity by counting rows. If path is provided, tests that database; otherwise uses the configured default.
     [HttpGet("test-sqlite")]
@@ -982,15 +725,18 @@ public sealed class CustomersController : ControllerBase
     }
 
     // POST /api/customers/quality
-    // Executes a configurable SQL query for one customer to return quality metrics.
-    // The query must use @customerKey as a parameter and return a single row.
+    // Server-side named metrics only (no client-supplied SQL). Late metrics use XpdDateParser in C#.
     [HttpPost("customers/quality")]
     public async Task<IActionResult> GetCustomerQuality(
         [FromBody] CustomerQualityRequest request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Query))
-            return Problem(statusCode: 400, detail: "Query is required");
+        string metric = string.IsNullOrWhiteSpace(request.QualityMetric)
+            ? "default"
+            : request.QualityMetric.Trim().ToLowerInvariant();
+
+        if (metric != "default")
+            return Problem(statusCode: 400, detail: "Unknown qualityMetric (supported: default)");
 
         try
         {
@@ -998,46 +744,63 @@ public sealed class CustomersController : ControllerBase
             if (connection.State != ConnectionState.Open)
                 await connection.OpenAsync(cancellationToken);
 
-            using DbCommand cmd = connection.CreateCommand();
-            cmd.CommandText = request.Query;
-
-            DbParameter keyParam = cmd.CreateParameter();
-            keyParam.ParameterName = "@customerKey";
-            keyParam.Value = request.CustomerKey;
-            cmd.Parameters.Add(keyParam);
-
-            using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-                return Ok(new Dictionary<string, object>());
-
-            var result = new Dictionary<string, object>();
-            for (int i = 0; i < reader.FieldCount; i++)
+            int cpuCount = 0;
+            int pfxCount = 0;
+            using (DbCommand cmd = connection.CreateCommand())
             {
-                string name = reader.GetName(i);
-                if (reader.IsDBNull(i))
-                {
-                    result[name] = 0;
-                    continue;
-                }
+                cmd.CommandText = """
+                    SELECT
+                        SUM(CASE WHEN TRIM(IFNULL(HowClosed, '')) = 'CPU' THEN 1 ELSE 0 END) AS cpu_count,
+                        SUM(CASE WHEN TRIM(IFNULL(HowClosed, '')) = 'PFX-' THEN 1 ELSE 0 END) AS pfx_count
+                    FROM Tickets
+                    WHERE CustomerKey = @customerKey
+                    """;
+                DbParameter keyParam = cmd.CreateParameter();
+                keyParam.ParameterName = "@customerKey";
+                keyParam.Value = request.CustomerKey;
+                cmd.Parameters.Add(keyParam);
 
-                object raw = reader.GetValue(i);
-                if (raw is long l)
-                    result[name] = l;
-                else if (raw is double d)
-                    result[name] = Math.Round(d, 1);
-                else if (raw is decimal dec)
-                    result[name] = Math.Round((double)dec, 1);
-                else if (raw is int intVal)
-                    result[name] = intVal;
-                else
-                    result[name] = raw.ToString() ?? "";
+                using DbDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    int ordCpu = reader.GetOrdinal("cpu_count");
+                    int ordPfx = reader.GetOrdinal("pfx_count");
+                    if (!reader.IsDBNull(ordCpu))
+                        cpuCount = Convert.ToInt32(reader.GetValue(ordCpu));
+                    if (!reader.IsDBNull(ordPfx))
+                        pfxCount = Convert.ToInt32(reader.GetValue(ordPfx));
+                }
             }
+
+            List<Ticket> tickets = await _ticketRepo.GetByCustomerKeyAsync(request.CustomerKey, cancellationToken);
+            DateTime today = DateTime.Today;
+            int lateTickets = 0;
+            double sumDaysLate = 0;
+            foreach (Ticket t in tickets)
+            {
+                if (t.Active != 1 || t.Type == 0)
+                    continue;
+                if (!XpdDateParser.TryParse(t.DueDate, out DateTime due) || due.Date >= today)
+                    continue;
+                lateTickets++;
+                sumDaysLate += (today - due.Date).TotalDays;
+            }
+
+            double avgDaysLate = lateTickets > 0 ? Math.Round(sumDaysLate / lateTickets, 1) : 0;
+
+            var result = new Dictionary<string, object>
+            {
+                ["cpu_count"] = cpuCount,
+                ["pfx_count"] = pfxCount,
+                ["late_tickets"] = lateTickets,
+                ["avg_days_late"] = avgDaysLate
+            };
 
             return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error executing customer quality query for key {Key}", request.CustomerKey);
+            _logger.LogWarning(ex, "Error executing customer quality metrics for key {Key}", request.CustomerKey);
             return Ok(new Dictionary<string, object> { ["error"] = ex.Message });
         }
     }
@@ -1164,47 +927,8 @@ public sealed class CustomersController : ControllerBase
         }
     }
 
-    private static readonly string[] XpdDateFormats = { 
-        "M/d/yyyy", "MM/dd/yyyy", "M/dd/yyyy", "MM/d/yyyy",
-        "yyyy-MM-dd", "yyyy-M-d", "yyyy-MM-d", "yyyy-M-dd"
-    };
-
-    private static DateTime? TryParseDate(string? dateString)
-    {
-        if (string.IsNullOrWhiteSpace(dateString))
-            return null;
-
-        string datePart = dateString.Contains(' ') ? dateString.Split(' ')[0].Trim() : dateString.Trim();
-
-        // Try exact formats first
-        if (DateTime.TryParseExact(datePart, XpdDateFormats,
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime result))
-        {
-            return result;
-        }
-
-        // Fallback: Manual parsing like Python code (M/D/YYYY format)
-        if (datePart.Contains('/'))
-        {
-            string[] parts = datePart.Split('/');
-            if (parts.Length == 3 &&
-                int.TryParse(parts[0], out int month) &&
-                int.TryParse(parts[1], out int day) &&
-                int.TryParse(parts[2], out int year))
-            {
-                try
-                {
-                    return new DateTime(year, month, day);
-                }
-                catch
-                {
-                    // Invalid date (e.g., Feb 30)
-                }
-            }
-        }
-
-        return null;
-    }
+    private static DateTime? TryParseDate(string? dateString) =>
+        XpdDateParser.TryParse(dateString, out DateTime d) ? d : null;
 }
 
 // Request body for POST /api/customers/append-note-xpd.
@@ -1224,5 +948,5 @@ public sealed class LateCustomersQueryRequest
 public sealed class CustomerQualityRequest
 {
     public int CustomerKey { get; set; }
-    public string? Query { get; set; }
+    public string? QualityMetric { get; set; }
 }
