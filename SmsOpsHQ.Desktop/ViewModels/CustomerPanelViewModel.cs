@@ -1,5 +1,9 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Core.Utilities;
@@ -37,6 +41,12 @@ public sealed class QualityMetricItem
     public string Color { get; set; } = "#64748B";
 }
 
+public sealed class AmbiguousCandidateRow
+{
+    public int CustomerKey { get; init; }
+    public string DisplayText { get; init; } = string.Empty;
+}
+
 // Right-hand panel: resolves conversation phone to customer via phone map, then shows full XPD context.
 public sealed partial class CustomerPanelViewModel : ViewModelBase
 {
@@ -44,6 +54,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     private XBlueService? _xblueService;
     private ISendSmsDialogService? _sendSmsDialogService;
     private CustomerQualityQueryService? _qualityQueryService;
+    private string _lastPhoneForLookup = string.Empty;
 
     [ObservableProperty] private int? _customerKey;
     [ObservableProperty] private int? _customerId;
@@ -55,6 +66,8 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _phoneDisplay = string.Empty;
     [ObservableProperty] private string _customerPhone = string.Empty;
     [ObservableProperty] private string _idInfo = string.Empty;
+    [ObservableProperty] private ImageSource? _idPhotoPreview;
+    [ObservableProperty] private bool _hasIdPhotoPreview;
     [ObservableProperty] private string _sinceDate = string.Empty;
     [ObservableProperty] private string _warningText = string.Empty;
 
@@ -94,6 +107,10 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private bool _isFirstTimeCustomer;
     [ObservableProperty] private string _statsBorderColor = "#E5E7EB";
 
+    /// <summary>True when lifetime ticket count is 1–2 and CPU/PFX closure history is thin (see alert text).</summary>
+    [ObservableProperty] private bool _hasExperienceAlert;
+    [ObservableProperty] private string _experienceAlertText = string.Empty;
+
     [ObservableProperty] private bool _hasDecisionCard;
     [ObservableProperty] private int _decisionScore;
     [ObservableProperty] private string _decisionScoreColor = "#64748B";
@@ -127,7 +144,23 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _decisionScoreBg = "#F8FAFC";
 
     [ObservableProperty] private string _callStatus = string.Empty;
+
+    [ObservableProperty] private bool _isAmbiguous;
+    [ObservableProperty] private string _ambiguousMessage = string.Empty;
+    [ObservableProperty] private ObservableCollection<AmbiguousCandidateRow> _ambiguousCandidates = new();
+    [ObservableProperty] private bool _riskDataSuppressed;
+    [ObservableProperty] private string _matchConfidence = string.Empty;
+    [ObservableProperty] private string _identityMatchWarning = string.Empty;
+
     public bool CanClickToCall => _xblueService is not null && _xblueService.IsConfigured;
+
+    public bool ShowFullRiskPanel => IsCustomerFound && !IsAmbiguous && !RiskDataSuppressed;
+
+    partial void OnIsAmbiguousChanged(bool value) => OnPropertyChanged(nameof(ShowFullRiskPanel));
+
+    partial void OnRiskDataSuppressedChanged(bool value) => OnPropertyChanged(nameof(ShowFullRiskPanel));
+
+    partial void OnIsCustomerFoundChanged(bool value) => OnPropertyChanged(nameof(ShowFullRiskPanel));
 
     public CustomerPanelViewModel(ApiClient apiClient, XBlueService? xblueService = null,
         ISendSmsDialogService? sendSmsDialogService = null, CustomerQualityQueryService? qualityQueryService = null)
@@ -145,7 +178,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     }
 
     // Resolve customer by conversation phone (Master Phone Map: ResPhone, BusPhone, Notes) and fill the panel.
-    public async Task LoadByPhoneAsync(string phone)
+    public async Task LoadByPhoneAsync(string phone, int? selectedCustomerKey = null)
     {
         if (string.IsNullOrWhiteSpace(phone))
         {
@@ -156,10 +189,11 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         IsBusy = true;
         ClearError();
         CustomerPhone = phone;
+        _lastPhoneForLookup = phone.Trim();
 
         try
         {
-            JsonElement response = await _apiClient.GetCustomerByPhoneAsync(phone);
+            JsonElement response = await _apiClient.GetCustomerByPhoneAsync(phone, selectedCustomerKey);
             bool found = response.TryGetProperty("found", out JsonElement foundElement) && foundElement.GetBoolean();
 
             if (!found)
@@ -168,8 +202,50 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
                 return;
             }
 
+            ApplyIdentityFlags(response);
+
+            if (IsAmbiguous)
+            {
+                IsCustomerFound = false;
+                AmbiguousMessage = GetString(response, "error");
+                AmbiguousCandidates.Clear();
+                if (response.TryGetProperty("candidate_customers", out JsonElement arr))
+                {
+                    foreach (JsonElement el in arr.EnumerateArray())
+                    {
+                        int ck = GetInt(el, "customer_key");
+                        string name = GetString(el, "name");
+                        string src = GetString(el, "phone_match_source");
+                        int active = GetInt(el, "active_ticket_count");
+                        AmbiguousCandidates.Add(new AmbiguousCandidateRow
+                        {
+                            CustomerKey = ck,
+                            DisplayText = $"{name}  •  #{ck}  •  {src}  •  active tickets: {active}"
+                        });
+                    }
+                }
+
+                ClearRiskOnlySections();
+                ClearIdPhotoPreview();
+                ClearExperienceAlert();
+                CustomerName = "Select a customer";
+                AddressLine = "This phone matches more than one XPD profile.";
+                CityStateZip = string.Empty;
+                PhoneDisplay = phone;
+                OnPropertyChanged(nameof(ShowFullRiskPanel));
+                return;
+            }
+
+            if (!response.TryGetProperty("customer", out JsonElement customerElement) ||
+                customerElement.ValueKind != JsonValueKind.Object)
+            {
+                ShowNotFound(phone);
+                return;
+            }
+
             IsCustomerFound = true;
-            await PopulateFromResponse(response);
+            await PopulateFromResponse(response, customerElement);
+            OnPropertyChanged(nameof(ShowFullRiskPanel));
         }
         catch (Exception ex)
         {
@@ -178,18 +254,78 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            OnPropertyChanged(nameof(CanClickToCall));
         }
+    }
+
+    // Prefer API phones that actually contain digits; never replace a good thread number with an empty/garbage "phone" field.
+    private static string? PickFirstDialablePhone(string? apiPhone, string? resPhone, string? busPhone, string? lookupPhone)
+    {
+        foreach (string? candidate in new[] { apiPhone, resPhone, busPhone, lookupPhone })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+            if (PhoneUtils.GetDialString(candidate) is not null)
+                return candidate.Trim();
+        }
+
+        return null;
+    }
+
+    private void ApplyIdentityFlags(JsonElement response)
+    {
+        IsAmbiguous = response.TryGetProperty("ambiguous", out JsonElement amb) &&
+                    amb.ValueKind == JsonValueKind.True;
+        RiskDataSuppressed = response.TryGetProperty("risk_data_suppressed", out JsonElement rs) &&
+                             rs.ValueKind == JsonValueKind.True;
+        MatchConfidence = GetString(response, "match_confidence");
+        IdentityMatchWarning = MatchConfidence == "note_reference_only"
+            ? "Phone was found in customer notes only. Confirm client before relying on ticket history."
+            : string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task PickAmbiguousCandidateAsync(int customerKey) =>
+        await LoadByPhoneAsync(_lastPhoneForLookup, customerKey);
+
+    private void ClearRiskOnlySections()
+    {
+        ActiveCount = 0;
+        LateCount = 0;
+        AllTimeCount = 0;
+        HasPaymentHistory = false;
+        HasDecisionCard = false;
+        HasActiveTickets = false;
+        ActiveTickets = new ObservableCollection<ActiveTicketDisplayItem>();
+        HasQualityMetrics = false;
+        QualityMetrics = new ObservableCollection<QualityMetricItem>();
+        LateRateDisplay = string.Empty;
+        PaymentStatsDisplay = string.Empty;
+        PfxHistoryDisplay = string.Empty;
+        WorstLateDisplay = string.Empty;
+        IsFirstTimeCustomer = false;
+        StatsBorderColor = "#E5E7EB";
+        RiskLevel = string.Empty;
+        RiskColor = "#64748B";
+        ClearExperienceAlert();
     }
 
     // Blank state when the phone does not match any customer in the phone index.
     private void ShowNotFound(string searchedPhone)
     {
         IsCustomerFound = false;
+        IsAmbiguous = false;
+        AmbiguousMessage = string.Empty;
+        AmbiguousCandidates = new ObservableCollection<AmbiguousCandidateRow>();
+        RiskDataSuppressed = false;
+        MatchConfidence = string.Empty;
+        IdentityMatchWarning = string.Empty;
         CustomerName = "Not in XPD";
         AddressLine = "No address on file";
         CityStateZip = string.Empty;
         PhoneDisplay = string.IsNullOrEmpty(searchedPhone) ? "No phone" : searchedPhone;
         IdInfo = string.Empty;
+        ClearIdPhotoPreview();
         SinceDate = string.Empty;
         WarningText = string.Empty;
         ActiveCount = 0;
@@ -212,15 +348,13 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         IsFirstTimeCustomer = false;
         StatsBorderColor = "#E5E7EB";
         HasDecisionCard = false;
+        ClearExperienceAlert();
     }
 
     // Map API response (customer, stats, quality, tickets, notes) to display properties.
-    private async Task PopulateFromResponse(JsonElement response)
+    private async Task PopulateFromResponse(JsonElement response, JsonElement customerElement)
     {
-        if (!response.TryGetProperty("customer", out JsonElement customerElement))
-            return;
-
-        CustomerKey = GetIntOrNull(customerElement, "key");
+        CustomerKey = GetIntOrNull(customerElement, "customer_key") ?? GetIntOrNull(customerElement, "key");
         if (response.TryGetProperty("customer_id", out JsonElement customerIdElement) && customerIdElement.ValueKind == JsonValueKind.Number)
             CustomerId = customerIdElement.GetInt32();
 
@@ -260,7 +394,9 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         PhoneDisplay = phoneList.Count > 0 ? string.Join(" | ", phoneList) : "No phone";
 
         string primaryPhone = GetString(customerElement, "phone");
-        if (!string.IsNullOrEmpty(primaryPhone)) CustomerPhone = primaryPhone;
+        string? dialPhone = PickFirstDialablePhone(primaryPhone, resPhone, busPhone, _lastPhoneForLookup);
+        if (!string.IsNullOrEmpty(dialPhone))
+            CustomerPhone = dialPhone;
 
         string idNumber = GetString(customerElement, "id_no");
         string idIssueState = GetString(customerElement, "id_issue_state");
@@ -271,6 +407,8 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         if (!string.IsNullOrEmpty(idIssueState)) idParts.Add("(" + idIssueState + ")");
         if (!string.IsNullOrEmpty(dateOfBirth)) idParts.Add("DOB: " + dateOfBirth);
         IdInfo = string.Join(" ", idParts);
+
+        bool idPhotoAvailable = GetBool(customerElement, "id_photo_available");
 
         string firstTransaction = GetString(customerElement, "first_transaction");
         if (firstTransaction.Contains(' ')) firstTransaction = firstTransaction.Split(' ')[0];
@@ -283,27 +421,47 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             ? string.Empty : rawWarning;
 
         CustomerNotes = DefaultIfEmpty(GetString(customerElement, "notes"), "No notes.");
+
+        if (!ShowFullRiskPanel)
+        {
+            ClearRiskOnlySections();
+            ClearExperienceAlert();
+            TicketNotes = "No ticket notes.";
+            ItemNotes = "No item notes.";
+            await TryLoadIdPhotoPreviewAsync(CustomerKey, idNumber, idPhotoAvailable);
+            return;
+        }
+
         TicketNotes = DefaultIfEmpty(GetString(response, "ticket_notes"), "No ticket notes.");
         ItemNotes = DefaultIfEmpty(GetString(response, "item_notes"), "No item notes.");
 
         int pfxCountFromStats = 0;
-        if (response.TryGetProperty("stats", out JsonElement statsElement))
+        int cpuCountFromStats = 0;
+        if (response.TryGetProperty("stats", out JsonElement statsElement) &&
+            statsElement.ValueKind == JsonValueKind.Object)
         {
             ActiveCount = GetInt(statsElement, "active_count");
             LateCount = GetInt(statsElement, "late_count");
             pfxCountFromStats = GetInt(statsElement, "pfx_count");
-            int cpuCount = GetInt(statsElement, "cpu_count");
+            cpuCountFromStats = GetInt(statsElement, "cpu_count");
             AllTimeCount = GetInt(statsElement, "all_time_count");
 
-            CpuDisplay = "CPU Count: " + cpuCount;
-            CpuColor = cpuCount > 0 ? "#D97706" : "#059669";
+            CpuDisplay = "CPU Count: " + cpuCountFromStats;
+            CpuColor = cpuCountFromStats > 0 ? "#D97706" : "#059669";
 
             string everLateText = LateCount > 0 ? "Yes" : "No";
             PfxLateDisplay = "PFX Count: " + pfxCountFromStats + " | Ever Late: " + everLateText;
             PfxLateColor = (pfxCountFromStats > 0 || LateCount > 0) ? "#D97706" : "#059669";
+
+            ApplyExperienceAlert(AllTimeCount, cpuCountFromStats, pfxCountFromStats);
+        }
+        else
+        {
+            ClearExperienceAlert();
         }
 
-        if (response.TryGetProperty("quality", out JsonElement qualityElement))
+        if (response.TryGetProperty("quality", out JsonElement qualityElement) &&
+            qualityElement.ValueKind == JsonValueKind.Object)
         {
             RiskLevel = GetString(qualityElement, "level");
             RiskColor = GetString(qualityElement, "color");
@@ -324,6 +482,94 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
 
         if (CustomerKey.HasValue)
             await LoadQualityMetricsAsync(CustomerKey.Value);
+
+        await TryLoadIdPhotoPreviewAsync(CustomerKey, idNumber, idPhotoAvailable);
+    }
+
+    private void ClearExperienceAlert()
+    {
+        HasExperienceAlert = false;
+        ExperienceAlertText = string.Empty;
+    }
+
+    // 1–2 lifetime loans: flag missing CPU paid-up closes and/or missing PFX forfeits so staff spot thin files.
+    private void ApplyExperienceAlert(int allTimeCount, int cpuCount, int pfxCount)
+    {
+        ClearExperienceAlert();
+        if (allTimeCount < 1 || allTimeCount > 2)
+            return;
+
+        if (cpuCount == 0 && pfxCount == 0)
+        {
+            HasExperienceAlert = true;
+            ExperienceAlertText = "Thin file · no CPU or PFX closes";
+            return;
+        }
+
+        if (cpuCount == 0)
+        {
+            HasExperienceAlert = true;
+            ExperienceAlertText = "No paid-up (CPU) close yet";
+            return;
+        }
+
+        if (pfxCount == 0)
+        {
+            HasExperienceAlert = true;
+            ExperienceAlertText = "No PFX forfeits yet";
+        }
+    }
+
+    private void ClearIdPhotoPreview()
+    {
+        IdPhotoPreview = null;
+        HasIdPhotoPreview = false;
+    }
+
+    private async Task TryLoadIdPhotoPreviewAsync(int? key, string idNumber, bool apiSaysAvailable)
+    {
+        ClearIdPhotoPreview();
+        if (key is null || string.IsNullOrWhiteSpace(idNumber) || !apiSaysAvailable)
+            return;
+
+        int customerKey = key.Value;
+        try
+        {
+            byte[]? bytes = await _apiClient.GetCustomerIdPhotoBytesAsync(customerKey);
+            if (bytes is null || bytes.Length == 0 || CustomerKey != customerKey)
+                return;
+
+            void ApplyPreview()
+            {
+                if (CustomerKey != customerKey)
+                    return;
+                try
+                {
+                    using MemoryStream ms = new(bytes);
+                    BitmapImage image = new();
+                    image.BeginInit();
+                    image.StreamSource = ms;
+                    image.CacheOption = BitmapCacheOption.OnLoad;
+                    image.EndInit();
+                    image.Freeze();
+                    IdPhotoPreview = image;
+                    HasIdPhotoPreview = true;
+                }
+                catch
+                {
+                    ClearIdPhotoPreview();
+                }
+            }
+
+            if (Application.Current?.Dispatcher.CheckAccess() == true)
+                ApplyPreview();
+            else
+                Application.Current?.Dispatcher.Invoke(ApplyPreview);
+        }
+        catch
+        {
+            ClearIdPhotoPreview();
+        }
     }
 
     // Fill late rate, PFX sample, and worst late ticket from payment_history (supports camelCase or snake_case).
@@ -576,12 +822,11 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         QualityMetrics.Clear();
         HasQualityMetrics = false;
 
-        if (_qualityQueryService is null) return;
+        if (_qualityQueryService is null || !ShowFullRiskPanel) return;
 
         try
         {
-            string query = _qualityQueryService.LoadQuery();
-            JsonElement result = await _apiClient.GetCustomerQualityAsync(customerKey, query);
+            JsonElement result = await _apiClient.GetCustomerQualityAsync(customerKey, "default");
 
             if (result.TryGetProperty("error", out JsonElement errorEl))
                 return;
@@ -715,7 +960,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             await _apiClient.AppendNoteXpdAsync(CustomerKey.Value, trimmedNote);
             NoteInput = string.Empty;
             if (!string.IsNullOrEmpty(CustomerPhone))
-                await LoadByPhoneAsync(CustomerPhone);
+                await LoadByPhoneAsync(CustomerPhone, CustomerKey);
         }
         catch (Exception ex)
         {
@@ -751,8 +996,12 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         }
 
         CallStatus = "Dialing...";
-        bool dialSuccess = await _xblueService.DialAsync(CustomerPhone);
-        CallStatus = dialSuccess ? "Call initiated." : "Dial failed.";
+        XBlueDialResult result = await _xblueService.DialAsync(CustomerPhone);
+        CallStatus = result.Ok
+            ? $"Call sent — {result.Message}"
+            : (result.StatusCode > 0
+                ? $"Dial failed (HTTP {result.StatusCode}): {result.Message}"
+                : result.Message);
     }
 
     // Reset all display fields to empty or default so the panel shows no customer.
@@ -767,6 +1016,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         PhoneDisplay = string.Empty;
         CustomerPhone = string.Empty;
         IdInfo = string.Empty;
+        ClearIdPhotoPreview();
         SinceDate = string.Empty;
         WarningText = string.Empty;
         ActiveCount = 0;
@@ -819,6 +1069,13 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         DecisionAvgDaysLateColor = "#059669";
         DecisionLateRateColor = "#64748B";
         DecisionScoreBg = "#F8FAFC";
+        IsAmbiguous = false;
+        AmbiguousMessage = string.Empty;
+        AmbiguousCandidates = new ObservableCollection<AmbiguousCandidateRow>();
+        RiskDataSuppressed = false;
+        MatchConfidence = string.Empty;
+        IdentityMatchWarning = string.Empty;
+        ClearExperienceAlert();
     }
 
     // Safe read of a string property from JSON; returns empty string if missing or not a string.
@@ -835,6 +1092,15 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         if (element.ValueKind != JsonValueKind.Object) return 0;
         if (!element.TryGetProperty(propertyName, out JsonElement valueElement)) return 0;
         return valueElement.ValueKind == JsonValueKind.Number ? valueElement.GetInt32() : 0;
+    }
+
+    private static bool GetBool(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+        if (!element.TryGetProperty(propertyName, out JsonElement valueElement))
+            return false;
+        return valueElement.ValueKind == JsonValueKind.True;
     }
 
     // Safe read of an int property from JSON; returns null if missing or not a number.

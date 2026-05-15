@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -49,12 +50,15 @@ public sealed class ReviewHistoryItem
     public string SentAtText => SentAt.ToString("MMM d, yyyy  h:mm tt");
 }
 
-// Settings ViewModel with 8 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP, Reviews, Quality.
+// Settings ViewModel with 8 tabs: Credentials, Database, Phone Numbers, Twilio, Reminders, VoIP, Reviews (channels + automation), Quality.
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
     private readonly AppState _appState;
     private readonly TwilioConfigService _twilioConfig;
+    private readonly XBlueService _xblueService;
+    private readonly XBlueConfigService _xblueConfig;
+    private bool _suspendXBluePersist;
 
     [ObservableProperty]
     private int _selectedTabIndex;
@@ -212,6 +216,30 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _xblueEnabled;
 
+    [ObservableProperty]
+    private bool _xblueSpeakerBeforeDial = true;
+
+    [ObservableProperty]
+    private bool _xbluePressPoundToSend;
+
+    [ObservableProperty]
+    private string _xblueOutboundPrefix = string.Empty;
+
+    [ObservableProperty]
+    private string _xblueUsername = string.Empty;
+
+    [ObservableProperty]
+    private string _xbluePassword = string.Empty;
+
+    [ObservableProperty]
+    private string _xblueVoipTestSummary = string.Empty;
+
+    [ObservableProperty]
+    private bool _xblueVoipTestBusy;
+
+    [ObservableProperty]
+    private string _xblueDialTarget = "7185649706";
+
     // Tab 6: Reviews
     [ObservableProperty]
     private ObservableCollection<ReviewChannelItem> _reviewChannels = new();
@@ -239,6 +267,27 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _reviewSuccessMessage = string.Empty;
 
+    [ObservableProperty]
+    private bool _reviewAutoEnabled;
+
+    [ObservableProperty]
+    private int _reviewAutoIntervalMinutes = 30;
+
+    [ObservableProperty]
+    private bool _reviewAutoRunOnStartup;
+
+    [ObservableProperty]
+    private bool _reviewAutoTimerRunning;
+
+    [ObservableProperty]
+    private string _reviewAutoSettingsPath = string.Empty;
+
+    [ObservableProperty]
+    private string _reviewAutoStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _reviewAutoBusy;
+
     // Tab 7: Quality
     private CustomerQualityQueryService? _qualityQueryService;
 
@@ -252,14 +301,254 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private string _qualityErrorMessage = string.Empty;
 
     public SettingsViewModel(ApiClient apiClient, AppState appState, TwilioConfigService twilioConfig,
+        XBlueService xblueService, XBlueConfigService xblueConfig,
         CustomerQualityQueryService? qualityQueryService = null)
     {
         _apiClient = apiClient;
         _appState = appState;
         _twilioConfig = twilioConfig;
+        _xblueService = xblueService;
+        _xblueConfig = xblueConfig;
         _qualityQueryService = qualityQueryService;
         SelectedStoreId = _appState.CurrentStoreId;
         LoadTwilioConfigFromFile();
+        LoadXBlueIntoViewModel();
+    }
+
+    private void LoadXBlueIntoViewModel()
+    {
+        _suspendXBluePersist = true;
+        XBlueSettings s = _xblueConfig.Load();
+        XblueIp = s.Ip;
+        XblueEnabled = s.Enabled;
+        XblueSpeakerBeforeDial = s.SpeakerBeforeDial;
+        XbluePressPoundToSend = s.PressPoundToSend;
+        XblueOutboundPrefix = s.OutboundPrefix;
+        XblueUsername = s.Username;
+        XbluePassword = s.Password;
+        ApplyXblueToService();
+        _suspendXBluePersist = false;
+    }
+
+    private void ApplyXblueToService()
+    {
+        _xblueService.Configure(
+            XblueIp.Trim(),
+            XblueEnabled,
+            XblueUsername?.Trim() ?? "",
+            XbluePassword ?? "",
+            XblueSpeakerBeforeDial,
+            XblueOutboundPrefix ?? "",
+            XbluePressPoundToSend);
+    }
+
+    partial void OnXblueIpChanged(string value) => PersistXBlueIfNeeded();
+
+    partial void OnXblueEnabledChanged(bool value) => PersistXBlueIfNeeded();
+
+    partial void OnXblueSpeakerBeforeDialChanged(bool value) => PersistXBlueIfNeeded();
+
+    partial void OnXbluePressPoundToSendChanged(bool value) => PersistXBlueIfNeeded();
+
+    partial void OnXblueOutboundPrefixChanged(string value) => PersistXBlueIfNeeded();
+
+    partial void OnXblueUsernameChanged(string value) => PersistXBlueIfNeeded();
+
+    partial void OnXbluePasswordChanged(string value) => PersistXBlueIfNeeded();
+
+    private void PersistXBlueIfNeeded()
+    {
+        if (_suspendXBluePersist) return;
+        ApplyXblueToService();
+        _xblueConfig.Save(
+            XblueIp,
+            XblueEnabled,
+            XblueUsername?.Trim() ?? "",
+            XbluePassword ?? "",
+            XblueSpeakerBeforeDial,
+            XblueOutboundPrefix ?? "",
+            XbluePressPoundToSend);
+    }
+
+    [RelayCommand]
+    private void OpenFanvilWebUi()
+    {
+        XblueVoipTestSummary = string.Empty;
+        string ip = XblueIp?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(ip))
+        {
+            XblueVoipTestSummary = "Enter the phone IP address first.";
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = $"http://{ip}/",
+                UseShellExecute = true
+            });
+            XblueVoipTestSummary =
+                "Opened the phone in your default browser. Walk the left menu tab by tab with support — share a screenshot of any screen if something is unclear.";
+        }
+        catch (Exception ex)
+        {
+            XblueVoipTestSummary = "Could not open browser: " + ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task TestVoipConnectionAsync()
+    {
+        XblueVoipTestSummary = string.Empty;
+        XblueVoipTestBusy = true;
+        try
+        {
+            ApplyXblueToService();
+            XBlueConnectionTest result = await _xblueService.TestConnectionAsync(XblueIp?.Trim());
+            XblueVoipTestSummary = result.Message;
+        }
+        finally
+        {
+            XblueVoipTestBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task VoipVolumeUpAsync()
+    {
+        XblueVoipTestSummary = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(XblueIp))
+        {
+            XblueVoipTestSummary = "Enter the phone IP address first.";
+            return;
+        }
+
+        if (!XblueEnabled)
+        {
+            XblueVoipTestSummary = "Enable XBlue VoIP to send volume commands to the phone.";
+            return;
+        }
+
+        ApplyXblueToService();
+        XblueVoipTestBusy = true;
+        try
+        {
+            bool ok = await _xblueService.VolumeUpAsync();
+            XblueVoipTestSummary = ok
+                ? "Volume up command sent — you should hear the ring or call volume step up on the phone."
+                : "Volume command did not get a success response. Check user/password and that ConfigManApp.com accepts Basic auth.";
+        }
+        finally
+        {
+            XblueVoipTestBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task VoipSpeakerAsync()
+    {
+        XblueVoipTestSummary = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(XblueIp))
+        {
+            XblueVoipTestSummary = "Enter the phone IP address first.";
+            return;
+        }
+
+        if (!XblueEnabled)
+        {
+            XblueVoipTestSummary = "Enable XBlue VoIP to control the phone.";
+            return;
+        }
+
+        ApplyXblueToService();
+        XblueVoipTestBusy = true;
+        try
+        {
+            bool ok = await _xblueService.ToggleSpeakerAsync();
+            XblueVoipTestSummary = ok
+                ? "Speaker command sent — toggles speakerphone / handsfree on the phone (press again to turn off)."
+                : "Speaker command failed. Check credentials and phone API.";
+        }
+        finally
+        {
+            XblueVoipTestBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task VoipUnmuteAsync()
+    {
+        XblueVoipTestSummary = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(XblueIp))
+        {
+            XblueVoipTestSummary = "Enter the phone IP address first.";
+            return;
+        }
+
+        if (!XblueEnabled)
+        {
+            XblueVoipTestSummary = "Enable XBlue VoIP to control the phone.";
+            return;
+        }
+
+        ApplyXblueToService();
+        XblueVoipTestBusy = true;
+        try
+        {
+            bool ok = await _xblueService.ToggleMuteAsync();
+            XblueVoipTestSummary = ok
+                ? "Mute toggle sent — if you were muted, audio should be back on (press again to mute)."
+                : "Mute command failed. Check credentials and phone API.";
+        }
+        finally
+        {
+            XblueVoipTestBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task VoipDialAsync()
+    {
+        XblueVoipTestSummary = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(XblueIp))
+        {
+            XblueVoipTestSummary = "Enter the phone IP address first.";
+            return;
+        }
+
+        if (!XblueEnabled)
+        {
+            XblueVoipTestSummary = "Enable XBlue VoIP to dial from the app.";
+            return;
+        }
+
+        string target = XblueDialTarget?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(target))
+        {
+            XblueVoipTestSummary = "Enter an extension or phone number to dial.";
+            return;
+        }
+
+        ApplyXblueToService();
+        XblueVoipTestBusy = true;
+        try
+        {
+            XBlueDialResult r = await _xblueService.DialAsync(target);
+            XblueVoipTestSummary = r.Ok
+                ? $"Dial “{target}”: {r.Message}"
+                : (r.StatusCode > 0
+                    ? $"Dial failed (HTTP {r.StatusCode}): {r.Message}"
+                    : r.Message);
+        }
+        finally
+        {
+            XblueVoipTestBusy = false;
+        }
     }
 
     private void LoadTwilioConfigFromFile()
@@ -1011,6 +1300,102 @@ public sealed partial class SettingsViewModel : ViewModelBase
     }
 
     // ── Reviews tab ──────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task LoadReviewAutomationAsync()
+    {
+        ReviewAutoStatusMessage = string.Empty;
+        try
+        {
+            JsonElement s = await _apiClient.GetReviewAutomationSettingsAsync();
+            ReviewAutoEnabled = s.TryGetProperty("enabled", out JsonElement en) && en.GetBoolean();
+            ReviewAutoIntervalMinutes = s.TryGetProperty("intervalMinutes", out JsonElement im) ? im.GetInt32() : 30;
+            if (ReviewAutoIntervalMinutes < 1) ReviewAutoIntervalMinutes = 30;
+            ReviewAutoRunOnStartup = s.TryGetProperty("runOnStartup", out JsonElement rs) && rs.GetBoolean();
+            await LoadReviewAutomationStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            ReviewErrorMessage = $"Review automation settings: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task LoadReviewAutomationStatusAsync()
+    {
+        try
+        {
+            JsonElement st = await _apiClient.GetReviewAutomationStatusAsync();
+            ReviewAutoTimerRunning = st.TryGetProperty("schedulerRunning", out JsonElement sr) && sr.GetBoolean();
+            ReviewAutoSettingsPath = st.TryGetProperty("settingsFilePath", out JsonElement p) ? p.GetString() ?? "" : "";
+        }
+        catch
+        {
+            // Status is optional if API is older.
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveReviewAutomationAsync()
+    {
+        ReviewAutoStatusMessage = string.Empty;
+        ReviewErrorMessage = string.Empty;
+        if (ReviewAutoIntervalMinutes < 1 || ReviewAutoIntervalMinutes > 1440)
+        {
+            ReviewAutoStatusMessage = "Interval must be between 1 and 1440 minutes.";
+            return;
+        }
+
+        ReviewAutoBusy = true;
+        try
+        {
+            await _apiClient.PutReviewAutomationSettingsAsync(
+                ReviewAutoEnabled, ReviewAutoIntervalMinutes, ReviewAutoRunOnStartup);
+            ReviewAutoStatusMessage = "Saved. The API review automation timer was updated.";
+            await LoadReviewAutomationStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            ReviewAutoStatusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            ReviewAutoBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RunReviewAutomationNowAsync()
+    {
+        ReviewAutoStatusMessage = string.Empty;
+        ReviewAutoBusy = true;
+        try
+        {
+            JsonElement r = await _apiClient.RunReviewAutomationNowAsync();
+            int sent = r.TryGetProperty("sent", out JsonElement s) ? s.GetInt32() : 0;
+            int failed = r.TryGetProperty("failed", out JsonElement f) ? f.GetInt32() : 0;
+            int skipped = r.TryGetProperty("skipped", out JsonElement sk) ? sk.GetInt32() : 0;
+            string? detail = r.TryGetProperty("detail", out JsonElement d) ? d.GetString() : null;
+
+            ReviewAutoStatusMessage = detail switch
+            {
+                "run_already_in_progress" => "A run is already in progress.",
+                "bootstrap" => "Initialized watermark (no messages sent).",
+                "no_new_tickets" => "No new tickets since last check.",
+                _ => $"Done: {sent} sent, {failed} failed, {skipped} skipped."
+            };
+        }
+        catch (Exception ex)
+        {
+            ReviewAutoStatusMessage = ex.Message.Contains("409", StringComparison.Ordinal) || ex.Message.Contains("Conflict", StringComparison.Ordinal)
+                ? "A run is already in progress."
+                : $"Run failed: {ex.Message}";
+        }
+        finally
+        {
+            ReviewAutoBusy = false;
+        }
+    }
 
     [RelayCommand]
     private async Task LoadReviewChannelsAsync()

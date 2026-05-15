@@ -80,7 +80,23 @@ public sealed class ReminderService : IReminderService
             };
         }
 
-        if (await WasReminderSentAsync(request.TicketKey, request.DueDate, reminderType, cancellationToken))
+        if (request.DaysDiff == 30)
+        {
+            bool finalAttempted = await _db.SmsReminders.AsNoTracking()
+                .AnyAsync(r => r.TicketKey == request.TicketKey
+                            && r.DueDate == request.DueDate
+                            && r.ReminderType == reminderType,
+                    cancellationToken);
+            if (finalAttempted)
+            {
+                return new ReminderSendResult
+                {
+                    Success = false,
+                    Message = $"Final reminder {reminderType} already attempted for this ticket"
+                };
+            }
+        }
+        else if (await WasReminderSentAsync(request.TicketKey, request.DueDate, reminderType, cancellationToken))
         {
             return new ReminderSendResult
             {
@@ -453,6 +469,16 @@ public sealed class ReminderService : IReminderService
 
         HashSet<string> sentSet = new(sentTypes);
 
+        // Final reminder (30 days tier) already attempted — no further SMS for this ticket + due date.
+        // Counts failures too (Status 0): one try at the final tier, then stop.
+        bool finalReminderAttempted = await _db.SmsReminders.AsNoTracking()
+            .AnyAsync(r => r.TicketKey == ticketKey
+                        && r.DueDate == dueDate
+                        && (r.ReminderType == "reminder_30" || r.ReminderType == "combined_30"),
+                cancellationToken);
+        if (finalReminderAttempted)
+            return null;
+
         List<(int Interval, string Type)> applicable = new();
 
         foreach (int interval in ReminderIntervals)
@@ -804,7 +830,7 @@ public sealed class ReminderService : IReminderService
              0 => $"Urgent notice from King Gold and Pawn\nTicket #: {ticketNo}\nYour pawn expires TODAY ({dueDateStr}).\nPlease act now to avoid losing your item.\n{phoneCall}",
              7 => $"Warning from King Gold and Pawn\nTicket #: {ticketNo}\nYour pawn expired 7 days ago on {dueDateStr}.\nYou are at risk of forfeiture. Act immediately. {phoneNow}",
             14 => $"Final warning from King Gold and Pawn\nTicket #: {ticketNo}\nYour pawn expired 14 days ago ({dueDateStr}).\nYour item is in serious jeopardy of being forfeited.\n{phoneCallNow}",
-            30 => $"Final notice from King Gold and Pawn\nTicket #: {ticketNo}\nYour pawn expired 30 days ago ({dueDateStr}).\nThis is the last SMS you will receive. No further communication will follow. {phoneContact}",
+            30 => $"Final notice from King Gold and Pawn\nTicket #: {ticketNo}\nYour pawn expired 30 days ago ({dueDateStr}).\nThis is the last SMS you will receive for this ticket. No further communication will follow. {phoneContact}",
              _ => null
         };
     }
@@ -836,11 +862,14 @@ public sealed class ReminderService : IReminderService
             _     => "Friendly reminder from King Gold and Pawn."
         };
 
-        string ticketsText = string.Join("\n", ticketLines);
         string callText = storePhoneDisplay is not null
             ? $"Please visit the store or call {storePhoneDisplay} to avoid losing your items."
             : "Please visit the store to avoid losing your items.";
 
+        if (mostUrgentDays >= 30)
+            return $"{intro}\n\nThis is the last SMS you will receive for these tickets.\n\n{callText}";
+
+        string ticketsText = string.Join("\n", ticketLines);
         return $"{intro}\n\nYou have {tickets.Count} pawns requiring attention:\n\n{ticketsText}\n\n{callText}";
     }
 

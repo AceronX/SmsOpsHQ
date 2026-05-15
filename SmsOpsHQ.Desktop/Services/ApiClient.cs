@@ -144,8 +144,23 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> GetPfxCustomersAsync(int days = 60) =>
         await GetJsonAsync($"/api/customers/pfx?days={days}");
 
-    public async Task<JsonElement> GetCustomerByPhoneAsync(string phone) =>
-        await GetJsonAsync($"/api/customer/by-phone?phone={Uri.EscapeDataString(phone)}");
+    public async Task<JsonElement> GetCustomerByPhoneAsync(string phone, int? selectedCustomerKey = null)
+    {
+        string url = $"/api/customer/by-phone?phone={Uri.EscapeDataString(phone)}";
+        if (selectedCustomerKey is int k)
+            url += $"&selectedCustomerKey={k}";
+        return await GetJsonAsync(url);
+    }
+
+    public async Task<byte[]?> GetCustomerIdPhotoBytesAsync(int customerKey)
+    {
+        using HttpResponseMessage response =
+            await _httpClient.GetAsync($"/api/customer/id-photo?customerKey={customerKey}");
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync();
+    }
 
     public async Task<JsonElement> AppendNoteXpdAsync(int customerKey, string note)
     {
@@ -153,9 +168,9 @@ public sealed class ApiClient : IDisposable
         return await PostJsonAsync("/api/customers/append-note-xpd", request);
     }
 
-    public async Task<JsonElement> GetCustomerQualityAsync(int customerKey, string query)
+    public async Task<JsonElement> GetCustomerQualityAsync(int customerKey, string qualityMetric = "default")
     {
-        var request = new { customerKey, query };
+        var request = new { customerKey, qualityMetric };
         return await PostJsonAsync("/api/customers/quality", request);
     }
 
@@ -217,10 +232,30 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> DeleteReviewChannelAsync(int channelId) =>
         await DeleteJsonAsync($"/api/reviews/channels/{channelId}");
 
+    // ── Review automation (new XPD tickets → review SMS) ────────────
+
+    public async Task<JsonElement> GetReviewAutomationSettingsAsync() =>
+        await GetJsonAsync("/api/review-automation/settings");
+
+    public async Task<JsonElement> PutReviewAutomationSettingsAsync(bool enabled, int intervalMinutes, bool runOnStartup)
+    {
+        var body = new { enabled, intervalMinutes, runOnStartup };
+        return await PutJsonAsync("/api/review-automation/settings", body);
+    }
+
+    public async Task<JsonElement> GetReviewAutomationStatusAsync() =>
+        await GetJsonAsync("/api/review-automation/status");
+
+    public async Task<JsonElement> RunReviewAutomationNowAsync() =>
+        await PostJsonAsync("/api/review-automation/run", null);
+
     // ── Stores ───────────────────────────────────────────────────────
 
     public async Task<JsonElement> GetStoresAsync() =>
         await GetJsonAsync("/api/stores");
+
+    public async Task<JsonElement> GetStoreAsync(int storeId) =>
+        await GetJsonAsync($"/api/stores/{storeId}");
 
     public async Task<JsonElement> CreateStoreAsync(string storeName)
     {

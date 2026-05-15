@@ -49,6 +49,30 @@ public sealed class StoresController : ControllerBase
         return Ok(new[] { toItem(store) });
     }
 
+    // GET /api/stores/{storeId}
+    // Store profile including address (for directions SMS, etc.).
+    [HttpGet("{storeId:int}")]
+    public async Task<IActionResult> GetStore(int storeId, CancellationToken cancellationToken = default)
+    {
+        if (!User.CanAccessStore(storeId))
+            return Problem(statusCode: 403, detail: "Not authorized");
+
+        Core.Entities.Store? store = await _storeRepo.GetByIdAsync(storeId, cancellationToken);
+        if (store is null)
+            return Problem(statusCode: 404, detail: "Store not found");
+
+        return Ok(new
+        {
+            store_id = store.StoreId,
+            store_name = store.StoreName,
+            address = store.Address,
+            city = store.City,
+            state = store.State,
+            zip = store.Zip,
+            default_number_id = store.DefaultNumberId
+        });
+    }
+
     // POST /api/stores — create a new store (HQ users only).
     [HttpPost]
     public async Task<IActionResult> CreateStore(

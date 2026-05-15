@@ -42,6 +42,7 @@ public sealed class AppDbContext : DbContext
     // Review system
     public DbSet<ReviewChannelEntity> ReviewChannels => Set<ReviewChannelEntity>();
     public DbSet<ReviewRequestEntity> ReviewRequests => Set<ReviewRequestEntity>();
+    public DbSet<ReviewAutomationStateEntity> ReviewAutomationState => Set<ReviewAutomationStateEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,7 @@ public sealed class AppDbContext : DbContext
         ConfigureSmsUnsubscribed(modelBuilder);
         ConfigureReviewChannels(modelBuilder);
         ConfigureReviewRequests(modelBuilder);
+        ConfigureReviewAutomationState(modelBuilder);
     }
 
     // ── Stores ────────────────────────────────────────────────────────
@@ -516,7 +518,7 @@ public sealed class AppDbContext : DbContext
         modelBuilder.Entity<CustomerPhoneEntity>(phone =>
         {
             phone.ToTable("CustomerPhones");
-            phone.HasKey(p => new { p.CustomerKey, p.PhoneNormalized, p.PhoneType });
+            phone.HasKey(p => new { p.CustomerKey, p.PhoneNormalized, p.SourceField });
 
             phone.Property(p => p.PhoneNormalized)
                 .HasMaxLength(10)
@@ -524,9 +526,12 @@ public sealed class AppDbContext : DbContext
 
             phone.Property(p => p.PhoneOriginal).HasMaxLength(32);
 
-            phone.Property(p => p.PhoneType)
-                .HasMaxLength(16)
+            phone.Property(p => p.SourceField)
+                .HasColumnName("PhoneType")
+                .HasMaxLength(32)
                 .IsRequired();
+
+            phone.Property(p => p.MatchType).HasMaxLength(32);
 
             phone.HasIndex(p => p.PhoneNormalized);
         });
@@ -695,6 +700,18 @@ public sealed class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(r => r.TemplateId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    // ── ReviewAutomationState (single row) ───────────────────────────
+
+    private static void ConfigureReviewAutomationState(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReviewAutomationStateEntity>(s =>
+        {
+            s.ToTable("ReviewAutomationState");
+            s.HasKey(x => x.StateId);
+            s.Property(x => x.StateId).ValueGeneratedNever();
         });
     }
 }

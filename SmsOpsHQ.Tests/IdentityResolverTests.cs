@@ -27,9 +27,9 @@ public class IdentityResolverTests : IDisposable
 
         // Seed CustomerPhones: 5559876543 -> keys 100, 200; 5551111111 -> 300
         _db.CustomerPhones.AddRange(
-            new CustomerPhoneEntity { CustomerKey = 100, PhoneNormalized = "5559876543", PhoneOriginal = "+15559876543", PhoneType = "ResPhone" },
-            new CustomerPhoneEntity { CustomerKey = 200, PhoneNormalized = "5559876543", PhoneOriginal = "+15559876543", PhoneType = "BusPhone" },
-            new CustomerPhoneEntity { CustomerKey = 300, PhoneNormalized = "5551111111", PhoneOriginal = "+15551111111", PhoneType = "ResPhone" }
+            new CustomerPhoneEntity { CustomerKey = 100, PhoneNormalized = "5559876543", PhoneOriginal = "+15559876543", SourceField = "ResPhone", MatchType = "direct_res_phone", IsDirect = true },
+            new CustomerPhoneEntity { CustomerKey = 200, PhoneNormalized = "5559876543", PhoneOriginal = "+15559876543", SourceField = "BusPhone", MatchType = "direct_bus_phone", IsDirect = true },
+            new CustomerPhoneEntity { CustomerKey = 300, PhoneNormalized = "5551111111", PhoneOriginal = "+15551111111", SourceField = "ResPhone", MatchType = "direct_res_phone", IsDirect = true }
         );
         _db.SaveChanges();
 
@@ -129,7 +129,7 @@ public class IdentityResolverTests : IDisposable
         int? first = await _resolver.ResolveIdentityIdAsync(storeId: 1, "+15550000000");
         Assert.Null(first);
 
-        _db.CustomerPhones.Add(new CustomerPhoneEntity { CustomerKey = 999, PhoneNormalized = "5550000000", PhoneOriginal = "+15550000000", PhoneType = "ResPhone" });
+        _db.CustomerPhones.Add(new CustomerPhoneEntity { CustomerKey = 999, PhoneNormalized = "5550000000", PhoneOriginal = "+15550000000", SourceField = "ResPhone", MatchType = "direct_res_phone", IsDirect = true });
         await _db.SaveChangesAsync();
 
         int? second = await _resolver.ResolveIdentityIdAsync(storeId: 1, "+15550000000");

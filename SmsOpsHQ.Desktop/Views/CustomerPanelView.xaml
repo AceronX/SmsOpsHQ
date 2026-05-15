@@ -8,10 +8,18 @@
              mc:Ignorable="d" MinWidth="240">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{StaticResource Bg}">
         <StackPanel Margin="16,20,16,24">
-            <!-- Customer name from XPD (or "Not in XPD" when not found). -->
-            <TextBlock Text="{Binding CustomerName}" FontSize="18" FontWeight="Bold"
-                       Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"
-                       Margin="0,0,0,4"/>
+            <!-- Customer name + thin-file experience alert (1–2 loans, no CPU and/or no PFX closes). -->
+            <WrapPanel Margin="0,0,0,4">
+                <TextBlock Text="{Binding CustomerName}" FontSize="18" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"
+                           VerticalAlignment="Center" Margin="0,0,8,4"/>
+                <Border VerticalAlignment="Center" Margin="0,0,0,4" Padding="8,3" CornerRadius="4"
+                        Background="#FFFBEB" BorderBrush="#FCD34D" BorderThickness="1"
+                        Visibility="{Binding HasExperienceAlert, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{Binding ExperienceAlertText}" FontSize="11" FontWeight="SemiBold"
+                               Foreground="#B45309" TextWrapping="Wrap" MaxWidth="220"/>
+                </Border>
+            </WrapPanel>
 
             <!-- Add Note to XPD: inline note input under the customer name. -->
             <StackPanel Margin="0,0,0,10"
@@ -58,6 +66,9 @@
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
                                 Visibility="{Binding CustomerPhone, Converter={StaticResource StringToVisibility}}">
                         <Button Command="{Binding ClickToCallCommand}"
+                                IsEnabled="{Binding CanClickToCall}"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="Desk phone via XBlue — enable Settings → VoIP if disabled"
                                 Style="{StaticResource GhostButton}" Padding="6,3" FontSize="11">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE717;" FontFamily="{StaticResource IconFont}" FontSize="12"
@@ -80,11 +91,45 @@
                     <TextBlock Text="{Binding IdInfo}" FontSize="10"
                                Foreground="{StaticResource TextMuted}" Margin="0,4,0,0"
                                Visibility="{Binding IdInfo, Converter={StaticResource StringToVisibility}}"/>
+                    <Border Margin="0,6,0,0" CornerRadius="4"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            Background="#FAFAFA" HorizontalAlignment="Left" MaxWidth="200"
+                            Visibility="{Binding HasIdPhotoPreview, Converter={StaticResource BoolToVisibility}}">
+                        <Image Source="{Binding IdPhotoPreview}" Stretch="Uniform"
+                               MaxHeight="112" MaxWidth="200"/>
+                    </Border>
                     <TextBlock Text="{Binding SinceDate}" FontSize="10"
                                Foreground="{StaticResource TextMuted}" Margin="0,2,0,0"
                                Visibility="{Binding SinceDate, Converter={StaticResource StringToVisibility}}"/>
                 </StackPanel>
             </Border>
+
+            <!-- Multiple XPD profiles share this phone — pick one before showing ticket risk. -->
+            <Border Background="#FEF3C7" CornerRadius="6" Padding="10,8" Margin="0,0,0,10"
+                    Visibility="{Binding IsAmbiguous, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding AmbiguousMessage}" FontSize="12" FontWeight="SemiBold"
+                               Foreground="#92400E" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                    <ItemsControl ItemsSource="{Binding AmbiguousCandidates}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding DisplayText}" Margin="0,0,0,4" HorizontalAlignment="Stretch"
+                                        Style="{StaticResource GhostButton}"
+                                        Command="{Binding DataContext.PickAmbiguousCandidateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding CustomerKey}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Background="#FFFBEB" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
+                    Visibility="{Binding IdentityMatchWarning, Converter={StaticResource StringToVisibility}}">
+                <TextBlock Text="{Binding IdentityMatchWarning}" FontSize="12" Foreground="#B45309"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+            <StackPanel Visibility="{Binding ShowFullRiskPanel, Converter={StaticResource BoolToVisibility}}">
 
             <!-- ═══════════  DECISION CARD — Hero  ═══════════ -->
             <Border CornerRadius="8" Padding="14,12"
@@ -350,27 +395,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Customer, ticket, and item notes from XPD. -->
-            <Border Background="#FFFDE7" CornerRadius="8" Padding="14,12"
-                    BorderBrush="#FFF59D" BorderThickness="1" Margin="0,0,0,12">
-                <StackPanel>
-                    <TextBlock Text="CUSTOMER NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
-                               Foreground="#F57F17" Margin="0,0,0,4"/>
-                    <TextBlock Text="{Binding CustomerNotes}" FontSize="12" Foreground="#5D4037"
-                               TextWrapping="Wrap" Margin="0,0,0,10"/>
-
-                    <TextBlock Text="TICKET NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
-                               Foreground="#F57F17" Margin="0,0,0,4"/>
-                    <TextBlock Text="{Binding TicketNotes}" FontSize="12" Foreground="#5D4037"
-                               TextWrapping="Wrap" Margin="0,0,0,10"/>
-
-                    <TextBlock Text="ITEM NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
-                               Foreground="#F57F17" Margin="0,0,0,4"/>
-                    <TextBlock Text="{Binding ItemNotes}" FontSize="12" Foreground="#5D4037"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
-
             <!-- Active tickets: simplified card with IssueDate, DueDate, Amount. -->
             <TextBlock Text="ACTIVE TICKETS" FontSize="10" FontWeight="SemiBold"
                        Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"
@@ -404,6 +428,30 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            </StackPanel>
+
+            <!-- Customer, ticket, and item notes from XPD. -->
+            <Border Background="#FFFDE7" CornerRadius="8" Padding="14,12"
+                    BorderBrush="#FFF59D" BorderThickness="1" Margin="0,0,0,12"
+                    Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="CUSTOMER NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding CustomerNotes}" FontSize="12" Foreground="#5D4037"
+                               TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                    <TextBlock Text="TICKET NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding TicketNotes}" FontSize="12" Foreground="#5D4037"
+                               TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                    <TextBlock Text="ITEM NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#F57F17" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding ItemNotes}" FontSize="12" Foreground="#5D4037"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
 
             <!-- Shown when load or save fails. -->
             <Border Background="{StaticResource ErrorLight}" CornerRadius="4" Padding="10,6"

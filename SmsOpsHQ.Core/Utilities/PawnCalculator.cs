@@ -1,4 +1,3 @@
-using System.Globalization;
 using SmsOpsHQ.Core.Entities;
 
 namespace SmsOpsHQ.Core.Utilities;
@@ -12,6 +11,7 @@ public sealed class LatePaymentHistory
     public int PfxCount { get; set; }
     public int StillActive { get; set; }
     public int NoDueDate { get; set; }
+    public int UnknownClosedDateCount { get; set; }
     public double LatePaymentRate { get; set; }
     public double OnTimeRate { get; set; }
     public string RiskLevel { get; set; } = string.Empty;
@@ -85,7 +85,11 @@ public sealed class DecisionCardResult
 // Ported from Python routes_customers.py and PAWN_LOGIC.md.
 public static class PawnCalculator
 {
-    private static readonly string[] XpdDateFormats = { "M/d/yyyy", "MM/dd/yyyy", "yyyy-MM-dd" };
+    public static bool IsPfxHowClosed(string? howClosed) =>
+        string.Equals((howClosed ?? "").Trim(), "PFX-", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsCpuHowClosed(string? howClosed) =>
+        string.Equals((howClosed ?? "").Trim(), "CPU", StringComparison.OrdinalIgnoreCase);
 
     // Calculate how many days late a ticket is relative to today.
     // Positive = past due, Zero = due today, Negative = not yet due.
@@ -125,13 +129,13 @@ public static class PawnCalculator
         int noDueDate = 0;
         int stillActive = 0;
         int pfxCount = 0;
+        int unknownClosedDate = 0;
         List<LateTicketInfo> lateTickets = new();
         List<PfxTicketInfo> pfxTickets = new();
 
         foreach (Ticket ticket in tickets)
         {
-            // PFX (forfeited) tickets are counted separately — exact match on "PFX-"
-            if (ticket.HowClosed == "PFX-")
+            if (IsPfxHowClosed(ticket.HowClosed))
             {
                 pfxCount++;
                 pfxTickets.Add(new PfxTicketInfo
@@ -144,20 +148,18 @@ public static class PawnCalculator
                 continue;
             }
 
-            // Skip tickets with no due date
-            if (!TryParseXpdDate(ticket.DueDate, out DateTime dueDt))
-            {
-                noDueDate++;
-                continue;
-            }
-
-            // Active tickets
-            if (ticket.Active == 1)
+            bool isPawnActive = ticket.Active == 1 && ticket.Type != 0;
+            if (isPawnActive)
             {
                 stillActive++;
+                if (!XpdDateParser.TryParse(ticket.DueDate, out DateTime dueDt))
+                {
+                    noDueDate++;
+                    continue;
+                }
+
                 if (dueDt < today.Date)
                 {
-                    // Currently late
                     int daysLate = (today.Date - dueDt).Days;
                     lateCount++;
                     lateTickets.Add(new LateTicketInfo
@@ -168,47 +170,59 @@ public static class PawnCalculator
                         DaysLate = daysLate
                     });
                 }
+
                 continue;
             }
 
-            // Closed tickets: compare close date to due date
-            if (TryParseXpdDate(ticket.DateClosed, out DateTime closedDt))
+            if (ticket.Active == 1)
+                continue;
+
+            if (!XpdDateParser.TryParse(ticket.DueDate, out DateTime dueClosed))
             {
-                if (closedDt > dueDt)
+                noDueDate++;
+                continue;
+            }
+
+            if (!XpdDateParser.TryParse(ticket.DateClosed, out DateTime closedDt))
+            {
+                unknownClosedDate++;
+                continue;
+            }
+
+            if (closedDt > dueClosed)
+            {
+                int daysLate = (closedDt - dueClosed).Days;
+                lateCount++;
+                lateTickets.Add(new LateTicketInfo
                 {
-                    // Closed late
-                    int daysLate = (closedDt - dueDt).Days;
-                    lateCount++;
-                    lateTickets.Add(new LateTicketInfo
-                    {
-                        TransNo = ticket.TransNo,
-                        DueDate = ticket.DueDate,
-                        ClosedDate = ticket.DateClosed,
-                        Status = $"CLOSED LATE ({ticket.HowClosed})",
-                        DaysLate = daysLate
-                    });
-                }
-                else
-                {
-                    onTimeCount++;
-                }
+                    TransNo = ticket.TransNo,
+                    DueDate = ticket.DueDate,
+                    ClosedDate = ticket.DateClosed,
+                    Status = $"CLOSED LATE ({ticket.HowClosed})",
+                    DaysLate = daysLate
+                });
             }
             else
             {
-                // No close date but not active -- assume on time
                 onTimeCount++;
             }
         }
 
-        // Calculate rates
         int totalWithDueDate = lateCount + onTimeCount;
         double lateRate = 0.0;
         string riskLevel;
 
-        if (totalWithDueDate > 0)
+        if (tickets.Count == 0)
+        {
+            riskLevel = "No History";
+        }
+        else if (totalWithDueDate > 0)
         {
             lateRate = (double)lateCount / totalWithDueDate * 100.0;
-            riskLevel = AssessRisk(lateRate, pfxCount);
+            if (lateRate == 0 && pfxCount == 0)
+                riskLevel = "Excellent";
+            else
+                riskLevel = AssessRisk(lateRate, pfxCount);
         }
         else if (pfxCount >= 3)
         {
@@ -220,10 +234,9 @@ public static class PawnCalculator
         }
         else
         {
-            riskLevel = "Low Risk";
+            riskLevel = "No History";
         }
 
-        // Sort late tickets by worst first
         lateTickets.Sort((LateTicketInfo a, LateTicketInfo b) => b.DaysLate.CompareTo(a.DaysLate));
 
         return new LatePaymentHistory
@@ -234,6 +247,7 @@ public static class PawnCalculator
             PfxCount = pfxCount,
             StillActive = stillActive,
             NoDueDate = noDueDate,
+            UnknownClosedDateCount = unknownClosedDate,
             LatePaymentRate = Math.Round(lateRate, 1),
             OnTimeRate = totalWithDueDate > 0 ? Math.Round(100.0 - lateRate, 1) : 0.0,
             RiskLevel = riskLevel,
@@ -342,7 +356,7 @@ public static class PawnCalculator
 
         foreach (Ticket t in tickets)
         {
-            if (t.HowClosed == "PFX-")
+            if (IsPfxHowClosed(t.HowClosed))
             {
                 pfxCount++;
                 continue;
@@ -351,36 +365,33 @@ public static class PawnCalculator
             if (t.Active == 1 && t.Type != 0)
             {
                 activeCount++;
-                if (TryParseXpdDate(t.DueDate, out DateTime dueDt) && dueDt < today.Date)
+                if (XpdDateParser.TryParse(t.DueDate, out DateTime dueDt) && dueDt < today.Date)
                 {
                     overdueActiveCount++;
                     totalDaysLate += (today.Date - dueDt).Days;
                     daysLateEntries++;
                 }
+
                 continue;
             }
 
             if (t.Active == 1)
                 continue;
 
-            if (t.HowClosed == "CPU")
+            if (IsCpuHowClosed(t.HowClosed))
                 cpuCount++;
 
-            if (!TryParseXpdDate(t.DueDate, out DateTime closedDueDt))
+            if (!XpdDateParser.TryParse(t.DueDate, out DateTime closedDueDt))
                 continue;
 
-            if (TryParseXpdDate(t.DateClosed, out DateTime closedDt))
+            if (!XpdDateParser.TryParse(t.DateClosed, out DateTime closedDt))
+                continue;
+
+            if (closedDt > closedDueDt)
             {
-                if (closedDt > closedDueDt)
-                {
-                    lateRedeemedCount++;
-                    totalDaysLate += (closedDt - closedDueDt).Days;
-                    daysLateEntries++;
-                }
-                else
-                {
-                    onTimeRedeemedCount++;
-                }
+                lateRedeemedCount++;
+                totalDaysLate += (closedDt - closedDueDt).Days;
+                daysLateEntries++;
             }
             else
             {
@@ -530,25 +541,5 @@ public static class PawnCalculator
             return "Medium Risk";
 
         return "Low Risk";
-    }
-
-    // Try to parse an XPD date string ("M/d/yyyy" or "M/d/yyyy h:mm:ss tt").
-    // Splits on space and parses the date portion.
-    private static bool TryParseXpdDate(string? dateString, out DateTime result)
-    {
-        result = default;
-        if (string.IsNullOrWhiteSpace(dateString))
-            return false;
-
-        string datePart = dateString.Contains(' ')
-            ? dateString.Split(' ')[0]
-            : dateString;
-
-        return DateTime.TryParseExact(
-            datePart,
-            XpdDateFormats,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out result);
     }
 }

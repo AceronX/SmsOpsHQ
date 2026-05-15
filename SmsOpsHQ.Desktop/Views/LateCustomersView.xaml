@@ -8,18 +8,6 @@
              mc:Ignorable="d"
              Loaded="OnLoaded">
 
-    <UserControl.Resources>
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="{StaticResource Surface}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="12,10"/>
-            <Setter Property="BorderBrush" Value="#B0BEC5"/>
-            <Setter Property="BorderThickness" Value="0,0,2,2"/>
-        </Style>
-    </UserControl.Resources>
-
     <Grid Background="{StaticResource Bg}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -43,11 +31,6 @@
                         <Border Background="{StaticResource Primary}" CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
                                 VerticalAlignment="Center">
                             <TextBlock Text="{Binding TotalCount}" FontSize="11" FontWeight="Bold"
-                                       Foreground="White"/>
-                        </Border>
-                        <Border Background="#1B5E20" CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
-                                VerticalAlignment="Center">
-                            <TextBlock Text="{Binding TotalAmountDisplay}" FontSize="11" FontWeight="Bold"
                                        Foreground="White"/>
                         </Border>
                     </StackPanel>
@@ -137,184 +120,175 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" CornerRadius="6" BorderBrush="{StaticResource Border}"
-                BorderThickness="1" Background="White" Margin="0,14,0,0">
-            <DataGrid x:Name="LateGrid"
-                      ItemsSource="{Binding Customers}" AutoGenerateColumns="False"
-                      IsReadOnly="True" BorderThickness="0" GridLinesVisibility="None"
-                      HeadersVisibility="Column" SelectionMode="Single"
-                      Background="White" RowBackground="White" AlternatingRowBackground="#FAFAFA"
-                      CanUserResizeColumns="True" CanUserSortColumns="True"
-                      CanUserReorderColumns="True"
-                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                      ColumnReordered="OnColumnReordered">
-                <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Days Late" Width="90" MinWidth="60"
-                                            SortMemberPath="DaysLate" SortDirection="Descending">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Border Background="#FFF5F5" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding DaysLate, StringFormat='{}{0} Days'}"
-                                               FontSize="11" FontWeight="Bold"
-                                               Foreground="#d93025" HorizontalAlignment="Center"/>
-                                </Border>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Ticket" Binding="{Binding TicketNo}" Width="70" MinWidth="50">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="HorizontalAlignment" Value="Center"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTemplateColumn Header="Risk" Width="80" MinWidth="60"
-                                            SortMemberPath="RiskScore">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Border CornerRadius="12" Padding="8,4" HorizontalAlignment="Center"
-                                        Background="{Binding RiskColor, Converter={StaticResource HexToBrushConverter}, ConverterParameter=0.15}">
-                                    <TextBlock Text="{Binding RiskBand}" FontSize="10" FontWeight="Bold"
-                                               Foreground="{Binding RiskColor, Converter={StaticResource HexToBrushConverter}}"
-                                               HorizontalAlignment="Center"/>
-                                </Border>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Customer" Binding="{Binding FullName}" Width="140" MinWidth="80">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="SemiBold"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Amount" Binding="{Binding FormattedAmount}" Width="90" MinWidth="70"
-                                        SortMemberPath="Amount">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="HorizontalAlignment" Value="Right"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-                                <Setter Property="FontWeight" Value="Medium"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Items" Binding="{Binding Items}" Width="200" MinWidth="100">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                <Setter Property="MaxHeight" Value="60"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                                <Setter Property="ToolTip" Value="{Binding Items}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Ticket Notes" Binding="{Binding TicketNotes}" Width="160" MinWidth="80">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                                <Setter Property="ToolTip" Value="{Binding TicketNotes}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Item Notes" Binding="{Binding ItemNotes}" Width="160" MinWidth="80">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                                <Setter Property="ToolTip" Value="{Binding ItemNotes}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Customer Notes" Binding="{Binding CustomerNotes}" Width="160" MinWidth="80">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                                <Setter Property="ToolTip" Value="{Binding CustomerNotes}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="Due Date" Binding="{Binding FormattedDueDate}" Width="95" MinWidth="75"
-                                        SortMemberPath="DueDate">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="HorizontalAlignment" Value="Center"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTemplateColumn Header="SMS" Width="50" MinWidth="44" CanUserSort="False">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Button Command="{Binding DataContext.SendSmsCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="Send SMS"
-                                        Style="{StaticResource GhostButton}"
-                                        Padding="6,4" Margin="2,0">
-                                    <TextBlock Text="&#xE8BD;" FontFamily="{StaticResource IconFont}" FontSize="14" Foreground="#2563EB"/>
-                                </Button>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Call" Width="50" MinWidth="44" CanUserSort="False">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Button Command="{Binding DataContext.CallCustomerCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="Call"
-                                        Style="{StaticResource GhostButton}"
-                                        Padding="6,4" Margin="2,0">
-                                    <TextBlock Text="&#xE717;" FontFamily="{StaticResource IconFont}" FontSize="14" Foreground="#34a853"/>
-                                </Button>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                </DataGrid.Columns>
+        <!-- Card list | Customer panel -->
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="200"/>
+                <ColumnDefinition Width="Auto" MinWidth="260"/>
+            </Grid.ColumnDefinitions>
 
-                <DataGrid.RowStyle>
-                    <Style TargetType="DataGridRow">
-                        <Setter Property="Background" Value="White"/>
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#F5F5F5"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#E3F2FD"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </DataGrid.RowStyle>
-            </DataGrid>
-        </Border>
+            <Border Grid.Column="0" CornerRadius="6" BorderBrush="{StaticResource Border}"
+                    BorderThickness="1" Background="White" Margin="0,0,8,0" ClipToBounds="True">
+                <ListBox ItemsSource="{Binding Customers}"
+                         SelectedItem="{Binding SelectedLateCustomer}"
+                         BorderThickness="0" Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.CanContentScroll="True">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <!-- Full-width rows; bottom gap = two blank lines before next customer -->
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="VerticalContentAlignment" Value="Top"/>
+                            <Setter Property="Margin" Value="0,0,0,18"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="ItemBd" Background="Transparent" SnapsToDevicePixels="True"
+                                                BorderBrush="#E8EAED" BorderThickness="0,0,0,1" Padding="4,2,8,0">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="ItemBd" Property="Background" Value="#E8F4FD"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:LateCustomerItem}">
+                            <!-- 5 lines of text, then item margin gives "_" "_" gap to next -->
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
 
-        <Border Grid.Row="1" Background="#80F4F5F7"
-                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Text="Loading..." FontSize="14"
-                           Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center"/>
-            </StackPanel>
-        </Border>
+                                <!-- line 1 -->
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Background="#FFF5F5" CornerRadius="2" Padding="4,1" Margin="0,0,4,0">
+                                            <TextBlock FontSize="9" FontWeight="Bold" Foreground="#d93025">
+                                                <Run Text="{Binding DaysLate, Mode=OneWay}"/><Run Text="d"/>
+                                            </TextBlock>
+                                        </Border>
+                                        <Border CornerRadius="6" Padding="4,1" Margin="0,0,4,0"
+                                                Background="{Binding RiskColor, Converter={StaticResource HexToBrushConverter}, ConverterParameter=0.15}">
+                                            <TextBlock Text="{Binding RiskBand}" FontSize="8" FontWeight="Bold"
+                                                       Foreground="{Binding RiskColor, Converter={StaticResource HexToBrushConverter}}"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding TicketNo, StringFormat='# {0}'}"
+                                                   FontSize="9" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button Command="{Binding DataContext.SendSmsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTipService.ShowOnDisabled="True"
+                                                ToolTip="Compose SMS (same as customer panel — Twilio in Settings)"
+                                                Style="{StaticResource GhostButton}" Padding="4,1" MinWidth="0">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="#2563EB"/>
+                                        </Button>
+                                        <Button Command="{Binding DataContext.CallCustomerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" ToolTip="Call"
+                                                Style="{StaticResource GhostButton}" Padding="4,1" MinWidth="0">
+                                            <TextBlock Text="&#xE717;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="#34a853"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- line 2 -->
+                                <Grid Grid.Row="1" Margin="0,1,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto" MaxWidth="160"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Command="{Binding DataContext.OpenCustomerPanelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Padding="0,0,6,0" Background="Transparent" BorderThickness="0"
+                                            Cursor="Hand" ToolTip="Customer profile">
+                                        <TextBlock Text="{Binding FullName}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource Primary}" TextDecorations="Underline"
+                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                    </Button>
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                               Text="{Binding AmountDuePhoneLine}"
+                                               FontSize="9" Foreground="{StaticResource TextSecondary}"
+                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                               TextAlignment="Right"
+                                               ToolTip="{Binding AmountDuePhoneLine}"/>
+                                </Grid>
+
+                                <!-- line 3 -->
+                                <TextBlock Grid.Row="2" Margin="0,1,0,0" Text="{Binding Items}"
+                                           FontSize="9" Foreground="{StaticResource TextSecondary}"
+                                           LineHeight="13" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                           ToolTip="{Binding Items}"/>
+
+                                <!-- line 4 -->
+                                <TextBlock Grid.Row="3" Margin="0,1,0,0" FontSize="8" Foreground="{StaticResource TextMuted}"
+                                           LineHeight="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                           Visibility="{Binding TicketNotes, Converter={StaticResource StringToVisibility}}"
+                                           ToolTip="{Binding TicketNotes}">
+                                    <Run Text="T: "/><Run Text="{Binding TicketNotes, Mode=OneWay}"/>
+                                </TextBlock>
+
+                                <!-- line 5 -->
+                                <TextBlock Grid.Row="4" Margin="0,1,0,0" FontSize="8" Foreground="{StaticResource TextMuted}"
+                                           LineHeight="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                           Visibility="{Binding CustomerNotes, Converter={StaticResource StringToVisibility}}"
+                                           ToolTip="{Binding CustomerNotes}">
+                                    <Run Text="C: "/><Run Text="{Binding CustomerNotes, Mode=OneWay}"/>
+                                </TextBlock>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <Border Grid.Column="1" Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                <Grid MinWidth="272">
+                    <Border Visibility="{Binding CustomerPanel, Converter={StaticResource NullToVisible}}"
+                            Background="{StaticResource Surface}" Padding="20">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="26" Foreground="{StaticResource TextMuted}"
+                                       HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="Customer details" FontSize="13" Foreground="{StaticResource TextSecondary}"
+                                       TextAlignment="Center"/>
+                            <TextBlock Text="Click a customer name" FontSize="11" Foreground="{StaticResource TextMuted}"
+                                       TextAlignment="Center" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <ContentPresenter Content="{Binding CustomerPanel}"
+                                      Visibility="{Binding CustomerPanel, Converter={StaticResource NullToCollapsed}}"/>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="0" Grid.ColumnSpan="2" Panel.ZIndex="10" Background="#80F4F5F7"
+                    Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Loading..." FontSize="14"
+                               Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
 
         <Border Grid.Row="2" Background="{StaticResource ErrorLight}" Padding="16,10" Margin="0,14,0,0"
                 Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">

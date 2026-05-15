@@ -25,9 +25,9 @@ public class CustomersIntegrationTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GetLateCustomers_ReturnsOk()
+    public async Task PostLateCustomers_ReturnsOk()
     {
-        HttpResponseMessage response = await GetAsync("/api/customers/late");
+        HttpResponseMessage response = await PostAsync("/api/customers/late", new { });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 

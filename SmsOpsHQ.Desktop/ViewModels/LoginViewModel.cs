@@ -20,11 +20,25 @@ public sealed partial class LoginViewModel : ViewModelBase
     [ObservableProperty]
     private string _password = string.Empty;
 
+    /// <summary>Configured API root from appsettings.json (shown on login for store troubleshooting).</summary>
+    public string ApiBaseUrlDisplay => (_apiClient.BaseUrl ?? string.Empty).TrimEnd('/');
+
     public LoginViewModel(ApiClient apiClient, AppState appState, Action<LoginResult> onLoginSuccess)
     {
         _apiClient = apiClient;
         _appState = appState;
         _onLoginSuccess = onLoginSuccess;
+    }
+
+    private string ApiUnreachableMessage(string suffix = "")
+    {
+        string url = ApiBaseUrlDisplay;
+        if (string.IsNullOrEmpty(url))
+            url = "(not set)";
+
+        return $"Cannot reach the API at {url}.{suffix} "
+            + "Start SmsOpsHQ.Api where that URL points (or use the correct host/IP). "
+            + "On this PC, set ApiBaseUrl in appsettings.json next to SmsOpsHQ.Desktop.exe, then restart the app.";
     }
 
     [RelayCommand]
@@ -64,7 +78,11 @@ public sealed partial class LoginViewModel : ViewModelBase
         }
         catch (HttpRequestException)
         {
-            SetError("Cannot reach the API server. Is it running?");
+            SetError(ApiUnreachableMessage());
+        }
+        catch (TaskCanceledException)
+        {
+            SetError(ApiUnreachableMessage(" Request timed out."));
         }
         catch (Exception ex)
         {

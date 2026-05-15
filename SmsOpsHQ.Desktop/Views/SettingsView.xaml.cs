@@ -188,6 +188,18 @@ public partial class SettingsView : UserControl
         await vm.AddStoreByNameAsync(dialog.StoreName);
     }
 
+    private void VoipTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+            XbluePasswordBox.Password = vm.XbluePassword ?? string.Empty;
+    }
+
+    private void XbluePasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox box && DataContext is SettingsViewModel vm)
+            vm.XbluePassword = box.Password;
+    }
+
     private void TwilioTab_Loaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)
@@ -231,6 +243,7 @@ public partial class SettingsView : UserControl
     {
         if (DataContext is SettingsViewModel vm)
         {
+            await vm.LoadReviewAutomationCommand.ExecuteAsync(null);
             await vm.LoadReviewChannelsCommand.ExecuteAsync(null);
             await vm.LoadReviewHistoryCommand.ExecuteAsync(null);
         }

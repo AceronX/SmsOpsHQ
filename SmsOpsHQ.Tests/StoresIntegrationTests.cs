@@ -10,6 +10,13 @@ public class StoresIntegrationTests : IntegrationTestBase
     public StoresIntegrationTests(IntegrationTestFixture factory) : base(factory) { }
 
     [Fact]
+    public async Task GetStore_ReturnsOk()
+    {
+        HttpResponseMessage response = await GetAsync("/api/stores/1");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetTwilioNumbers_ReturnsOk()
     {
         HttpResponseMessage response = await GetAsync("/api/stores/1/numbers");

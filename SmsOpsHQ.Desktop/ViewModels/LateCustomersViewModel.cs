@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Desktop.Services;
 using SmsOpsHQ.Desktop.Views;
 
@@ -38,6 +36,64 @@ public sealed class LateCustomerItem
     public string RiskColor { get; set; } = "#34a853";
     public string FullName => $"{FirstName} {LastName}".Trim();
 
+    /// <summary>Primary phone formatted for display on cards.</summary>
+    public string DisplayPhone =>
+        string.IsNullOrEmpty(Phone) ? "" : FormatPhoneForDisplay(Phone);
+
+    /// <summary>Due date for card strip (short year to save width).</summary>
+    private string DueDateShort
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(DueDate)) return "";
+            if (DateTime.TryParse(DueDate, out DateTime dt))
+                return dt.ToString("MM/dd/yy");
+            return DueDate;
+        }
+    }
+
+    /// <summary>One line: amount · due · phone (for name row, right side).</summary>
+    public string AmountDuePhoneLine
+    {
+        get
+        {
+            string line = $"{FormattedAmount} · {DueDateShort}";
+            return string.IsNullOrEmpty(DisplayPhone) ? line : $"{line} · {DisplayPhone}";
+        }
+    }
+
+    /// <summary>Ticket + customer notes for combination (T / C).</summary>
+    public string NotesCombinedLine
+    {
+        get
+        {
+            bool hasT = !string.IsNullOrWhiteSpace(TicketNotes);
+            bool hasC = !string.IsNullOrWhiteSpace(CustomerNotes);
+            if (!hasT && !hasC)
+                return "";
+            if (hasT && hasC)
+                return $"T: {TicketNotes} · C: {CustomerNotes}";
+            return hasT ? $"T: {TicketNotes}" : $"C: {CustomerNotes}";
+        }
+    }
+
+    /// <summary>Line 3 of card: items + notes in one string.</summary>
+    public string ItemsAndNotesLine
+    {
+        get
+        {
+            string it = (Items ?? "").Trim();
+            string n = NotesCombinedLine;
+            if (string.IsNullOrEmpty(it) && string.IsNullOrEmpty(n))
+                return "";
+            if (string.IsNullOrEmpty(n))
+                return it;
+            if (string.IsNullOrEmpty(it))
+                return n;
+            return $"{it} · {n}";
+        }
+    }
+
     public string FormattedAmount => Amount.ToString("C2");
     public string FormattedBalance => Balance.ToString("C2");
 
@@ -66,10 +122,19 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
     private readonly LateCustomersQueryService _queryService;
+    private readonly XBlueService? _xblueService;
+    private readonly ISendSmsDialogService _sendSmsDialogService;
+    private readonly CustomerQualityQueryService? _qualityQueryService;
     private List<LateCustomerItem> _allCustomers = new();
 
     [ObservableProperty]
     private ObservableCollection<LateCustomerItem> _customers = new();
+
+    [ObservableProperty]
+    private LateCustomerItem? _selectedLateCustomer;
+
+    [ObservableProperty]
+    private CustomerPanelViewModel? _customerPanel;
 
     [ObservableProperty]
     private int _totalCount;
@@ -87,9 +152,6 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     private int _lowCount;
 
     [ObservableProperty]
-    private string _totalAmountDisplay = "$0.00";
-
-    [ObservableProperty]
     private string _lastSyncDisplay = "";
 
     [ObservableProperty]
@@ -100,10 +162,18 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         ApplySearchFilter();
     }
 
-    public LateCustomersViewModel(ApiClient apiClient, LateCustomersQueryService queryService)
+    public LateCustomersViewModel(
+        ApiClient apiClient,
+        LateCustomersQueryService queryService,
+        XBlueService? xblueService,
+        ISendSmsDialogService sendSmsDialogService,
+        CustomerQualityQueryService? qualityQueryService = null)
     {
         _apiClient = apiClient;
         _queryService = queryService;
+        _xblueService = xblueService;
+        _sendSmsDialogService = sendSmsDialogService;
+        _qualityQueryService = qualityQueryService;
     }
 
     [RelayCommand]
@@ -224,32 +294,75 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         HighCount = filtered.Count(c => c.RiskScore >= 50 && c.RiskScore < 70);
         MediumCount = filtered.Count(c => c.RiskScore >= 30 && c.RiskScore < 50);
         LowCount = filtered.Count(c => c.RiskScore < 30);
-        TotalAmountDisplay = filtered.Sum(c => c.Amount).ToString("C2");
     }
 
     [RelayCommand]
-    private async Task SendSmsAsync(LateCustomerItem? item)
+    private async Task OpenCustomerPanelAsync(LateCustomerItem? item)
     {
-        if (item is null) return;
+        if (item is null)
+            return;
+
+        string? phone = PickPhone(item, "Customer profile");
+        if (string.IsNullOrEmpty(phone))
+            return;
+
+        SelectedLateCustomer = item;
+
+        CustomerPanel ??= new CustomerPanelViewModel(
+            _apiClient,
+            _xblueService,
+            _sendSmsDialogService,
+            _qualityQueryService);
+
+        int? key = item.CustomerKey != 0 ? item.CustomerKey : null;
+        await CustomerPanel.LoadByPhoneAsync(phone, key);
+    }
+
+    [RelayCommand]
+    private void SendSms(LateCustomerItem? item)
+    {
+        if (item is null)
+            return;
+
         string? phone = PickPhone(item, "Send SMS");
-        if (string.IsNullOrEmpty(phone)) return;
-        try
-        {
-            await _apiClient.SendReminderAsync(
-                item.TicketKey, item.CustomerKey, phone,
-                item.TransNo.ToString(), item.DueDate, item.DaysLate);
-        }
-        catch (Exception ex)
-        {
-            SetError($"Reminder failed: {ex.Message}");
-        }
+        if (string.IsNullOrEmpty(phone))
+            return;
+
+        ClearError();
+        _sendSmsDialogService.ShowDialog(prefillPhone: phone);
     }
 
     [RelayCommand]
-    private void CallCustomer(LateCustomerItem? item)
+    private async Task CallCustomerAsync(LateCustomerItem? item)
     {
-        if (item is null) return;
-        PickPhone(item, "Call");
+        if (item is null)
+            return;
+
+        string? phone = PickPhone(item, "Call");
+        if (string.IsNullOrEmpty(phone))
+            return;
+
+        ClearError();
+
+        if (_xblueService is null || !_xblueService.IsConfigured)
+        {
+            SetError("XBlue VoIP is not configured. Enable it under Settings → VoIP and set the phone IP.");
+            return;
+        }
+
+        if (PhoneUtils.GetDialString(phone) is null)
+        {
+            SetError("No dialable digits in the selected number.");
+            return;
+        }
+
+        XBlueDialResult result = await _xblueService.DialAsync(phone);
+        if (!result.Ok)
+        {
+            SetError(result.StatusCode > 0
+                ? $"Call failed (HTTP {result.StatusCode}): {result.Message}"
+                : result.Message);
+        }
     }
 
     private string? PickPhone(LateCustomerItem item, string action)

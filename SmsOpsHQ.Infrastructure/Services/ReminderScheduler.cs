@@ -313,13 +313,19 @@ public sealed class ReminderScheduler : IReminderScheduler, IDisposable
                 continue;
             }
 
-            bool alreadySent = await db.SmsReminders
-                .AsNoTracking()
-                .AnyAsync(r => r.TicketKey == ticket.Key
-                            && r.DueDate == ticket.DueDate
-                            && r.ReminderType == reminderType
-                            && r.Status == 1,
-                    cancellationToken);
+            // Final tier (30): any logged attempt counts — do not retry after a failed send.
+            bool alreadySent = daysDiff == 30
+                ? await db.SmsReminders.AsNoTracking()
+                    .AnyAsync(r => r.TicketKey == ticket.Key
+                                && r.DueDate == ticket.DueDate
+                                && r.ReminderType == reminderType,
+                        cancellationToken)
+                : await db.SmsReminders.AsNoTracking()
+                    .AnyAsync(r => r.TicketKey == ticket.Key
+                                && r.DueDate == ticket.DueDate
+                                && r.ReminderType == reminderType
+                                && r.Status == 1,
+                        cancellationToken);
 
             if (alreadySent)
             {

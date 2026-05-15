@@ -203,6 +203,24 @@ public sealed partial class InboxViewModel : ViewModelBase
         dialog.ShowDialog();
     }
 
+    [RelayCommand]
+    private void SendDirections()
+    {
+        string? prefillPhone = SelectedThread?.CustomerPhone;
+        int? threadId = SelectedThread?.ThreadId;
+
+        var dialog = new SmsOpsHQ.Desktop.Views.SendDirectionsDialog(
+            onSent: () => LoadInboxCommand.Execute(null),
+            prefillPhone: prefillPhone,
+            threadId: threadId);
+
+        Window? owner = Application.Current?.MainWindow;
+        if (owner is not null)
+            dialog.Owner = owner;
+
+        dialog.ShowDialog();
+    }
+
     #endregion
 
     #region Commands — Selection Mode

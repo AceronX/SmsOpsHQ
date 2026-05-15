@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using SmsOpsHQ.Core.Models;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Infrastructure.Persistence;
+using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 namespace SmsOpsHQ.Infrastructure.Services;
 
@@ -29,19 +31,66 @@ public sealed class IdentityResolver : IIdentityResolver
     public async Task<List<int>> ResolveCustomerKeysAsync(string phoneE164,
         CancellationToken cancellationToken = default)
     {
+        List<CustomerPhoneMatch> matches = await ResolveCustomerPhoneMatchesAsync(phoneE164, cancellationToken);
+        return matches.Select(m => m.CustomerKey).Distinct().OrderBy(k => k).ToList();
+    }
+
+    public async Task<List<CustomerPhoneMatch>> ResolveCustomerPhoneMatchesAsync(string phoneE164,
+        CancellationToken cancellationToken = default)
+    {
         string? normalized = PhoneUtils.ExtractLast10Digits(phoneE164);
         if (normalized is null)
-            return new List<int>();
+            return new List<CustomerPhoneMatch>();
 
-        List<int> keys = await _db.CustomerPhones
+        List<CustomerPhoneEntity> rows = await _db.CustomerPhones
             .AsNoTracking()
             .Where(p => p.PhoneNormalized == normalized)
-            .Select(p => p.CustomerKey)
-            .Distinct()
-            .OrderBy(k => k)
             .ToListAsync(cancellationToken);
 
-        return keys;
+        var list = new List<CustomerPhoneMatch>(rows.Count);
+        foreach (CustomerPhoneEntity p in rows)
+        {
+            string source = p.SourceField ?? "";
+            int rank = source switch
+            {
+                "ResPhone" => 100,
+                "BusPhone" => 90,
+                "Notes" => 30,
+                "TicketNotes" => 25,
+                _ => 10
+            };
+
+            string matchType = string.IsNullOrEmpty(p.MatchType)
+                ? InferMatchType(source, p.IsDirect)
+                : p.MatchType!;
+
+            bool isDirect = p.IsDirect || source is "ResPhone" or "BusPhone";
+
+            list.Add(new CustomerPhoneMatch
+            {
+                CustomerKey = p.CustomerKey,
+                PhoneNormalized = p.PhoneNormalized,
+                SourceField = source,
+                MatchType = matchType,
+                IsDirect = isDirect,
+                MatchRank = rank
+            });
+        }
+
+        return list
+            .GroupBy(x => new { x.CustomerKey, x.PhoneNormalized, x.SourceField, x.MatchType, x.IsDirect })
+            .Select(g => g.First())
+            .OrderByDescending(x => x.MatchRank)
+            .ThenBy(x => x.CustomerKey)
+            .ToList();
+    }
+
+    private static string InferMatchType(string sourceField, bool isDirect)
+    {
+        if (isDirect || sourceField is "ResPhone" or "BusPhone")
+            return sourceField == "BusPhone" ? "direct_bus_phone" : "direct_res_phone";
+
+        return sourceField == "TicketNotes" ? "ticket_note_reference" : "note_reference";
     }
 
     // Resolve a phone number to a single canonical identity ID.

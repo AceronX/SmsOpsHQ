@@ -46,12 +46,11 @@ try
     // Infrastructure: DbContext, repositories, auth service, JWT options.
     builder.Services.AddInfrastructure(connectionString, builder.Configuration);
 
-    // If Twilio section is missing from appsettings, load from Desktop's shared config file.
+    // Merge Twilio settings from Desktop's shared config file (%AppData%\SmsOpsHQ\twilio_config.json).
+    // Each property is only filled from the file when not already set in appsettings (so credentials
+    // can live in appsettings while MessagingServiceSid lives in the shared JSON, or vice versa).
     builder.Services.PostConfigure<TwilioSettings>(settings =>
     {
-        if (!string.IsNullOrWhiteSpace(settings.AccountSid) && !string.IsNullOrWhiteSpace(settings.AuthToken))
-            return;
-
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         string configPath = Path.Combine(appData, "SmsOpsHQ", "twilio_config.json");
         if (!File.Exists(configPath))
@@ -61,12 +60,20 @@ try
         {
             string json = File.ReadAllText(configPath);
             using JsonDocument doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("accountSid", out JsonElement sidEl))
+
+            if (string.IsNullOrWhiteSpace(settings.AccountSid)
+                && doc.RootElement.TryGetProperty("accountSid", out JsonElement sidEl))
                 settings.AccountSid = sidEl.GetString() ?? string.Empty;
-            if (doc.RootElement.TryGetProperty("authToken", out JsonElement tokenEl))
+
+            if (string.IsNullOrWhiteSpace(settings.AuthToken)
+                && doc.RootElement.TryGetProperty("authToken", out JsonElement tokenEl))
                 settings.AuthToken = tokenEl.GetString() ?? string.Empty;
 
-            Log.Information("Loaded Twilio credentials from {Path}", configPath);
+            if (string.IsNullOrWhiteSpace(settings.MessagingServiceSid)
+                && doc.RootElement.TryGetProperty("messagingServiceSid", out JsonElement mgEl))
+                settings.MessagingServiceSid = mgEl.GetString() ?? string.Empty;
+
+            Log.Information("Merged Twilio settings from {Path} (empty fields only)", configPath);
         }
         catch (Exception ex)
         {
@@ -304,6 +311,9 @@ try
 
     IReminderScheduler reminderScheduler = app.Services.GetRequiredService<IReminderScheduler>();
     reminderScheduler.Start();
+
+    IReviewAutomationScheduler reviewAutomationScheduler = app.Services.GetRequiredService<IReviewAutomationScheduler>();
+    reviewAutomationScheduler.Start();
 
     Log.Information("SmsOps HQ API starting...");
     app.Run();

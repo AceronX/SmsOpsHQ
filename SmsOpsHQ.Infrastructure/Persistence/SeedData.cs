@@ -151,5 +151,64 @@ public static class SeedData
         {
             logger.LogWarning(ex, "Failed to seed review templates.");
         }
+
+        // CustomerPhones: MatchType + IsDirect for identity resolution (legacy rows used PhoneType only).
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE CustomerPhones ADD COLUMN MatchType TEXT");
+            logger.LogInformation("Schema upgrade: CustomerPhones.MatchType added.");
+        }
+        catch
+        {
+            // Column may already exist.
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE CustomerPhones ADD COLUMN IsDirect INTEGER NOT NULL DEFAULT 0");
+            logger.LogInformation("Schema upgrade: CustomerPhones.IsDirect added.");
+        }
+        catch
+        {
+            // Column may already exist.
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE CustomerPhones SET MatchType = CASE PhoneType
+                    WHEN 'ResPhone' THEN 'direct_res_phone'
+                    WHEN 'BusPhone' THEN 'direct_bus_phone'
+                    WHEN 'TicketNotes' THEN 'ticket_note_reference'
+                    ELSE 'note_reference' END
+                WHERE MatchType IS NULL OR TRIM(MatchType) = ''
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE CustomerPhones SET IsDirect = CASE
+                    WHEN PhoneType IN ('ResPhone', 'BusPhone') THEN 1
+                    ELSE 0 END
+                """);
+            logger.LogInformation("Schema upgrade: CustomerPhones MatchType/IsDirect backfilled.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Schema upgrade: CustomerPhones MatchType/IsDirect backfill skipped.");
+        }
+
+        // Review automation watermark (new XPD tickets → review SMS).
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ReviewAutomationState (
+                    StateId           INTEGER PRIMARY KEY,
+                    LastMaxTicketKey  INTEGER NULL
+                )");
+            logger.LogInformation("Schema upgrade: ReviewAutomationState table ensured.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Schema upgrade: ReviewAutomationState table already exists or failed.");
+        }
     }
 }

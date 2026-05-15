@@ -439,12 +439,17 @@ public sealed class XpdSyncService : IXpdSyncService
     {
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.Transaction = txn;
-        cmd.CommandText = @"INSERT OR IGNORE INTO CustomerPhones (CustomerKey, PhoneNormalized, PhoneOriginal, PhoneType) VALUES ($custKey,$phoneNorm,$phoneOrig,$phoneType)";
-        
+        cmd.CommandText = """
+            INSERT OR IGNORE INTO CustomerPhones (CustomerKey, PhoneNormalized, PhoneOriginal, PhoneType, MatchType, IsDirect)
+            VALUES ($custKey,$phoneNorm,$phoneOrig,$sourceField,$matchType,$isDirect)
+            """;
+
         SqliteParameter pCustKey = cmd.Parameters.Add("$custKey", SqliteType.Integer);
         SqliteParameter pPhoneNorm = cmd.Parameters.Add("$phoneNorm", SqliteType.Text);
         SqliteParameter pPhoneOrig = cmd.Parameters.Add("$phoneOrig", SqliteType.Text);
-        SqliteParameter pPhoneType = cmd.Parameters.Add("$phoneType", SqliteType.Text);
+        SqliteParameter pSourceField = cmd.Parameters.Add("$sourceField", SqliteType.Text);
+        SqliteParameter pMatchType = cmd.Parameters.Add("$matchType", SqliteType.Text);
+        SqliteParameter pIsDirect = cmd.Parameters.Add("$isDirect", SqliteType.Integer);
         cmd.Prepare();
 
         int count = 0;
@@ -455,16 +460,16 @@ public sealed class XpdSyncService : IXpdSyncService
             CustomerEntity c = customers[i];
             int customerKey = c.CustomerKey!.Value;
 
-            count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.ResPhone, "ResPhone", insertedNormalizedPhones, cancellationToken);
+            count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pSourceField, pMatchType, pIsDirect, customerKey, c.ResPhone, "ResPhone", insertedNormalizedPhones, cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(c.BusPhone) && c.BusPhone != c.ResPhone)
             {
-                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, c.BusPhone, "BusPhone", insertedNormalizedPhones, cancellationToken);
+                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pSourceField, pMatchType, pIsDirect, customerKey, c.BusPhone, "BusPhone", insertedNormalizedPhones, cancellationToken);
             }
 
             foreach (string notePhone in PhoneUtils.ExtractPhonesFromText(c.Notes))
             {
-                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, notePhone, "Notes", insertedNormalizedPhones, cancellationToken);
+                count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pSourceField, pMatchType, pIsDirect, customerKey, notePhone, "Notes", insertedNormalizedPhones, cancellationToken);
             }
 
             if (ticketNotesByCustomer.TryGetValue(customerKey, out List<string>? ticketNotes))
@@ -473,7 +478,7 @@ public sealed class XpdSyncService : IXpdSyncService
                 {
                     foreach (string notePhone in PhoneUtils.ExtractPhonesFromText(ticketNote))
                     {
-                        count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pPhoneType, customerKey, notePhone, "TicketNotes", insertedNormalizedPhones, cancellationToken);
+                        count += await ProcessPhoneAsync(cmd, pCustKey, pPhoneNorm, pPhoneOrig, pSourceField, pMatchType, pIsDirect, customerKey, notePhone, "TicketNotes", insertedNormalizedPhones, cancellationToken);
                     }
                 }
             }
@@ -499,10 +504,12 @@ public sealed class XpdSyncService : IXpdSyncService
         SqliteParameter pCustKey,
         SqliteParameter pPhoneNorm,
         SqliteParameter pPhoneOrig,
-        SqliteParameter pPhoneType,
+        SqliteParameter pSourceField,
+        SqliteParameter pMatchType,
+        SqliteParameter pIsDirect,
         int customerKey,
         string? phone,
-        string phoneType,
+        string sourceField,
         HashSet<string> insertedNormalizedPhones,
         CancellationToken cancellationToken)
     {
@@ -513,10 +520,20 @@ public sealed class XpdSyncService : IXpdSyncService
         if (norm is null)
             return 0;
 
+        (string matchType, int isDirect) = sourceField switch
+        {
+            "BusPhone" => ("direct_bus_phone", 1),
+            "ResPhone" => ("direct_res_phone", 1),
+            "TicketNotes" => ("ticket_note_reference", 0),
+            _ => ("note_reference", 0)
+        };
+
         pCustKey.Value = customerKey;
         pPhoneNorm.Value = norm;
         pPhoneOrig.Value = (object?)phone ?? DBNull.Value;
-        pPhoneType.Value = phoneType;
+        pSourceField.Value = sourceField;
+        pMatchType.Value = matchType;
+        pIsDirect.Value = isDirect;
         int affected = await cmd.ExecuteNonQueryAsync(cancellationToken);
         if (affected > 0)
             _ = insertedNormalizedPhones.Add(norm);

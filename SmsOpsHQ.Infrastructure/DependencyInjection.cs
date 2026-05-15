@@ -59,6 +59,10 @@ public static class DependencyInjection
         services.AddScoped<IReminderService, ReminderService>();
         services.AddSingleton<IReminderScheduler, ReminderScheduler>();
 
+        services.AddSingleton<ReviewAutomationSettingsStore>();
+        services.AddScoped<IReviewAutomationService, ReviewAutomationService>();
+        services.AddSingleton<IReviewAutomationScheduler, ReviewAutomationScheduler>();
+
         // Media service for Twilio MMS downloads.
         services.AddHttpClient();
         services.AddScoped<IMediaService, MediaService>();

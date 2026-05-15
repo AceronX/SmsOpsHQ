@@ -207,6 +207,8 @@ public class PawnCalculatorTests
     [InlineData(26.0, 0, "Medium Risk")]
     [InlineData(50.0, 0, "Medium Risk")]  // exactly 50, not >50
     [InlineData(5.0, 2, "Medium Risk")]
+    [InlineData(25.0, 0, "Medium Risk")] // >20 late rate
+    [InlineData(0.0, 1, "Medium Risk")] // any PFX counts as medium+
     public void AssessRisk_MediumRisk(double lateRate, int pfxCount, string expected)
     {
         Assert.Equal(expected, PawnCalculator.AssessRisk(lateRate, pfxCount));
@@ -214,17 +216,16 @@ public class PawnCalculatorTests
 
     [Theory]
     [InlineData(1.0, 0, "Low Risk")]
-    [InlineData(25.0, 0, "Low Risk")]  // exactly 25, not >25
-    [InlineData(0.0, 1, "Low Risk")]
+    [InlineData(20.0, 0, "Low Risk")] // exactly 20, not >20
     public void AssessRisk_LowRisk(double lateRate, int pfxCount, string expected)
     {
         Assert.Equal(expected, PawnCalculator.AssessRisk(lateRate, pfxCount));
     }
 
     [Fact]
-    public void AssessRisk_Excellent()
+    public void AssessRisk_ZeroLateZeroPfx_IsLowRisk()
     {
-        Assert.Equal("Excellent", PawnCalculator.AssessRisk(0.0, 0));
+        Assert.Equal("Low Risk", PawnCalculator.AssessRisk(0.0, 0));
     }
 
     // =================================================================
@@ -442,7 +443,7 @@ public class PawnCalculatorTests
     }
 
     [Fact]
-    public void CalculateLatePaymentHistory_ClosedNoDateClosed_AssumesOnTime()
+    public void CalculateLatePaymentHistory_ClosedNoDateClosed_CountsUnknownNotOnTime()
     {
         List<Ticket> tickets = new()
         {
@@ -460,8 +461,9 @@ public class PawnCalculatorTests
 
         LatePaymentHistory result = PawnCalculator.CalculateLatePaymentHistory(tickets, Today);
 
-        Assert.Equal(1, result.OnTimePayments);
+        Assert.Equal(0, result.OnTimePayments);
         Assert.Equal(0, result.LatePayments);
+        Assert.Equal(1, result.UnknownClosedDateCount);
     }
 
     // =================================================================

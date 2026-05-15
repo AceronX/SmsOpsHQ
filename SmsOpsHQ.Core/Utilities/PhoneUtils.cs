@@ -56,6 +56,31 @@ public static class PhoneUtils
         return NormalizeToE164(phone) is not null;
     }
 
+    // Digits to send to a desk phone / PBX (Fanvil DIAL:…): 10-digit US, or short extension.
+    // Strips a trailing "x123" / "ext 456" extension from the main number when present.
+    public static string? GetDialString(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+            return null;
+
+        string trimmed = phone.Trim();
+        string mainPart = Regex.Replace(trimmed, @"(?i)\s*(?:x|ext\.?)\s*\d.*$", string.Empty).Trim();
+        if (string.IsNullOrEmpty(mainPart))
+            mainPart = trimmed;
+
+        string digits = StripNonDigits(mainPart);
+        if (digits.Length == 0)
+            return null;
+
+        if (digits.Length < 10)
+            return digits;
+
+        if (digits.Length == 11 && digits[0] == '1')
+            return digits.Substring(1, 10);
+
+        return digits.Substring(digits.Length - 10, 10);
+    }
+
     private static readonly Regex PhoneInTextPattern = new Regex(
         @"\b1?[2-9]\d{2}[-.\s]?\d{3}[-.\s]?\d{4}\b|\b[2-9]\d{9}\b",
         RegexOptions.Compiled);

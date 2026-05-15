@@ -7,6 +7,8 @@
     <RootNamespace>SmsOpsHQ.Api</RootNamespace>
     <AssemblyName>SmsOpsHQ.Api</AssemblyName>
     <Description>SmsOps HQ ASP.NET Core Web API.</Description>
+    <!-- Windows: no console window when running the published .exe (logs still go to logs/). -->
+    <OutputType Condition="$([MSBuild]::IsOSPlatform('windows'))">WinExe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
