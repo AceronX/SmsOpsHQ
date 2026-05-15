@@ -421,6 +421,34 @@ public sealed class ApiClient : IDisposable
         }
     }
 
+    // ── Twilio diagnostics ───────────────────────────────────────────
+
+    /// <summary>Reads /api/twilio/status. Returns null if the API is unreachable.</summary>
+    public async Task<TwilioStatusInfo?> GetTwilioStatusAsync()
+    {
+        try
+        {
+            JsonElement json = await GetJsonAsync("/api/twilio/status");
+            return new TwilioStatusInfo
+            {
+                Mock = json.TryGetProperty("mock", out JsonElement mE) && mE.GetBoolean(),
+                Mode = json.TryGetProperty("mode", out JsonElement modeE) ? modeE.GetString() ?? "" : "",
+                AccountSidPrefix = json.TryGetProperty("account_sid_prefix", out JsonElement sidE)
+                    ? sidE.GetString() ?? ""
+                    : "",
+                HasMessagingService = json.TryGetProperty("has_messaging_service", out JsonElement hmE)
+                    && hmE.GetBoolean(),
+                Warning = json.TryGetProperty("warning", out JsonElement wE) && wE.ValueKind == JsonValueKind.String
+                    ? wE.GetString()
+                    : null
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     // ── HTTP helpers ─────────────────────────────────────────────────
 
     private async Task<JsonElement> GetJsonAsync(string url)
@@ -489,4 +517,14 @@ public sealed class ApiClient : IDisposable
         $"HTTP {(int)response.StatusCode} {response.StatusCode}";
 
     public void Dispose() => _httpClient.Dispose();
+}
+
+/// <summary>Result of GET /api/twilio/status — drives the mock/live banner in Settings.</summary>
+public sealed class TwilioStatusInfo
+{
+    public bool Mock { get; set; }
+    public string Mode { get; set; } = string.Empty;
+    public string AccountSidPrefix { get; set; } = string.Empty;
+    public bool HasMessagingService { get; set; }
+    public string? Warning { get; set; }
 }

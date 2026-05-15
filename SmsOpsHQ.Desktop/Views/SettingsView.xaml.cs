@@ -206,6 +206,9 @@ public partial class SettingsView : UserControl
         {
             vm.ShowTwilioToken = false;
             TwilioTokenPasswordBox.Password = vm.TwilioToken ?? string.Empty;
+            // Refresh the live/mock banner every time the tab is opened so the
+            // user immediately sees whether outbound SMS will reach customers.
+            vm.RefreshTwilioStatusCommand.Execute(null);
         }
         TwilioTokenEyeIcon.Text = "\uE7B3";
     }

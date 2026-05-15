@@ -169,6 +169,27 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _showTwilioToken;
 
+    [ObservableProperty]
+    private string _twilioMessagingServiceSid = string.Empty;
+
+    /// <summary>"live" or "mock" — drives the colored banner on the Twilio settings tab.</summary>
+    [ObservableProperty]
+    private string _twilioMode = "unknown";
+
+    /// <summary>Human-readable banner message for the Twilio tab.</summary>
+    [ObservableProperty]
+    private string _twilioStatusMessage = "Checking Twilio status…";
+
+    /// <summary>True when the API reports it is in mock mode (outbound SMS not delivered).</summary>
+    [ObservableProperty]
+    private bool _twilioIsMock;
+
+    [ObservableProperty]
+    private string _twilioSaveMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _twilioSaveBusy;
+
     // Tab 4: Reminders
     [ObservableProperty]
     private bool _schedulerRunning;
@@ -553,9 +574,53 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     private void LoadTwilioConfigFromFile()
     {
-        var (sid, token) = _twilioConfig.Load();
-        TwilioSid = sid ?? string.Empty;
-        TwilioToken = token ?? string.Empty;
+        TwilioConfigService.TwilioConfigModel m = _twilioConfig.Load();
+        TwilioSid = m.AccountSid ?? string.Empty;
+        TwilioToken = m.AuthToken ?? string.Empty;
+        TwilioMessagingServiceSid = m.MessagingServiceSid ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Asks the API whether it sees real Twilio credentials. Updates the banner shown
+    /// at the top of the Twilio settings tab. Safe to call on every tab switch.
+    /// </summary>
+    [RelayCommand]
+    private async Task RefreshTwilioStatusAsync()
+    {
+        try
+        {
+            TwilioStatusInfo? status = await _apiClient.GetTwilioStatusAsync();
+            if (status is null)
+            {
+                TwilioMode = "unknown";
+                TwilioIsMock = false;
+                TwilioStatusMessage = "Could not reach the API. Twilio status is unknown.";
+                return;
+            }
+
+            TwilioMode = status.Mode;
+            TwilioIsMock = status.Mock;
+            if (status.Mock)
+            {
+                TwilioStatusMessage = string.IsNullOrWhiteSpace(status.Warning)
+                    ? "Twilio is in MOCK mode — outbound SMS is NOT being delivered."
+                    : status.Warning;
+            }
+            else
+            {
+                string sidNote = string.IsNullOrEmpty(status.AccountSidPrefix)
+                    ? string.Empty
+                    : $" (Account SID {status.AccountSidPrefix}…)";
+                string msNote = status.HasMessagingService ? " · Messaging Service configured" : string.Empty;
+                TwilioStatusMessage = $"Twilio is LIVE{sidNote}{msNote}. Outbound SMS will reach customers.";
+            }
+        }
+        catch (Exception ex)
+        {
+            TwilioMode = "unknown";
+            TwilioIsMock = false;
+            TwilioStatusMessage = $"Twilio status check failed: {ex.Message}";
+        }
     }
 
     [RelayCommand]
@@ -1101,15 +1166,36 @@ public sealed partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void SaveTwilioConfigAsync()
+    private async Task SaveTwilioConfigAsync()
     {
+        TwilioSaveMessage = string.Empty;
+        TwilioSaveBusy = true;
         try
         {
-            _twilioConfig.Save(TwilioSid, TwilioToken);
+            _twilioConfig.Save(
+                TwilioSid?.Trim() ?? string.Empty,
+                TwilioToken ?? string.Empty,
+                TwilioMessagingServiceSid?.Trim() ?? string.Empty);
+
+            TwilioSaveMessage = "Saved. Verifying with the API…";
+            // Give the API a moment, then re-check live/mock status. Because
+            // TwilioService now resolves IOptionsSnapshot, the new credentials
+            // are picked up on the very next request — no API restart required.
+            await Task.Delay(300);
+            await RefreshTwilioStatusAsync();
+
+            TwilioSaveMessage = TwilioIsMock
+                ? "Saved, but the API still reports MOCK mode. Double-check the Account SID and Auth Token, then save again."
+                : "Saved. Twilio is LIVE — outbound SMS will reach customers.";
         }
         catch (Exception ex)
         {
+            TwilioSaveMessage = $"Save failed: {ex.Message}";
             SetError($"Save Twilio config failed: {ex.Message}");
+        }
+        finally
+        {
+            TwilioSaveBusy = false;
         }
     }
 

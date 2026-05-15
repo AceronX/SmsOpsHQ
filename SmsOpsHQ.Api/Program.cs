@@ -315,6 +315,29 @@ try
     IReviewAutomationScheduler reviewAutomationScheduler = app.Services.GetRequiredService<IReviewAutomationScheduler>();
     reviewAutomationScheduler.Start();
 
+    // Surface Twilio mode at startup so the operator notices immediately if outbound SMS
+    // is going to be silently mocked (e.g. credentials not yet configured).
+    using (IServiceScope startupScope = app.Services.CreateScope())
+    {
+        ITwilioService twilio = startupScope.ServiceProvider.GetRequiredService<ITwilioService>();
+        if (twilio.IsMockMode)
+        {
+            Log.Warning("============================================================");
+            Log.Warning(" TWILIO MOCK MODE — outbound SMS will NOT be delivered.");
+            Log.Warning(" Inbound webhooks still work, but messages sent from the");
+            Log.Warning(" app will not reach customers.");
+            Log.Warning(" Fix: open the desktop app → Settings → Twilio,");
+            Log.Warning(" enter Account SID + Auth Token, click Save.");
+            Log.Warning("============================================================");
+        }
+        else
+        {
+            Log.Information(
+                "Twilio LIVE mode (Account SID prefix: {Prefix}, Messaging Service: {HasMs})",
+                twilio.AccountSidPrefix, twilio.HasMessagingService);
+        }
+    }
+
     Log.Information("SmsOps HQ API starting...");
     app.Run();
 }

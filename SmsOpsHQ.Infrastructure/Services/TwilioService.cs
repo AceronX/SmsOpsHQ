@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SmsOpsHQ.Core.DTOs;
@@ -11,20 +12,56 @@ namespace SmsOpsHQ.Infrastructure.Services;
 
 // Sends SMS via the Twilio REST API. Supports mock mode when credentials
 // are not configured (AccountSid or AuthToken empty).
+//
+// IMPORTANT: This service is registered scoped and resolves IOptionsSnapshot
+// so credential changes (e.g. saved by the desktop UI to the AppData JSON
+// file) take effect on the next request without an API restart.
 public sealed class TwilioService : ITwilioService
 {
     private readonly TwilioSettings _settings;
     private readonly ILogger<TwilioService> _logger;
     private readonly bool _mockMode;
 
+    // We log the "MOCK mode" warning at most once every 30s per process so
+    // that callers never miss it but logs aren't flooded under load.
+    private static DateTime _lastMockBannerLoggedUtc = DateTime.MinValue;
+    private static readonly object _bannerLock = new();
+
+    // Production code constructs this service through the factory registered in
+    // DependencyInjection.AddInfrastructure, which resolves IOptionsSnapshot so that
+    // credential changes flow through per-request without an API restart.
+    // Unit tests construct it directly via Options.Create(...).
     public TwilioService(IOptions<TwilioSettings> settings, ILogger<TwilioService> logger)
+        : this(settings.Value, logger)
     {
-        _settings = settings.Value;
+    }
+
+    /// <summary>
+    /// Factory used by DI: forwards the per-scope IOptionsSnapshot value into the
+    /// service. Kept here so both DependencyInjection and any other host (Desktop's
+    /// LocalApiHost, integration tests) build the service the same way.
+    /// </summary>
+    public static TwilioService Create(IServiceProvider sp)
+    {
+        IOptionsSnapshot<TwilioSettings> snapshot =
+            sp.GetRequiredService<IOptionsSnapshot<TwilioSettings>>();
+        ILogger<TwilioService> logger =
+            sp.GetRequiredService<ILogger<TwilioService>>();
+        return new TwilioService(Options.Create(snapshot.Value), logger);
+    }
+
+    private TwilioService(TwilioSettings settings, ILogger<TwilioService> logger)
+    {
+        _settings = settings;
         _logger = logger;
         _mockMode = string.IsNullOrWhiteSpace(_settings.AccountSid)
                  || string.IsNullOrWhiteSpace(_settings.AuthToken);
 
-        if (!_mockMode)
+        if (_mockMode)
+        {
+            LogMockBannerOnce();
+        }
+        else
         {
             TwilioClient.Init(_settings.AccountSid, _settings.AuthToken);
             if (!string.IsNullOrWhiteSpace(_settings.MessagingServiceSid))
@@ -35,6 +72,17 @@ public sealed class TwilioService : ITwilioService
             }
         }
     }
+
+    public bool IsMockMode => _mockMode;
+
+    public string AccountSidPrefix =>
+        string.IsNullOrEmpty(_settings.AccountSid)
+            ? string.Empty
+            : _settings.AccountSid.Length <= 6
+                ? _settings.AccountSid
+                : _settings.AccountSid.Substring(0, 6);
+
+    public bool HasMessagingService => !string.IsNullOrWhiteSpace(_settings.MessagingServiceSid);
 
     public async Task<TwilioSendResult> SendSmsAsync(
         string fromE164, string toE164, string body,
@@ -120,7 +168,8 @@ public sealed class TwilioService : ITwilioService
         Uri? callbackUri)
     {
         // US A2P / 10DLC: sending through a Messaging Service (MG…) is the supported path when configured.
-        // From must be a sender on that service when both are set.
+        // Per Twilio docs, when both `From` and `MessagingServiceSid` are set, `From` takes precedence
+        // as long as it belongs to the messaging service's sender pool.
         if (!string.IsNullOrWhiteSpace(_settings.MessagingServiceSid))
         {
             return await MessageResource.CreateAsync(
@@ -161,15 +210,45 @@ public sealed class TwilioService : ITwilioService
     {
         string mockSid = $"SM_MOCK_{Guid.NewGuid():N}".Substring(0, 34);
 
-        _logger.LogInformation(
-            "Twilio MOCK send: SID={Sid} From={From} To={To} Body={Body}",
+        // WARNING-level: the operator MUST notice that real delivery did not happen.
+        _logger.LogWarning(
+            "Twilio MOCK send (NOT delivered to carrier — credentials missing): SID={Sid} From={From} To={To} Body={Body}",
             mockSid, fromE164, toE164, body.Length > 50 ? body[..50] + "..." : body);
+
+        LogMockBannerOnce();
 
         return new TwilioSendResult
         {
             Success = true,
             TwilioSid = mockSid,
-            Status = "Sent"
+            // Status reflects reality: this message was NOT sent.
+            Status = "Mock",
+            IsMock = true,
+            ErrorCode = "MOCK_MODE",
+            ErrorMessage = "Twilio is in MOCK mode — message was not delivered. Configure AccountSid and AuthToken in Settings → Twilio."
         };
+    }
+
+    private void LogMockBannerOnce()
+    {
+        // Throttle to at most once every 30 seconds across the process so that
+        // the warning is hard to miss but doesn't drown out other logs.
+        DateTime now = DateTime.UtcNow;
+        lock (_bannerLock)
+        {
+            if ((now - _lastMockBannerLoggedUtc).TotalSeconds < 30) return;
+            _lastMockBannerLoggedUtc = now;
+        }
+
+        _logger.LogWarning(
+            "============================================================");
+        _logger.LogWarning(
+            " TWILIO MOCK MODE ACTIVE — outbound SMS will NOT be delivered.");
+        _logger.LogWarning(
+            " Configure AccountSid + AuthToken in appsettings.json (Twilio");
+        _logger.LogWarning(
+            " section) or via the desktop app: Settings → Twilio → Save.");
+        _logger.LogWarning(
+            "============================================================");
     }
 }

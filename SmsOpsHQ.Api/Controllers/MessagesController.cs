@@ -130,8 +130,21 @@ public sealed class MessagesController : ControllerBase
             fromNumber, normalizedTo, request.Body,
             request.MediaUrls, null, cancellationToken);
 
-        // 8. Update message status based on Twilio result
-        string finalStatus = twilioResult.Success ? "Sent" : "Failed";
+        // 8. Update message status based on Twilio result.
+        // Mock mode is treated as a distinct, visible status so the operator
+        // can tell at a glance that the message was NOT actually delivered.
+        string finalStatus = twilioResult.IsMock
+            ? "Mock"
+            : (twilioResult.Success ? "Sent" : "Failed");
+
+        if (twilioResult.IsMock)
+        {
+            _logger.LogWarning(
+                "Outbound SMS recorded as MOCK (message {MessageId}, thread {ThreadId}, store {StoreId}). " +
+                "Twilio credentials are not configured; the customer will NOT receive this message.",
+                message.MessageId, thread.ThreadId, request.StoreId);
+        }
+
         if (twilioResult.TwilioSid is not null)
         {
             await _messageRepo.UpdateSentAsync(
@@ -170,11 +183,13 @@ public sealed class MessagesController : ControllerBase
             status = "ok",
             message_id = message.MessageId,
             category,
+            mock = twilioResult.IsMock,
             twilio = new
             {
                 sid = twilioResult.TwilioSid,
                 status = twilioResult.Status,
-                error = twilioResult.ErrorMessage
+                error = twilioResult.ErrorMessage,
+                mock = twilioResult.IsMock
             }
         });
     }

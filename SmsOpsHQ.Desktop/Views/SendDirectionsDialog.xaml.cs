@@ -99,7 +99,20 @@ public partial class SendDirectionsDialog : Window
                 TwilioNumberId = _appState.CurrentTwilioNumberId
             };
 
-            await _apiClient.SendMessageAsync(request);
+            JsonElement response = await _apiClient.SendMessageAsync(request);
+
+            bool mock = response.ValueKind == JsonValueKind.Object
+                && response.TryGetProperty("mock", out JsonElement mockEl)
+                && mockEl.ValueKind == JsonValueKind.True;
+
+            if (mock)
+            {
+                ShowError(
+                    "MOCK MODE: Twilio is not configured, so the customer did NOT receive this message. " +
+                    "Open Settings → Twilio to enter your Account SID and Auth Token, then try again.");
+                StatusText.Text = string.Empty;
+                return;
+            }
 
             StatusText.Text = "Directions sent.";
             StatusText.Foreground = (System.Windows.Media.Brush)FindResource("Success");

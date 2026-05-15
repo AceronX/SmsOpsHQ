@@ -248,9 +248,22 @@ public sealed partial class ThreadViewModel : ViewModelBase
                 TwilioNumberId = _appState.CurrentTwilioNumberId
             };
 
-            await _apiClient.SendMessageAsync(request);
+            JsonElement response = await _apiClient.SendMessageAsync(request);
+
+            // Surface mock-mode loudly: the message was recorded but never sent.
+            bool mock = response.ValueKind == JsonValueKind.Object
+                && response.TryGetProperty("mock", out JsonElement mockEl)
+                && mockEl.ValueKind == JsonValueKind.True;
+
             ComposeText = string.Empty;
             await LoadMessagesAsync();
+
+            if (mock)
+            {
+                SetError(
+                    "MOCK MODE: Twilio is not configured, so the customer did NOT receive this message. " +
+                    "Open Settings → Twilio to enter your Account SID and Auth Token.");
+            }
         }
         catch (Exception ex)
         {

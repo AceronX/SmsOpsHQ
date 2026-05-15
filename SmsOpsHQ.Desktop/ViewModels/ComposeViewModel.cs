@@ -170,7 +170,21 @@ public sealed partial class ComposeViewModel : ViewModelBase
                 TwilioNumberId = _appState.CurrentTwilioNumberId
             };
 
-            await _apiClient.SendMessageAsync(request);
+            JsonElement response = await _apiClient.SendMessageAsync(request);
+
+            // The API returns `mock: true` when Twilio is in mock mode and the
+            // message did not actually reach the carrier. Tell the user loud and
+            // clear so they don't think a customer received it.
+            if (response.ValueKind == JsonValueKind.Object
+                && response.TryGetProperty("mock", out JsonElement mockEl)
+                && mockEl.ValueKind == JsonValueKind.True)
+            {
+                SetError(
+                    "MOCK MODE: the API isn't configured with Twilio credentials, so the customer did NOT receive this message. " +
+                    "Open Settings → Twilio, enter your Account SID and Auth Token, then try again.");
+                return;
+            }
+
             IsSent = true;
             Body = string.Empty;
             _onMessageSent?.Invoke();

@@ -44,7 +44,10 @@ public static class DependencyInjection
 
         // Services
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<ITwilioService, TwilioService>();
+        // Register via factory so the service is built from IOptionsSnapshot
+        // (per-scope), which lets credential edits in the desktop UI take effect on
+        // the next request without restarting the API. See TwilioService.Create.
+        services.AddScoped<ITwilioService>(TwilioService.Create);
         services.AddScoped<IPhoneValidationService, PhoneValidationService>();
         services.AddScoped<IStorePhoneResolver, StorePhoneResolver>();
         services.AddScoped<IIdentityResolver, IdentityResolver>();

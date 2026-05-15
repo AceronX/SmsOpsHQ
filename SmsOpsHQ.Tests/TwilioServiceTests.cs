@@ -27,19 +27,31 @@ public class TwilioServiceTests
     }
 
     [Fact]
-    public async Task SendSmsAsync_MockMode_ReturnsSuccess()
+    public async Task SendSmsAsync_MockMode_ReturnsSuccessWithMockFlag()
     {
         TwilioSendResult result = await _service.SendSmsAsync(
             fromE164: "+15551234567",
             toE164: "+15559876543",
             body: "Hello from mock mode");
 
+        // We deliberately keep Success = true so reminder/review pipelines that branch
+        // on Success continue to work in unit tests, but we surface IsMock = true and
+        // a non-"Sent" status so the API and UI can flag undelivered messages clearly.
         Assert.True(result.Success);
+        Assert.True(result.IsMock);
         Assert.NotNull(result.TwilioSid);
         Assert.StartsWith("SM_MOCK_", result.TwilioSid);
-        Assert.Equal("Sent", result.Status);
-        Assert.Null(result.ErrorCode);
-        Assert.Null(result.ErrorMessage);
+        Assert.Equal("Mock", result.Status);
+        Assert.Equal("MOCK_MODE", result.ErrorCode);
+        Assert.False(string.IsNullOrEmpty(result.ErrorMessage));
+    }
+
+    [Fact]
+    public void Service_ReportsMockMode_WhenCredentialsMissing()
+    {
+        Assert.True(_service.IsMockMode);
+        Assert.Equal(string.Empty, _service.AccountSidPrefix);
+        Assert.False(_service.HasMessagingService);
     }
 
     [Fact]

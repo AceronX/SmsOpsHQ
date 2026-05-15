@@ -641,7 +641,59 @@
                                            Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
                             </StackPanel>
                             <TextBlock Text="Account SID and Auth Token from your Twilio console. Used to send SMS and manage phone numbers."
-                                       FontSize="12" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,20"/>
+                                       FontSize="12" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                            <!-- Live/Mock status banner -->
+                            <Border CornerRadius="8" BorderThickness="1" Padding="14,12" Margin="0,0,0,20">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="{StaticResource SuccessLight}"/>
+                                        <Setter Property="BorderBrush" Value="#FF8FCC9F"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TwilioIsMock}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource ErrorLight}"/>
+                                                <Setter Property="BorderBrush" Value="#FFE38C8C"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontFamily="{StaticResource IconFont}" FontSize="16"
+                                               VerticalAlignment="Top" Margin="0,2,10,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="&#xE73E;"/>
+                                                <Setter Property="Foreground" Value="{StaticResource Success}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TwilioIsMock}" Value="True">
+                                                        <Setter Property="Text" Value="&#xE7BA;"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource Error}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock FontSize="13" FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="LIVE — outbound SMS will reach customers"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource Success}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding TwilioIsMock}" Value="True">
+                                                            <Setter Property="Text" Value="MOCK MODE — outbound SMS NOT delivered"/>
+                                                            <Setter Property="Foreground" Value="{StaticResource Error}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding TwilioStatusMessage}" FontSize="12"
+                                                   Foreground="{StaticResource TextSecondary}"
+                                                   TextWrapping="Wrap" Margin="0,4,0,0" MaxWidth="460"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
 
                             <Border Background="{StaticResource Surface}" CornerRadius="10" BorderBrush="{StaticResource Border}"
                                     BorderThickness="1" Padding="20,18" Margin="0,0,0,20">
@@ -657,7 +709,7 @@
                                     <TextBlock Text="Auth Token" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
                                     <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
-                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,20">
+                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,16">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -683,15 +735,40 @@
                                         </Grid>
                                     </Border>
 
-                                    <Button Command="{Binding SaveTwilioConfigCommand}"
-                                            Style="{StaticResource PrimaryButton}"
-                                            Padding="16,10" HorizontalAlignment="Left">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
-                                                       FontSize="13" Foreground="{StaticResource TextOnPrimary}" Margin="0,0,8,0"/>
-                                            <TextBlock Text="Save Twilio config" FontSize="13" Foreground="{StaticResource TextOnPrimary}"/>
-                                        </StackPanel>
-                                    </Button>
+                                    <TextBlock Text="Messaging Service SID (optional, for US A2P / 10DLC)" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding TwilioMessagingServiceSid, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="12,10" FontSize="14" Margin="0,0,0,4"
+                                             ToolTip="Starts with MG… If your Twilio account requires sending through a Messaging Service (typical for US long codes), put the SID here."/>
+                                    <TextBlock Text="Leave blank if you only use direct From numbers."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,0,0,16"/>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Command="{Binding SaveTwilioConfigCommand}"
+                                                IsEnabled="{Binding TwilioSaveBusy, Converter={StaticResource InvertBool}, FallbackValue=True}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Padding="16,10" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextOnPrimary}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="Save &amp; verify" FontSize="13" Foreground="{StaticResource TextOnPrimary}"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding RefreshTwilioStatusCommand}"
+                                                Padding="16,10" Margin="10,0,0,0" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Margin="0,0,8,0"
+                                                           Foreground="{StaticResource TextPrimary}"/>
+                                                <TextBlock Text="Re-check status" FontSize="13"
+                                                           Foreground="{StaticResource TextPrimary}"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <TextBlock Text="{Binding TwilioSaveMessage}" FontSize="12" Margin="0,12,0,0"
+                                               Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"
+                                               Visibility="{Binding TwilioSaveMessage, Converter={StaticResource StringToVisibility}}"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
