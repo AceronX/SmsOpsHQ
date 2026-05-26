@@ -266,7 +266,27 @@ See [docs/XPD_SYNC_SCHEMA.md](docs/XPD_SYNC_SCHEMA.md) for XPD vs app tables (Cu
 
 ## Deployment
 
-### Publish
+### Windows setup installer (recommended for store PCs)
+
+Build a self-contained **setup.exe** (Desktop + bundled local API, no .NET install on target machines):
+
+1. Install [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) and [Inno Setup 6](https://jrsoftware.org/isdl.php)
+2. From the repo root:
+
+```powershell
+.\build-setup.ps1
+```
+
+If scripts are blocked by execution policy, run `build-setup.cmd` instead (or `powershell -ExecutionPolicy Bypass -File .\build-setup.ps1`).
+
+Outputs:
+
+- `SmsOpsHQ.Desktop\bin\Publish\SmsOpsHQ-Setup-1.0.0-x64.exe` — installer
+- `SmsOpsHQ.Desktop\bin\Publish\SmsOpsHQ-Desktop-StoreTest.zip` — portable ZIP
+
+See `installer/README.md` for store deployment and first-run configuration.
+
+### Publish (manual / server-only)
 
 ```powershell
 # API
@@ -274,6 +294,9 @@ dotnet publish SmsOpsHQ.Api -c Release -o ./publish/api
 
 # Desktop client
 dotnet publish SmsOpsHQ.Desktop -c Release -r win-x64 -o ./publish/desktop
+
+# Or store bundle (same as build-setup step 1):
+.\SmsOpsHQ.Desktop\publish-store.ps1
 ```
 
 ### Run in Production
