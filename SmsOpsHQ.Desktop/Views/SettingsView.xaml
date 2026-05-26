@@ -362,7 +362,7 @@
                                     </Border>
                                     <TextBlock Text="MDW path (required)" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
-                                    <Grid Margin="0,0,0,16">
+                                    <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
@@ -372,6 +372,99 @@
                                         <Button Grid.Column="1" Content="Browse" Click="BrowseMdwPath_Click"
                                                 Style="{StaticResource GhostButton}" Padding="10,6" MinWidth="60"/>
                                     </Grid>
+
+                                    <!-- Persisted-password indicator: shown when API confirms password is on disk and field is empty -->
+                                    <TextBlock Margin="0,0,0,10" FontSize="11" Foreground="{StaticResource TextMuted}"
+                                               TextWrapping="Wrap"
+                                               Text="A password is already saved. Type a new one only if you want to change it.">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding XpdPasswordPersisted}" Value="True"/>
+                                                            <Condition Binding="{Binding XpdPassword}" Value=""/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <!-- Save configuration: persists path/credentials so BOTH manual and hourly auto-sync use them -->
+                                    <Button Command="{Binding SaveDatabaseConfigCommand}"
+                                            IsEnabled="{Binding DatabaseConfigSaving, Converter={StaticResource InvertBool}}"
+                                            Style="{StaticResource PrimaryButton}"
+                                            Padding="14,9" FontSize="12" FontWeight="SemiBold"
+                                            HorizontalAlignment="Stretch" Margin="0,0,0,6">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
+                                                       FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Save configuration" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <TextBlock Text="{Binding DatabaseConfigSaveMessage}" FontSize="11"
+                                               Foreground="{StaticResource Primary}" TextWrapping="Wrap"
+                                               Margin="0,0,0,12"
+                                               Visibility="{Binding DatabaseConfigSaveMessage, Converter={StaticResource StringToVisibility}}"/>
+
+                                    <Border Height="1" Background="{StaticResource Divider}" Margin="0,2,0,12"/>
+
+                                    <!-- Pre-flight: one-shot health check so the operator knows go/no-go before clicking Run -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="&#xE9F5;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="13" Foreground="{StaticResource TextSecondary}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Pre-flight check" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <Border CornerRadius="6" Padding="10,8" Margin="0,0,0,8" BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#F1F5F9"/>
+                                                <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding PreflightStatus}" Value="ready">
+                                                        <Setter Property="Background" Value="#ECFDF5"/>
+                                                        <Setter Property="BorderBrush" Value="#A7F3D0"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding PreflightStatus}" Value="blocked">
+                                                        <Setter Property="Background" Value="#FEF3C7"/>
+                                                        <Setter Property="BorderBrush" Value="#FCD34D"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding PreflightSummary}" FontSize="11"
+                                                       FontWeight="SemiBold" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextPrimary}"
+                                                       Margin="0,0,0,4"/>
+                                            <ItemsControl ItemsSource="{Binding PreflightBlockers}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding}" FontSize="11"
+                                                                   Foreground="{StaticResource TextSecondary}"
+                                                                   TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding AutoSyncStatusMessage}" FontSize="11"
+                                                       Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"
+                                                       Margin="0,6,0,0"
+                                                       Visibility="{Binding AutoSyncStatusMessage, Converter={StaticResource StringToVisibility}}"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Button Command="{Binding LoadPreflightCommand}"
+                                            IsEnabled="{Binding PreflightBusy, Converter={StaticResource InvertBool}}"
+                                            Style="{StaticResource GhostButton}"
+                                            Padding="12,7" FontSize="11" Margin="0,0,0,16"
+                                            HorizontalAlignment="Stretch"
+                                            Content="Re-run pre-flight check"/>
 
                                     <Border Background="#EFF6FF" CornerRadius="6" Padding="12,10" Margin="0,0,0,10"
                                             Visibility="{Binding SyncInProgress, Converter={StaticResource BoolToVisibility}}">
@@ -409,9 +502,11 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE946;" FontFamily="{StaticResource IconFont}"
                                                FontSize="14" Foreground="{StaticResource TextMuted}" VerticalAlignment="Top" Margin="0,0,8,0"/>
-                                    <TextBlock Text="SQLite path is from the API. XPD file, MDW path, and credentials are required for sync and are sent with each run. appsettings can override server defaults."
-                                               FontSize="11" Foreground="{StaticResource TextMuted}"
-                                               TextWrapping="Wrap"/>
+                                    <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap">
+                                        <Run Text="Click " FontWeight="Normal"/>
+                                        <Run Text="Save configuration" FontWeight="SemiBold"/>
+                                        <Run Text=" once per store. Both manual sync and the hourly auto-sync will then use these settings — no editing files in Program Files, no API restart."/>
+                                    </TextBlock>
                                 </StackPanel>
                             </Border>
                         </Grid>

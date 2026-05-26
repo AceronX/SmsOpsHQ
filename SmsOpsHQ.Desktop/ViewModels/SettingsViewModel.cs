@@ -134,6 +134,32 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _syncProgressPercent;
 
+    /// <summary>True when the API confirms the password is persisted (we don't show the value).</summary>
+    [ObservableProperty]
+    private bool _xpdPasswordPersisted;
+
+    [ObservableProperty]
+    private bool _databaseConfigSaving;
+
+    [ObservableProperty]
+    private string _databaseConfigSaveMessage = string.Empty;
+
+    /// <summary>"ready" / "blocked" / "unknown" — drives the colored banner on the Database tab.</summary>
+    [ObservableProperty]
+    private string _preflightStatus = "unknown";
+
+    [ObservableProperty]
+    private string _preflightSummary = "Tap “Pre-flight check” to verify this PC can sync.";
+
+    [ObservableProperty]
+    private ObservableCollection<string> _preflightBlockers = new();
+
+    [ObservableProperty]
+    private bool _preflightBusy;
+
+    [ObservableProperty]
+    private string _autoSyncStatusMessage = string.Empty;
+
     // Tab 2: Phone Numbers — store selection + Twilio numbers
     [ObservableProperty]
     private ObservableCollection<StoreItem> _availableStores = new();
@@ -744,11 +770,162 @@ public sealed partial class SettingsViewModel : ViewModelBase
             string mdw = config.TryGetProperty("mdw_path", out JsonElement mp) ? mp.GetString() ?? "" : "";
             if (!string.IsNullOrWhiteSpace(mdw))
                 XpdMdwPath = mdw;
+
+            // Don't surface the password value, just whether one is set, so the
+            // operator can see "*** saved" without the API leaking the password.
+            XpdPasswordPersisted = config.TryGetProperty("xpd_password_set", out JsonElement pw) && pw.GetBoolean();
+
             await RefreshSyncStatusAsync();
+            await LoadPreflightAsync();
         }
         catch (Exception ex)
         {
             DatabaseErrorMessage = $"Could not load config: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Persist the path + credentials on the API so the hourly auto-sync uses
+    /// them too (not just per-run manual sync). This closes the previous
+    /// behavior where saving in this UI only affected manual sync.
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveDatabaseConfigAsync()
+    {
+        DatabaseConfigSaveMessage = string.Empty;
+        DatabaseErrorMessage = string.Empty;
+        DatabaseSuccessMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(XpdFilePath))
+        {
+            DatabaseErrorMessage = "XPD file path is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(XpdMdwPath))
+        {
+            DatabaseErrorMessage = "MDW path is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(XpdUser))
+        {
+            DatabaseErrorMessage = "XPD user is required.";
+            return;
+        }
+
+        DatabaseConfigSaving = true;
+        try
+        {
+            // Empty password preserves the previously-saved password on the
+            // API side -- so the operator can re-save other fields without
+            // re-typing the password every time.
+            string? passwordToSend = string.IsNullOrEmpty(XpdPassword) ? null : XpdPassword;
+
+            JsonElement response = await _apiClient.SaveSyncConfigAsync(
+                XpdFilePath.Trim(),
+                XpdMdwPath.Trim(),
+                XpdUser.Trim(),
+                passwordToSend);
+
+            XpdPasswordPersisted = response.TryGetProperty("xpd_password_set", out JsonElement pw) && pw.GetBoolean();
+            DatabaseConfigSaveMessage = "Saved. Manual and automatic sync will use these settings.";
+
+            await LoadPreflightAsync();
+        }
+        catch (Exception ex)
+        {
+            string msg = ex.Message;
+            DatabaseConfigSaveMessage = msg.Contains("403")
+                ? "Only HQ users can change sync configuration."
+                : $"Save failed: {msg}";
+            DatabaseErrorMessage = DatabaseConfigSaveMessage;
+        }
+        finally
+        {
+            DatabaseConfigSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Run all server-side checks (file exists, MDW present, store row,
+    /// scheduler state) and produce a single ready/blocked banner for the UI.
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadPreflightAsync()
+    {
+        PreflightBusy = true;
+        try
+        {
+            JsonElement pf = await _apiClient.GetSyncPreflightAsync();
+
+            bool ready = pf.TryGetProperty("ready", out JsonElement readyEl) && readyEl.GetBoolean();
+            PreflightStatus = ready ? "ready" : "blocked";
+
+            ObservableCollection<string> blockers = new();
+            if (pf.TryGetProperty("blockers", out JsonElement bl) && bl.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement b in bl.EnumerateArray())
+                {
+                    string? msg = b.GetString();
+                    if (!string.IsNullOrWhiteSpace(msg))
+                        blockers.Add(msg);
+                }
+            }
+            PreflightBlockers = blockers;
+
+            if (ready)
+            {
+                long size = pf.TryGetProperty("xpd_file_size", out JsonElement sz) && sz.ValueKind == JsonValueKind.Number
+                    ? sz.GetInt64() : 0;
+                string sizeText = size > 0 ? $" ({size / (1024.0 * 1024.0):F1} MB)" : "";
+                string modText = "";
+                if (pf.TryGetProperty("xpd_file_modified", out JsonElement mod) && mod.ValueKind == JsonValueKind.String)
+                {
+                    string? modStr = mod.GetString();
+                    if (!string.IsNullOrEmpty(modStr) && DateTime.TryParse(modStr, out DateTime modDt))
+                        modText = $", last modified {modDt:MMM d  h:mm tt}";
+                }
+                PreflightSummary = $"Ready to sync. XPD file found{sizeText}{modText}.";
+            }
+            else
+            {
+                PreflightSummary = blockers.Count == 1
+                    ? blockers[0]
+                    : $"{blockers.Count} prerequisite{(blockers.Count == 1 ? "" : "s")} blocking sync — see list below.";
+            }
+
+            // Auto-sync banner: surfaces scheduler state alongside file health
+            bool schedRunning = pf.TryGetProperty("scheduler_running", out JsonElement sr) && sr.GetBoolean();
+            string? nextRun = pf.TryGetProperty("scheduler_next_run", out JsonElement nr) && nr.ValueKind == JsonValueKind.String
+                ? nr.GetString() : null;
+            bool? lastSuccess = pf.TryGetProperty("scheduler_last_success", out JsonElement ls) && ls.ValueKind != JsonValueKind.Null
+                ? ls.GetBoolean() : (bool?)null;
+            string? lastError = pf.TryGetProperty("scheduler_last_error", out JsonElement le) && le.ValueKind == JsonValueKind.String
+                ? le.GetString() : null;
+
+            if (!schedRunning)
+            {
+                AutoSyncStatusMessage = "Auto-sync is OFF.";
+            }
+            else if (lastSuccess == false && !string.IsNullOrWhiteSpace(lastError))
+            {
+                AutoSyncStatusMessage = $"Auto-sync ON — last run FAILED: {lastError}";
+            }
+            else
+            {
+                string nextText = string.IsNullOrWhiteSpace(nextRun) ? "" : $", next at {nextRun}";
+                AutoSyncStatusMessage = $"Auto-sync ON{nextText}.";
+            }
+        }
+        catch (Exception ex)
+        {
+            PreflightStatus = "unknown";
+            PreflightSummary = $"Could not run pre-flight check: {ex.Message}";
+            PreflightBlockers = new ObservableCollection<string>();
+            AutoSyncStatusMessage = string.Empty;
+        }
+        finally
+        {
+            PreflightBusy = false;
         }
     }
 

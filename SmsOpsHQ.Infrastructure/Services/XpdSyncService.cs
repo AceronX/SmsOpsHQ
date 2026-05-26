@@ -22,11 +22,10 @@ public sealed class XpdSyncService : IXpdSyncService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<XpdSyncService> _logger;
     private readonly IMemoryCache _cache;
+    private readonly IXpdConfigService _xpdConfig;
 
-    private readonly string _xpdPath;
-    private readonly string _mdwPath;
-    private readonly string _xpdUser;
-    private readonly string _xpdPassword;
+    // ExportScriptPath and CscriptPath are install-time concerns -- the operator
+    // shouldn't tune those at runtime. Resolved once from appsettings.json.
     private readonly string _exportScriptPath;
     private readonly string _cscriptPath;
 
@@ -66,18 +65,16 @@ public sealed class XpdSyncService : IXpdSyncService
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
         IMemoryCache cache,
+        IXpdConfigService xpdConfig,
         ILogger<XpdSyncService> logger)
     {
         _scopeFactory = scopeFactory;
         _cache = cache;
+        _xpdConfig = xpdConfig;
         _logger = logger;
 
         IConfigurationSection xpdSection = configuration.GetSection("Xpd");
 
-        _xpdPath = xpdSection["DatabasePath"] ?? @"C:\xpawndata\pitkin.XPD";
-        _mdwPath = xpdSection["MdwPath"] ?? @"C:\xpawndata\XcelData.mdw";
-        _xpdUser = xpdSection["User"] ?? "developer";
-        _xpdPassword = xpdSection["Password"] ?? "Hollerith89";
         string exportRaw = xpdSection["ExportScriptPath"] ?? "export_xpd_to_sql.vbs";
         _exportScriptPath = Path.IsPathRooted(exportRaw)
             ? exportRaw
@@ -240,11 +237,15 @@ public sealed class XpdSyncService : IXpdSyncService
 
     private (string XpdPath, string MdwPath, string XpdUser, string XpdPassword) GetSyncCredentials()
     {
+        // Re-read overlay on every sync so an operator who just clicked Save in
+        // Settings → Database doesn't need to restart the API for the new path
+        // to take effect. Overlay > per-run override > appsettings fallback.
+        XpdConfig effective = _xpdConfig.GetEffective();
         return (
-            _currentRunOverrides?.XpdPath ?? _xpdPath,
-            _currentRunOverrides?.MdwPath ?? _mdwPath,
-            _currentRunOverrides?.XpdUser ?? _xpdUser,
-            _currentRunOverrides?.XpdPassword ?? _xpdPassword
+            _currentRunOverrides?.XpdPath ?? effective.DatabasePath,
+            _currentRunOverrides?.MdwPath ?? effective.MdwPath,
+            _currentRunOverrides?.XpdUser ?? effective.User,
+            _currentRunOverrides?.XpdPassword ?? effective.Password
         );
     }
 

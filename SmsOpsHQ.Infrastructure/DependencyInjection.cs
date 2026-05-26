@@ -55,8 +55,18 @@ public static class DependencyInjection
         services.AddScoped<IRealtimeService, RealtimeService>();
         services.AddScoped<IReviewService, ReviewService>();
 
+        // Singleton: persists XPD path/credentials to %AppData%\SmsOpsHQ\xpd_config.json
+        // and overlays them on top of appsettings.json. Both manual and scheduled
+        // sync read through this service so an operator's saved config takes effect
+        // automatically -- no editing files in Program Files, no API restart.
+        services.AddSingleton<IXpdConfigService, XpdConfigService>();
+
         // Singleton: XPD sync service maintains sync state across requests.
         services.AddSingleton<IXpdSyncService, XpdSyncService>();
+
+        // Singleton: hourly (configurable) automatic XPD sync. Idle until Start()
+        // is called from Program.cs. Driven by Timer; calls IXpdSyncService.
+        services.AddSingleton<IXpdSyncScheduler, XpdSyncScheduler>();
 
         // Reminder system (scoped: one service per request, singleton scheduler for background timer).
         services.AddScoped<IReminderService, ReminderService>();

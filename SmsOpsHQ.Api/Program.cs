@@ -315,6 +315,13 @@ try
     IReviewAutomationScheduler reviewAutomationScheduler = app.Services.GetRequiredService<IReviewAutomationScheduler>();
     reviewAutomationScheduler.Start();
 
+    // Hourly (configurable) automatic XPD sync. The scheduler internally
+    // checks XpdSync:Enabled in config, so calling Start() unconditionally
+    // is safe -- it logs and no-ops if disabled. Operators can also flip
+    // it on/off at runtime via /api/sync/scheduler/start|stop.
+    IXpdSyncScheduler xpdSyncScheduler = app.Services.GetRequiredService<IXpdSyncScheduler>();
+    xpdSyncScheduler.Start();
+
     // Surface Twilio mode at startup so the operator notices immediately if outbound SMS
     // is going to be silently mocked (e.g. credentials not yet configured).
     using (IServiceScope startupScope = app.Services.CreateScope())

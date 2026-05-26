@@ -372,6 +372,30 @@ public sealed class ApiClient : IDisposable
         return await PostJsonAsync("/api/sync/full", options);
     }
 
+    /// <summary>
+    /// Persists XPD path/credentials on the API so BOTH manual sync and the hourly
+    /// auto-sync use them. Empty fields are kept at their previously-saved value.
+    /// </summary>
+    public async Task<JsonElement> SaveSyncConfigAsync(string? xpdPath, string? mdwPath, string? xpdUser, string? xpdPassword)
+    {
+        var options = new SyncRunOptions
+        {
+            XpdPath = xpdPath,
+            MdwPath = mdwPath,
+            XpdUser = xpdUser,
+            XpdPassword = xpdPassword
+        };
+        return await PostJsonAsync("/api/sync/config", options);
+    }
+
+    /// <summary>
+    /// Returns a one-shot health snapshot for the XPD sync prerequisites
+    /// (file exists, MDW present, store created, scheduler state, etc.)
+    /// so the UI can show a clear go/no-go before clicking Run sync now.
+    /// </summary>
+    public async Task<JsonElement> GetSyncPreflightAsync() =>
+        await GetJsonAsync("/api/sync/preflight");
+
     public async Task<JsonElement> GetSyncCountsAsync() =>
         await GetJsonAsync("/api/sync/counts");
 
