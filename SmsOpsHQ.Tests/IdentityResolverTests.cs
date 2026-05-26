@@ -23,7 +23,7 @@ public class IdentityResolverTests : IDisposable
 
         _db = new AppDbContext(dbOptions);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         // Seed CustomerPhones: 5559876543 -> keys 100, 200; 5551111111 -> 300
         _db.CustomerPhones.AddRange(

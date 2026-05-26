@@ -257,4 +257,26 @@ public partial class SettingsView : UserControl
         if (DataContext is SettingsViewModel vm)
             vm.LoadQualityQueryCommand.Execute(null);
     }
+
+    // Two-way bind the masked Hub Store Key. The XAML PasswordBox can't bind
+    // directly (security-by-design), so we mirror it through the VM here.
+    private void HubStoreKeyPassword_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox box && DataContext is SettingsViewModel vm)
+            vm.HubStoreKey = box.Password;
+    }
+
+    private void HubTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            // Seed the password box from the persisted key so the operator sees
+            // dots when a key is already saved (instead of an empty field that
+            // wrongly suggests "not configured").
+            HubStoreKeyPasswordBox.Password = vm.HubStoreKey ?? string.Empty;
+            // Clear any stale messages from a previous open.
+            vm.HubTestMessage = string.Empty;
+            vm.HubSaveMessage = string.Empty;
+        }
+    }
 }

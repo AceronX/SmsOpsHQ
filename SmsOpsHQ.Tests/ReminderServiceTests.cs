@@ -28,7 +28,7 @@ public class ReminderServiceTests : IDisposable
 
         _db = new AppDbContext(dbOptions);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         // Seed store + Twilio number
         StoreEntity store = new StoreEntity

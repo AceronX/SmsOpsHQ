@@ -95,6 +95,7 @@ public partial class App : Application
         services.AddSingleton<AppState>();
         services.AddSingleton<CacheService>();
         services.AddSingleton<TwilioConfigService>();
+        services.AddSingleton<HubConfigService>();
         services.AddSingleton<XBlueConfigService>();
         services.AddSingleton<LateCustomersQueryService>();
         services.AddSingleton<CustomerQualityQueryService>();
@@ -132,7 +133,8 @@ public partial class App : Application
             sp.GetRequiredService<TwilioConfigService>(),
             sp.GetRequiredService<XBlueService>(),
             sp.GetRequiredService<XBlueConfigService>(),
-            sp.GetRequiredService<CustomerQualityQueryService>()));
+            sp.GetRequiredService<CustomerQualityQueryService>(),
+            sp.GetRequiredService<HubConfigService>()));
 
         services.AddTransient<LateCustomersViewModel>(sp => new LateCustomersViewModel(
             sp.GetRequiredService<ApiClient>(),

@@ -23,7 +23,7 @@ public class QuarantineServiceTests : IDisposable
 
         _db = new AppDbContext(dbOptions);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         // Seed store.
         StoreEntity store = new StoreEntity

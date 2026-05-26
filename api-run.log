@@ -1,0 +1,348 @@
+Using launch settings from SmsOpsHQ.Api\Properties\launchSettings.json...
+[16:47:25 INF] Executed DbCommand (23ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*) FROM "sqlite_master" WHERE "type" = 'table' AND "rootpage" IS NOT NULL;
+[16:47:25 INF] Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+
+                CREATE TABLE IF NOT EXISTS ReviewChannels (
+                    ReviewChannelId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    StoreId         INTEGER NOT NULL,
+                    PlatformName    TEXT    NOT NULL,
+                    ReviewUrl       TEXT    NOT NULL,
+                    SortOrder       INTEGER NOT NULL DEFAULT 0,
+                    IsActive        INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt       TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (StoreId) REFERENCES Stores(StoreId)
+                )
+[16:47:25 INF] Schema upgrade: ReviewChannels table ensured.
+[16:47:25 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+
+                CREATE TABLE IF NOT EXISTS ReviewRequests (
+                    ReviewRequestId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    StoreId         INTEGER NOT NULL,
+                    CustomerId      INTEGER NOT NULL,
+                    PhoneE164       TEXT    NOT NULL,
+                    ReviewChannelId INTEGER NOT NULL,
+                    TemplateId      INTEGER NOT NULL,
+                    MessageBody     TEXT    NOT NULL,
+                    TwilioSid       TEXT,
+                    Status          TEXT    NOT NULL DEFAULT 'Sent',
+                    SentAt          TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (StoreId) REFERENCES Stores(StoreId),
+                    FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId),
+                    FOREIGN KEY (ReviewChannelId) REFERENCES ReviewChannels(ReviewChannelId),
+                    FOREIGN KEY (TemplateId) REFERENCES Templates(TemplateId)
+                )
+[16:47:25 INF] Schema upgrade: ReviewRequests table ensured.
+[16:47:25 ERR] Failed executing DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+ALTER TABLE Templates ADD COLUMN Category TEXT DEFAULT 'General'
+[16:47:25 ERR] Failed executing DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+ALTER TABLE CustomerPhones ADD COLUMN MatchType TEXT
+[16:47:25 ERR] Failed executing DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+ALTER TABLE CustomerPhones ADD COLUMN IsDirect INTEGER NOT NULL DEFAULT 0
+[16:47:25 INF] Schema upgrade: CustomerPhones MatchType/IsDirect backfilled.
+[16:47:25 INF] Schema upgrade: ReviewAutomationState table ensured.
+[16:47:25 INF] Seed skipped: at least one user already exists.
+[16:47:25 INF] Reminder scheduler started. Next run at 15:00 (in 22:12:34.2277545)
+[16:47:25 INF] Review automation: disabled in settings; timer not scheduled.
+[16:47:25 INF] XPD sync scheduler is disabled (XpdSync:Enabled=false). Set XpdSync:Enabled=true in appsettings to enable hourly sync.
+[16:47:25 INF] Hub SignalR client starting: target=http://localhost:9999, every 17s
+[16:47:25 INF] Merged Twilio settings from C:\Users\TestMachine\AppData\Roaming\SmsOpsHQ\twilio_config.json (empty fields only)
+[16:47:25 INF] Twilio LIVE mode (Account SID prefix: AC413c, Messaging Service: False)
+[16:47:25 INF] SmsOps HQ API starting...
+[16:47:25 DBG] Hosting starting
+[16:47:25 INF] User profile is available. Using 'C:\Users\TestMachine\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+[16:47:25 INF] Now listening on: http://localhost:5000
+[16:47:25 INF] Application started. Press Ctrl+C to shut down.
+[16:47:25 INF] Hosting environment: Development
+[16:47:25 INF] Content root path: C:\Users\TestMachine\Videos\SmsOpsHQ\SmsOpsHQ.Api
+[16:47:25 DBG] Hosting started
+[16:47:29 WRN] Hub SignalR connect failed: No connection could be made because the target machine actively refused it. (localhost:9999). Retrying in 5s
+[16:47:33 INF] Merged Twilio settings from C:\Users\TestMachine\AppData\Roaming\SmsOpsHQ\twilio_config.json (empty fields only)
+[16:47:33 INF] Executed DbCommand (3ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Outbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Inbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COALESCE(SUM("t"."UnreadCount"), 0)
+FROM "Threads" AS "t"
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Customers" AS "c"
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Tickets" AS "t"
+WHERE "t"."Active" = 1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "u"."LastLoginAt"
+FROM "Users" AS "u"
+WHERE "u"."LastLoginAt" IS NOT NULL
+ORDER BY "u"."LastLoginAt" DESC
+LIMIT 1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "s"."StoreName"
+FROM "Stores" AS "s"
+ORDER BY "s"."StoreId"
+LIMIT 1
+[16:47:33 WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Customers
+) AS "t"
+LIMIT 1
+[16:47:33 WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[16:47:33 INF] Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Tickets
+) AS "t"
+LIMIT 1
+[16:47:33 WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[16:47:33 INF] Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Items
+) AS "t"
+LIMIT 1
+[16:47:33 WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[16:47:33 INF] Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM PawnPayments
+) AS "t"
+LIMIT 1
+[16:47:33 WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM CustomerPhones
+) AS "t"
+LIMIT 1
+[16:47:33 INF] Merged Twilio settings from C:\Users\TestMachine\AppData\Roaming\SmsOpsHQ\twilio_config.json (empty fields only)
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Outbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Inbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COALESCE(SUM("t"."UnreadCount"), 0)
+FROM "Threads" AS "t"
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Customers" AS "c"
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Tickets" AS "t"
+WHERE "t"."Active" = 1
+[16:47:33 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "u"."LastLoginAt"
+FROM "Users" AS "u"
+WHERE "u"."LastLoginAt" IS NOT NULL
+ORDER BY "u"."LastLoginAt" DESC
+LIMIT 1
+[16:47:34 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "s"."StoreName"
+FROM "Stores" AS "s"
+ORDER BY "s"."StoreId"
+LIMIT 1
+[16:47:34 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Customers
+) AS "t"
+LIMIT 1
+[16:47:34 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Tickets
+) AS "t"
+LIMIT 1
+[16:47:34 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Items
+) AS "t"
+LIMIT 1
+[16:47:34 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM PawnPayments
+) AS "t"
+LIMIT 1
+[16:47:34 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM CustomerPhones
+) AS "t"
+LIMIT 1
+[16:47:34 INF] Start processing HTTP request POST http://localhost:9999/api/heartbeat
+[16:47:34 INF] Sending HTTP request POST http://localhost:9999/api/heartbeat
+[16:47:38 WRN] Hub heartbeat threw
+System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (localhost:9999)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at Microsoft.Extensions.Http.Logging.LoggingHttpMessageHandler.<SendCoreAsync>g__Core|5_0(HttpRequestMessage request, Boolean useAsync, CancellationToken cancellationToken)
+   at Microsoft.Extensions.Http.Logging.LoggingScopeHttpMessageHandler.<SendCoreAsync>g__Core|5_0(HttpRequestMessage request, Boolean useAsync, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at SmsOpsHQ.Api.HubClient.HeartbeatPusher.SendOnceAsync(CancellationToken cancellationToken) in C:\Users\TestMachine\Videos\SmsOpsHQ\SmsOpsHQ.Api\HubClient\HeartbeatPusher.cs:line 179
+[16:47:39 WRN] Hub SignalR connect failed: No connection could be made because the target machine actively refused it. (localhost:9999). Retrying in 7.5s
+[16:47:50 WRN] Hub SignalR connect failed: No connection could be made because the target machine actively refused it. (localhost:9999). Retrying in 11.25s
+[16:47:50 INF] Merged Twilio settings from C:\Users\TestMachine\AppData\Roaming\SmsOpsHQ\twilio_config.json (empty fields only)
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Outbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Inbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COALESCE(SUM("t"."UnreadCount"), 0)
+FROM "Threads" AS "t"
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Customers" AS "c"
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Tickets" AS "t"
+WHERE "t"."Active" = 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "u"."LastLoginAt"
+FROM "Users" AS "u"
+WHERE "u"."LastLoginAt" IS NOT NULL
+ORDER BY "u"."LastLoginAt" DESC
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "s"."StoreName"
+FROM "Stores" AS "s"
+ORDER BY "s"."StoreId"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Customers
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Tickets
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Items
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM PawnPayments
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM CustomerPhones
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Merged Twilio settings from C:\Users\TestMachine\AppData\Roaming\SmsOpsHQ\twilio_config.json (empty fields only)
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Outbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[@__localStartOfDay_0='?' (DbType = DateTime), @__localEndOfDay_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Messages" AS "m"
+WHERE "m"."Direction" = 'Inbound' AND "m"."CreatedAt" >= @__localStartOfDay_0 AND "m"."CreatedAt" < @__localEndOfDay_1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COALESCE(SUM("t"."UnreadCount"), 0)
+FROM "Threads" AS "t"
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Customers" AS "c"
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT COUNT(*)
+FROM "Tickets" AS "t"
+WHERE "t"."Active" = 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "u"."LastLoginAt"
+FROM "Users" AS "u"
+WHERE "u"."LastLoginAt" IS NOT NULL
+ORDER BY "u"."LastLoginAt" DESC
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "s"."StoreName"
+FROM "Stores" AS "s"
+ORDER BY "s"."StoreId"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Customers
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Tickets
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM Items
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM PawnPayments
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT "t"."Value"
+FROM (
+    SELECT COUNT(*) AS Value FROM CustomerPhones
+) AS "t"
+LIMIT 1
+[16:47:50 INF] Start processing HTTP request POST http://localhost:9999/api/heartbeat
+[16:47:50 INF] Sending HTTP request POST http://localhost:9999/api/heartbeat
+[16:47:54 WRN] Hub heartbeat threw
+System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (localhost:9999)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at Microsoft.Extensions.Http.Logging.LoggingHttpMessageHandler.<SendCoreAsync>g__Core|5_0(HttpRequestMessage request, Boolean useAsync, CancellationToken cancellationToken)
+   at Microsoft.Extensions.Http.Logging.LoggingScopeHttpMessageHandler.<SendCoreAsync>g__Core|5_0(HttpRequestMessage request, Boolean useAsync, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at SmsOpsHQ.Api.HubClient.HeartbeatPusher.SendOnceAsync(CancellationToken cancellationToken) in C:\Users\TestMachine\Videos\SmsOpsHQ\SmsOpsHQ.Api\HubClient\HeartbeatPusher.cs:line 179

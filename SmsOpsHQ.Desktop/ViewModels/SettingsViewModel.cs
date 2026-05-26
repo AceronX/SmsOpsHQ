@@ -347,9 +347,49 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _qualityErrorMessage = string.Empty;
 
+    // Tab N (added in M4): HQ Hub connection
+    [ObservableProperty]
+    private bool _hubEnabled;
+
+    [ObservableProperty]
+    private string _hubUrl = string.Empty;
+
+    [ObservableProperty]
+    private string _hubStoreKey = string.Empty;
+
+    [ObservableProperty]
+    private string _hubDeploymentId = string.Empty;
+
+    [ObservableProperty]
+    private int _hubIntervalSeconds = 60;
+
+    [ObservableProperty]
+    private bool _showHubStoreKey;
+
+    [ObservableProperty]
+    private bool _hubSaveBusy;
+
+    [ObservableProperty]
+    private bool _hubTestBusy;
+
+    [ObservableProperty]
+    private string _hubSaveMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _hubTestMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _hubTestSuccess;
+
+    [ObservableProperty]
+    private string _hubConfigPath = string.Empty;
+
+    private readonly HubConfigService? _hubConfig;
+
     public SettingsViewModel(ApiClient apiClient, AppState appState, TwilioConfigService twilioConfig,
         XBlueService xblueService, XBlueConfigService xblueConfig,
-        CustomerQualityQueryService? qualityQueryService = null)
+        CustomerQualityQueryService? qualityQueryService = null,
+        HubConfigService? hubConfig = null)
     {
         _apiClient = apiClient;
         _appState = appState;
@@ -357,10 +397,108 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _xblueService = xblueService;
         _xblueConfig = xblueConfig;
         _qualityQueryService = qualityQueryService;
+        _hubConfig = hubConfig;
         SelectedStoreId = _appState.CurrentStoreId;
         LoadTwilioConfigFromFile();
         LoadXBlueIntoViewModel();
+        LoadHubConfigFromFile();
     }
+
+    private void LoadHubConfigFromFile()
+    {
+        if (_hubConfig is null) return;
+        HubConfigService.HubConfigModel m = _hubConfig.Load();
+        HubEnabled = m.Enabled;
+        HubUrl = m.Url;
+        HubStoreKey = m.StoreKey;
+        HubDeploymentId = m.DeploymentId;
+        HubIntervalSeconds = m.IntervalSeconds <= 0 ? 60 : m.IntervalSeconds;
+        HubConfigPath = _hubConfig.ConfigFilePath;
+    }
+
+    [RelayCommand]
+    private async Task SaveHubConfig()
+    {
+        if (_hubConfig is null) return;
+        HubSaveBusy = true;
+        HubSaveMessage = string.Empty;
+        try
+        {
+            // Trim everything that isn't intentionally whitespace. The store key
+            // is base64-ish (no leading/trailing whitespace ever expected).
+            HubConfigService.HubConfigModel m = new()
+            {
+                Enabled = HubEnabled,
+                Url = (HubUrl ?? string.Empty).Trim(),
+                StoreKey = (HubStoreKey ?? string.Empty).Trim(),
+                DeploymentId = (HubDeploymentId ?? string.Empty).Trim(),
+                IntervalSeconds = HubIntervalSeconds <= 0 ? 60 : HubIntervalSeconds
+            };
+            await Task.Run(() => _hubConfig.Save(m));
+            HubSaveMessage = "Saved. Restart the application for the new settings to take effect.";
+        }
+        catch (Exception ex)
+        {
+            HubSaveMessage = "Save failed: " + ex.Message;
+        }
+        finally
+        {
+            HubSaveBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task TestHubConnection()
+    {
+        HubTestBusy = true;
+        HubTestMessage = string.Empty;
+        HubTestSuccess = false;
+        try
+        {
+            string url = (HubUrl ?? string.Empty).Trim().TrimEnd('/');
+            string key = (HubStoreKey ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(key))
+            {
+                HubTestMessage = "Enter Hub URL and Store Key first.";
+                return;
+            }
+
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            http.DefaultRequestHeaders.Add("X-Store-Key", key);
+            using System.Net.Http.HttpResponseMessage response = await http.GetAsync($"{url}/api/heartbeat/echo");
+
+            if (response.IsSuccessStatusCode)
+            {
+                string body = await response.Content.ReadAsStringAsync();
+                using JsonDocument doc = JsonDocument.Parse(body);
+                string storeName = doc.RootElement.TryGetProperty("store_name", out JsonElement n)
+                    ? n.GetString() ?? "(unknown)"
+                    : "(unknown)";
+                int storeId = doc.RootElement.TryGetProperty("store_id", out JsonElement i) && i.TryGetInt32(out int sid) ? sid : 0;
+                HubTestMessage = $"OK -- Hub recognized this key as store '{storeName}' (id {storeId}).";
+                HubTestSuccess = true;
+            }
+            else if ((int)response.StatusCode == 401)
+            {
+                HubTestMessage = "Failed: Hub rejected the Store Key (401). Re-copy the key from HQ.";
+            }
+            else
+            {
+                HubTestMessage = $"Failed: Hub returned HTTP {(int)response.StatusCode}.";
+            }
+        }
+        catch (Exception ex)
+        {
+            HubTestMessage = "Failed: " + ex.Message;
+        }
+        finally
+        {
+            HubTestBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleShowHubStoreKey() => ShowHubStoreKey = !ShowHubStoreKey;
 
     private void LoadXBlueIntoViewModel()
     {

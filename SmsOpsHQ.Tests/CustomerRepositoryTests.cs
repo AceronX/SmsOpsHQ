@@ -22,7 +22,7 @@ public class CustomerRepositoryTests : IDisposable
 
         _db = new AppDbContext(options);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         StoreEntity store = new StoreEntity { StoreName = "Test Store", IsActive = true };
         _db.Stores.Add(store);

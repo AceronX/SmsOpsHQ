@@ -5,7 +5,7 @@ namespace SmsOpsHQ.Infrastructure.Persistence;
 
 // EF Core database context for the SmsOps HQ SQLite database.
 // Tables: Stores, Users, TwilioNumbers; Customers, Tickets, Items, PawnPayments, CustomerPhones; Threads, Messages, Templates; OptOuts, QuarantinedMessages; SmsReminders, SmsExcluded, SmsUnsubscribed.
-// See docs/XPD_SYNC_SCHEMA.md for XPD-synced vs app-built tables.
+// Schema is managed with EF Core migrations (see Persistence/Migrations).
 public sealed class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)

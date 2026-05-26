@@ -25,6 +25,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.*" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.*" />
+    <!-- SignalR client used by HubSignalRClient to maintain a persistent connection to HQ. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

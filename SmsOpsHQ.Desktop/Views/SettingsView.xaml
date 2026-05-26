@@ -1677,6 +1677,140 @@
                     </ScrollViewer>
                 </TabItem>
 
+                <!-- HQ Hub: connect this store to the central monitoring console. -->
+                <TabItem Header="HQ Hub" Loaded="HubTab_Loaded">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+                        <StackPanel MaxWidth="600">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="&#xE968;" FontFamily="{StaticResource IconFont}"
+                                           FontSize="18" Foreground="{StaticResource Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="HQ monitoring console" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Pushes a heartbeat to the central HQ Hub every minute so the operations team can see this store online and trigger remote actions (XPD sync, etc.)."
+                                       FontSize="12" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                            <Border Background="{StaticResource Surface}" CornerRadius="10" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" Padding="20,18" Margin="0,0,0,20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <CheckBox IsChecked="{Binding HubEnabled}" Content="Enable HQ Hub reporting"
+                                              FontSize="13" FontWeight="SemiBold"
+                                              Foreground="{StaticResource TextPrimary}" Margin="0,0,0,16"/>
+
+                                    <TextBlock Text="Hub URL" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding HubUrl, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="12,10" FontSize="14" Margin="0,0,0,4"
+                                             ToolTip="e.g. https://hq.example.com or http://localhost:5290"/>
+                                    <TextBlock Text="Base URL of the HQ Hub server (no trailing slash)."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,0,0,16"/>
+
+                                    <TextBlock Text="Store Key (X-Store-Key)" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                            BorderThickness="1" CornerRadius="6" Margin="0,0,0,4">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <PasswordBox x:Name="HubStoreKeyPasswordBox" Grid.Column="0"
+                                                         Style="{StaticResource PasswordFieldPasswordBox}"
+                                                         Padding="12,10,4,10" FontSize="14"
+                                                         PasswordChanged="HubStoreKeyPassword_PasswordChanged"
+                                                         Visibility="{Binding ShowHubStoreKey, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+                                            <TextBox x:Name="HubStoreKeyTextBox" Grid.Column="0"
+                                                     Style="{StaticResource PasswordFieldTextBox}"
+                                                     Text="{Binding HubStoreKey, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="12,10,4,10" FontSize="14"
+                                                     Visibility="{Binding ShowHubStoreKey, Converter={StaticResource BoolToVisibility}}"/>
+                                            <Button Grid.Column="1" Command="{Binding ToggleShowHubStoreKeyCommand}"
+                                                    Style="{StaticResource PasswordEyeButton}"
+                                                    VerticalAlignment="Stretch" ToolTip="Show / hide key">
+                                                <TextBlock Text="&#xE7B3;"
+                                                           FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Text="Per-store API key generated by HQ when this store was added."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,0,0,16"/>
+
+                                    <TextBlock Text="Deployment ID" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding HubDeploymentId, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="12,10" FontSize="14" Margin="0,0,0,4"
+                                             ToolTip="Stable identifier for this physical install (e.g. main-counter-pc, store-3-back)."/>
+                                    <TextBlock Text="Must match the Deployment ID configured for this store on HQ."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,0,0,16"/>
+
+                                    <TextBlock Text="Heartbeat interval (seconds)" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding HubIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="12,10" FontSize="14" Margin="0,0,0,4" Width="120" HorizontalAlignment="Left"
+                                             ToolTip="How often to push a heartbeat. 60 is a good default."/>
+                                    <TextBlock Text="60 is the recommended value (also used as the offline threshold on HQ)."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,0,0,20"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button Command="{Binding TestHubConnectionCommand}"
+                                                IsEnabled="{Binding HubTestBusy, Converter={StaticResource InvertBool}, FallbackValue=True}"
+                                                Padding="16,10" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE968;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Margin="0,0,8,0"
+                                                           Foreground="{StaticResource TextPrimary}"/>
+                                                <TextBlock Text="Test connection" FontSize="13"
+                                                           Foreground="{StaticResource TextPrimary}"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding SaveHubConfigCommand}"
+                                                IsEnabled="{Binding HubSaveBusy, Converter={StaticResource InvertBool}, FallbackValue=True}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Padding="16,10" Margin="10,0,0,0" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="13" Foreground="{StaticResource TextOnPrimary}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="Save" FontSize="13" Foreground="{StaticResource TextOnPrimary}"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- Test connection result -->
+                                    <TextBlock Text="{Binding HubTestMessage}" FontSize="12" Margin="0,8,0,0"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HubTestMessage, Converter={StaticResource StringToVisibility}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource Error}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HubTestSuccess}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Success}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <!-- Save result -->
+                                    <TextBlock Text="{Binding HubSaveMessage}" FontSize="12" Margin="0,4,0,0"
+                                               Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"
+                                               Visibility="{Binding HubSaveMessage, Converter={StaticResource StringToVisibility}}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap">
+                                <Run Text="Settings are saved to "/>
+                                <Run Text="{Binding HubConfigPath, Mode=OneWay}" FontFamily="Consolas"/>
+                                <Run Text=" and read by the bundled API on next start."/>
+                            </TextBlock>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
             </TabControl>
         </Grid>
     </Border>

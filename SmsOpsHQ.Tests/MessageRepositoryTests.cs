@@ -24,7 +24,7 @@ public class MessageRepositoryTests : IDisposable
 
         _db = new AppDbContext(options);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         // Seed store
         StoreEntity store = new StoreEntity { StoreName = "Test Store", IsActive = true };

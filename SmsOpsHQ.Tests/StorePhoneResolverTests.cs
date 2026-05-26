@@ -23,7 +23,7 @@ public class StorePhoneResolverTests : IDisposable
 
         _db = new AppDbContext(dbOptions);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         // Seed store with a Twilio number.
         StoreEntity store = new StoreEntity

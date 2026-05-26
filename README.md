@@ -22,7 +22,7 @@ SmsOpsHQ/
   SmsOpsHQ.Infrastructure/  EF Core persistence, repositories, services (Twilio, sync, auth)
   SmsOpsHQ.Api/             ASP.NET Core Web API -- JWT auth, SignalR, Swagger
   SmsOpsHQ.Desktop/         WPF desktop client (MVVM, CommunityToolkit.Mvvm)
-  SmsOpsHQ.Tests/           xUnit test suite (383 tests)
+  SmsOpsHQ.Tests/           xUnit test suite (388 tests)
 ```
 
 **Core** defines the contracts. **Infrastructure** implements them. **Api** exposes HTTP endpoints. **Desktop** is the user-facing client. **Tests** covers everything.
@@ -70,7 +70,7 @@ Change these immediately in any non-development environment.
 
 ## Testing
 
-The test suite has **383 tests** organized into three categories:
+The test suite has **388 tests** organized into three categories:
 
 ### Run All Tests
 
@@ -196,6 +196,12 @@ All settings are in `SmsOpsHQ.Api/appsettings.json`.
 | `Jwt:Audience` | Token audience | `SmsOpsHQ` |
 | `Jwt:ExpiresInMinutes` | Token lifetime | `60` |
 | `Cors:AllowedOrigins` | Allowed origins (production) | localhost only |
+| `Hub:Enabled` | Report heartbeats to SmsOpsHQ.Hub | `false` |
+| `Hub:Url` | Hub base URL | — |
+| `Hub:StoreKey` | Per-store API key from Hub | — |
+| `Hub:DeploymentId` | Store deployment ID from Hub | — |
+
+Runtime overlays in `%AppData%\SmsOpsHQ\`: `twilio_config.json`, `xpd_config.json`, `hub_config.json` (merged at startup; restart API after editing).
 
 ### Environment Variables
 
@@ -217,7 +223,14 @@ Add to `appsettings.json`:
 }
 ```
 
-Set the inbound webhook in the Twilio console to `https://your-domain/api/webhooks/twilio/inbound` and the status callback to `https://your-domain/api/webhooks/twilio/status`.
+Configure Twilio webhooks on your Messaging Service or phone number:
+
+| Callback | URL |
+|----------|-----|
+| Inbound SMS | `https://your-domain/twilio-sms` |
+| Status updates | `https://your-domain/twilio-sms/status` |
+
+Credentials can also be stored in `%AppData%\SmsOpsHQ\twilio_config.json` (merged at API startup when `appsettings` fields are empty).
 
 ---
 
@@ -243,11 +256,35 @@ All endpoints require JWT Bearer auth except login, health, and root.
 
 **Sync:** `POST /api/sync/full`, `GET /api/sync/status`, `GET /api/sync/progress`
 
-See [docs/XPD_SYNC_SCHEMA.md](docs/XPD_SYNC_SCHEMA.md) for XPD vs app tables (Customers, Tickets, Items, PawnPayments from XPD; CustomerPhones is an index built from customer phones).
+**XPD data model (summary):** Customers, Tickets, Items, and PawnPayments are synced from the pawn POS (XPD). CustomerPhones is an application-built index from customer phone fields for fast identity matching. Messaging tables (Threads, Messages, Templates) are owned by SmsOpsHQ.
 
 **Health:** `GET /health`
 
 **Real-time:** SignalR hub at `/hubs/smsops` -- pushes new messages, status updates, and thread changes to connected clients.
+
+**Reviews:** Review channels, review requests, and optional automation for new XPD tickets.
+
+**HQ Hub (optional):** When `Hub:Enabled` is true, the API reports heartbeats and maintains a SignalR agent connection to [SmsOpsHQ.Hub](../SmsOpsHQ.Hub) for central monitoring. See the Hub README for setup.
+
+---
+
+## Database and migrations
+
+Schema is managed with **EF Core migrations** in `SmsOpsHQ.Infrastructure/Persistence/Migrations/`. On startup, `SeedData.InitializeAsync` applies pending migrations automatically.
+
+**New installs:** `MigrateAsync` creates the full schema, then seeds the default HQ admin user.
+
+**Existing databases** created before migrations (legacy `EnsureCreated` + manual SQL upgrades) are detected at startup: idempotent legacy patches run once, the baseline migration is recorded in `__EFMigrationsHistory`, and future changes ship as normal EF migrations.
+
+**Add a migration** (after changing `AppDbContext` or entities):
+
+```powershell
+cd SmsOpsHQ
+dotnet ef migrations add <MigrationName> --project SmsOpsHQ.Infrastructure --startup-project SmsOpsHQ.Api --output-dir Persistence/Migrations
+dotnet ef database update --project SmsOpsHQ.Infrastructure --startup-project SmsOpsHQ.Api
+```
+
+Default SQLite path: `Database:SqlitePath` or `ConnectionStrings:DefaultConnection` in `SmsOpsHQ.Api/appsettings.json` (typically `smsops.db`).
 
 ---
 
@@ -327,7 +364,8 @@ sc.exe start SmsOpsHQ
 - [ ] `Cors:AllowedOrigins` set to actual production origins
 - [ ] Default admin password changed
 - [ ] SQLite database file path is writable
-- [ ] Twilio webhook URLs pointed to public API address
+- [ ] Twilio webhook URLs pointed to public API address (`/twilio-sms` and `/twilio-sms/status`)
+- [ ] If using HQ Hub: `Hub:StoreKey` and `Hub:Url` configured on each store API
 
 ### Side-by-Side with Legacy Python API
 
@@ -368,13 +406,15 @@ Desktop (WPF/MVVM)  -->  API (ASP.NET Core)  -->  Infrastructure (EF Core + Serv
 ### Adding a New Feature
 
 1. Define the entity in `Core/Entities/`
-2. Add the repository interface in `Core/Repositories/`
-3. Implement the repository in `Infrastructure/Repositories/`
-4. Create the API controller in `Api/Controllers/`
-5. Add a ViewModel in `Desktop/ViewModels/`
-6. Create the View in `Desktop/Views/`
-7. Register the DataTemplate mapping in `Desktop/App.xaml`
-8. Write tests in `Tests/`
+2. Add EF entity mapping in `Infrastructure/Persistence/Entities/` and `AppDbContext`
+3. Add an EF migration (`dotnet ef migrations add ...`)
+4. Add the repository interface in `Core/Repositories/`
+5. Implement the repository in `Infrastructure/Repositories/`
+6. Create the API controller in `Api/Controllers/`
+7. Add a ViewModel in `Desktop/ViewModels/`
+8. Create the View in `Desktop/Views/`
+9. Register the DataTemplate mapping in `Desktop/App.xaml`
+10. Write tests in `Tests/`
 
 ### Key Patterns
 

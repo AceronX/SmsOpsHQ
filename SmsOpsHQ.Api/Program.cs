@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
+using SmsOpsHQ.Api.HubClient;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Infrastructure;
 using SmsOpsHQ.Infrastructure.Hubs;
@@ -26,6 +27,19 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+    // Overlay the operator-managed Hub settings (%AppData%\SmsOpsHQ\hub_config.json)
+    // on top of appsettings.json BEFORE any service uses IConfiguration["Hub:..."].
+    // The shape is { "Hub": { "Enabled":..., "Url":..., "StoreKey":..., ... } }
+    // so values slot in at the same key path as appsettings. reloadOnChange is
+    // off intentionally -- HeartbeatPusher and HubSignalRClient cache the values
+    // at construction time, so a hot-edit wouldn't take effect anyway. The
+    // operator restarts the app after editing.
+    {
+        string hubAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string hubConfigPath = System.IO.Path.Combine(hubAppData, "SmsOpsHQ", "hub_config.json");
+        builder.Configuration.AddJsonFile(hubConfigPath, optional: true, reloadOnChange: false);
+    }
 
     // Replace default logging with Serilog.
     builder.Host.UseSerilog((HostBuilderContext context, LoggerConfiguration loggerConfig) =>
@@ -198,6 +212,19 @@ try
         });
     });
 
+    // HeartbeatPusher: periodically reports this store's status to the HQ master
+    // console. Disabled by default; operators set Hub:Enabled / Hub:Url /
+    // Hub:StoreKey in appsettings.json to register the store with HQ.
+    // Singleton because it owns the periodic Timer + cumulative success/failure
+    // counters, and HttpClientFactory keeps actual HttpClient instances cheap.
+    builder.Services.AddHttpClient();
+    builder.Services.AddSingleton<IHeartbeatPusher, HeartbeatPusher>();
+    // M3: SignalR-based agent client. Owns the heartbeat schedule when Hub
+    // is configured and falls back to HeartbeatPusher's REST POST when SignalR
+    // is unreachable. The pusher is still registered above because the SignalR
+    // client delegates payload-building and REST fallback to it.
+    builder.Services.AddSingleton<IHubSignalRClient, HubSignalRClient>();
+
     // M46: Rate limiting on login endpoint (5 attempts per minute per IP).
     builder.Services.AddRateLimiter(options =>
     {
@@ -321,6 +348,15 @@ try
     // it on/off at runtime via /api/sync/scheduler/start|stop.
     IXpdSyncScheduler xpdSyncScheduler = app.Services.GetRequiredService<IXpdSyncScheduler>();
     xpdSyncScheduler.Start();
+
+    // HQ heartbeat pusher: also no-ops cleanly when disabled, so calling
+    // Start() unconditionally is safe at boot. Logs once and exits if Hub:Url
+    // or Hub:StoreKey is missing.
+    // SignalR client is the primary heartbeat path; it falls back to REST via
+    // the IHeartbeatPusher when the connection is down. We do NOT call
+    // heartbeatPusher.Start() anymore -- doing both would double-send.
+    IHubSignalRClient hubSignalR = app.Services.GetRequiredService<IHubSignalRClient>();
+    hubSignalR.Start();
 
     // Surface Twilio mode at startup so the operator notices immediately if outbound SMS
     // is going to be silently mocked (e.g. credentials not yet configured).

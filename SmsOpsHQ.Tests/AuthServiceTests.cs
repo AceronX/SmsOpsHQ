@@ -26,7 +26,7 @@ public class AuthServiceTests : IDisposable
 
         _db = new AppDbContext(dbOptions);
         _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
+        _db.Database.Migrate();
 
         // Seed a store for StoreId FK tests.
         StoreEntity testStore = new StoreEntity
