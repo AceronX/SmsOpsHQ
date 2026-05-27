@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -41,6 +42,15 @@ public interface IHeartbeatPusher
     int IntervalSeconds { get; }
     /// <summary>True when Hub:Enabled=true and the URL/key are present.</summary>
     bool IsConfigured { get; }
+
+    /// <summary>
+    /// Re-read Hub settings from <c>%AppData%\SmsOpsHQ\hub_config.json</c>
+    /// (falling back to the values that were in <see cref="IConfiguration"/>
+    /// at startup when the overlay file is missing). Used by the
+    /// <c>POST /api/hub/reload</c> endpoint so the operator does not have to
+    /// restart the app after saving Hub settings in the desktop UI.
+    /// </summary>
+    void Reload();
 }
 
 public sealed class HeartbeatPusherStatus
@@ -68,14 +78,18 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<HeartbeatPusher> _logger;
+    private readonly IConfiguration _configuration;
     private readonly DateTime _startedUtc = DateTime.UtcNow;
     private readonly object _lock = new();
 
-    private readonly bool _enabled;
-    private readonly string _hubUrl;
-    private readonly string _storeKey;
-    private readonly string _deploymentId;
-    private readonly int _intervalSeconds;
+    // Mutable: Reload() swaps these atomically (one writer holding _lock; readers
+    // see consistent individual fields, and the brief race between fields during a
+    // reload is acceptable for an operator-triggered config change.
+    private bool _enabled;
+    private string _hubUrl = string.Empty;
+    private string _storeKey = string.Empty;
+    private string _deploymentId = string.Empty;
+    private int _intervalSeconds = 60;
 
     private Timer? _timer;
     private bool _running;
@@ -91,17 +105,14 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
         IServiceScopeFactory scopeFactory,
         ILogger<HeartbeatPusher> logger)
     {
+        _configuration = configuration;
         _httpClientFactory = httpClientFactory;
         _scopeFactory = scopeFactory;
         _logger = logger;
 
-        IConfigurationSection hub = configuration.GetSection("Hub");
-        _enabled = hub.GetValue("Enabled", false);
-        _hubUrl = (hub["Url"] ?? string.Empty).TrimEnd('/');
-        _storeKey = hub["StoreKey"] ?? string.Empty;
-        _deploymentId = hub["DeploymentId"] ?? string.Empty;
-        _intervalSeconds = hub.GetValue("IntervalSeconds", 60);
-        if (_intervalSeconds < 10) _intervalSeconds = 10; // sanity floor
+        // Same logic as Reload() but without touching the timer (we haven't been
+        // Start()ed yet).
+        ApplySettings(LoadSettings(GetDefaultOverlayPath()));
     }
 
     public void Start()
@@ -363,4 +374,149 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
     }
 
     public void Dispose() => Stop();
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Reload (M5)
+    //
+    // The desktop Settings UI writes hub_config.json and then calls
+    // POST /api/hub/reload, which calls ReloadAsync on the SignalR client,
+    // which calls this. We re-read the on-disk overlay (authoritative when
+    // present) and fall back to whatever IConfiguration had at startup so
+    // appsettings-only deployments still behave correctly after a "reload".
+    //
+    // The timer is restarted only if Start() had already been called before.
+    // In the SignalR-enabled path Start() is never called (the SignalR client
+    // owns the schedule), so for production this method just updates fields.
+    // We still preserve the timer-restart branch for completeness / tests.
+    public void Reload()
+    {
+        ReloadFromPath(GetDefaultOverlayPath());
+    }
+
+    /// <summary>Test seam: reload from an explicit overlay path.</summary>
+    internal void ReloadFromPath(string overlayPath)
+    {
+        HubReloadSettings next = LoadSettings(overlayPath);
+        lock (_lock)
+        {
+            bool wasRunning = _running;
+            int previousInterval = _intervalSeconds;
+            if (wasRunning)
+            {
+                _timer?.Dispose();
+                _timer = null;
+                _running = false;
+            }
+
+            ApplySettings(next);
+            _logger.LogInformation(
+                "Hub heartbeat reloaded: enabled={Enabled}, url={Url}, interval={Interval}s, deployment={Deployment}",
+                _enabled,
+                string.IsNullOrEmpty(_hubUrl) ? "(unset)" : _hubUrl,
+                _intervalSeconds,
+                string.IsNullOrEmpty(_deploymentId) ? "(unset)" : _deploymentId);
+
+            if (wasRunning && IsConfigured)
+            {
+                // Restart the timer with the (possibly new) interval. We deliberately
+                // skip the 5s warm-up delay used in Start(): the API has been running
+                // for a while at this point, so kicking off immediately is fine.
+                _timer = new Timer(OnTimerFired, null,
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(_intervalSeconds));
+                _running = true;
+                if (previousInterval != _intervalSeconds)
+                    _logger.LogInformation("Hub heartbeat interval changed: {Old}s -> {New}s",
+                        previousInterval, _intervalSeconds);
+            }
+        }
+    }
+
+    private void ApplySettings(HubReloadSettings s)
+    {
+        _enabled = s.Enabled;
+        _hubUrl = (s.Url ?? string.Empty).TrimEnd('/');
+        _storeKey = s.StoreKey ?? string.Empty;
+        _deploymentId = s.DeploymentId ?? string.Empty;
+        int interval = s.IntervalSeconds;
+        if (interval < 10) interval = 10;
+        _intervalSeconds = interval;
+    }
+
+    /// <summary>
+    /// Build the effective Hub settings: file overlay if it exists, else
+    /// whatever IConfiguration had at startup (which already includes
+    /// appsettings.json and possibly a stale overlay snapshot).
+    /// </summary>
+    private HubReloadSettings LoadSettings(string overlayPath)
+    {
+        HubReloadSettings? overlay = TryReadOverlay(overlayPath);
+        if (overlay is not null)
+            return overlay;
+
+        IConfigurationSection hub = _configuration.GetSection("Hub");
+        return new HubReloadSettings
+        {
+            Enabled = hub.GetValue("Enabled", false),
+            Url = hub["Url"] ?? string.Empty,
+            StoreKey = hub["StoreKey"] ?? string.Empty,
+            DeploymentId = hub["DeploymentId"] ?? string.Empty,
+            IntervalSeconds = hub.GetValue("IntervalSeconds", 60)
+        };
+    }
+
+    /// <summary>
+    /// Read the hub_config.json overlay file written by the desktop UI.
+    /// Returns null if the file is missing or unreadable (caller falls back
+    /// to IConfiguration). Mirrors the shape the desktop HubConfigService writes.
+    /// </summary>
+    private HubReloadSettings? TryReadOverlay(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            return null;
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (!doc.RootElement.TryGetProperty("Hub", out JsonElement hub)
+                || hub.ValueKind != JsonValueKind.Object)
+                return null;
+
+            HubReloadSettings s = new()
+            {
+                Enabled = hub.TryGetProperty("Enabled", out JsonElement en)
+                          && en.ValueKind == JsonValueKind.True,
+                Url = hub.TryGetProperty("Url", out JsonElement u) && u.ValueKind == JsonValueKind.String
+                    ? u.GetString() ?? string.Empty : string.Empty,
+                StoreKey = hub.TryGetProperty("StoreKey", out JsonElement k) && k.ValueKind == JsonValueKind.String
+                    ? k.GetString() ?? string.Empty : string.Empty,
+                DeploymentId = hub.TryGetProperty("DeploymentId", out JsonElement d) && d.ValueKind == JsonValueKind.String
+                    ? d.GetString() ?? string.Empty : string.Empty,
+                IntervalSeconds = hub.TryGetProperty("IntervalSeconds", out JsonElement i)
+                                  && i.ValueKind == JsonValueKind.Number
+                                  && i.TryGetInt32(out int iv) ? iv : 60
+            };
+            return s;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read Hub overlay at {Path}; falling back to IConfiguration", path);
+            return null;
+        }
+    }
+
+    private static string GetDefaultOverlayPath()
+    {
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return Path.Combine(appData, "SmsOpsHQ", "hub_config.json");
+    }
+
+    private sealed class HubReloadSettings
+    {
+        public bool Enabled { get; init; }
+        public string Url { get; init; } = string.Empty;
+        public string StoreKey { get; init; } = string.Empty;
+        public string DeploymentId { get; init; } = string.Empty;
+        public int IntervalSeconds { get; init; } = 60;
+    }
 }

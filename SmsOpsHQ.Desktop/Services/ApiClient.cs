@@ -473,6 +473,35 @@ public sealed class ApiClient : IDisposable
         }
     }
 
+    // ── HQ Hub ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tells the local API to re-read hub_config.json and rebuild its SignalR
+    /// connection in-place. Used by Settings &gt; HQ Hub &gt; Save so the operator
+    /// does not have to restart the app for new Hub credentials to take effect.
+    /// </summary>
+    public async Task<HubReloadResult> ReloadHubAsync()
+    {
+        JsonElement result = await PostJsonAsync("/api/hub/reload");
+        return new HubReloadResult
+        {
+            Enabled = result.TryGetProperty("enabled", out JsonElement en) && en.GetBoolean(),
+            IsConnected = result.TryGetProperty("isConnected", out JsonElement ic) && ic.GetBoolean(),
+            HubUrl = result.TryGetProperty("hubUrl", out JsonElement u) ? u.GetString() ?? string.Empty : string.Empty,
+            DeploymentId = result.TryGetProperty("deploymentId", out JsonElement d) ? d.GetString() ?? string.Empty : string.Empty,
+            IntervalSeconds = result.TryGetProperty("intervalSeconds", out JsonElement i) && i.TryGetInt32(out int s) ? s : 0
+        };
+    }
+
+    public sealed class HubReloadResult
+    {
+        public bool Enabled { get; init; }
+        public bool IsConnected { get; init; }
+        public string HubUrl { get; init; } = string.Empty;
+        public string DeploymentId { get; init; } = string.Empty;
+        public int IntervalSeconds { get; init; }
+    }
+
     // ── HTTP helpers ─────────────────────────────────────────────────
 
     private async Task<JsonElement> GetJsonAsync(string url)

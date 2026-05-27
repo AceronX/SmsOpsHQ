@@ -27,6 +27,17 @@ public interface IHubSignalRClient
     void Start();
     void Stop();
     bool IsConnected { get; }
+
+    /// <summary>
+    /// Tear down the current connection (if any), re-read Hub settings from
+    /// the on-disk overlay, and re-Start. Used by the
+    /// <c>POST /api/hub/reload</c> endpoint so the desktop UI's "Save" button
+    /// takes effect immediately without an app restart.
+    ///
+    /// If the new settings have <c>Enabled=false</c> or are missing
+    /// Url/StoreKey, this leaves the client cleanly disconnected.
+    /// </summary>
+    Task ReloadAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
@@ -118,6 +129,30 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
             }
             _logger.LogInformation("Hub SignalR client stopped");
         }
+    }
+
+    public async Task ReloadAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Hub SignalR client reload requested");
+
+        // Tear down the current connection first. Stop() handles the "not started"
+        // case (e.g. previous Reload disabled us) as a no-op, so this is safe.
+        Stop();
+
+        // Brief yield so the fire-and-forget DisposeAsync inside Stop() has a
+        // chance to actually close the WebSocket before we open a new one. This
+        // is cosmetic only -- correctness doesn't depend on it -- but it keeps
+        // the log timeline readable.
+        try { await Task.Delay(50, cancellationToken); }
+        catch (OperationCanceledException) { return; }
+
+        // Refresh the pusher's cached fields from the on-disk overlay.
+        _pusher.Reload();
+
+        // Restart. If the new config has Enabled=false or missing Url/StoreKey,
+        // Start() will log "disabled" and leave us cleanly disconnected -- which
+        // is exactly what the operator just asked for.
+        Start();
     }
 
     private HubConnection BuildConnection()

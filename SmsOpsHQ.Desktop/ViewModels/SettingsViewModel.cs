@@ -435,7 +435,41 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 IntervalSeconds = HubIntervalSeconds <= 0 ? 60 : HubIntervalSeconds
             };
             await Task.Run(() => _hubConfig.Save(m));
-            HubSaveMessage = "Saved. Restart the application for the new settings to take effect.";
+
+            // Ask the local API to re-read the file and rebuild its SignalR
+            // connection in-place. This is the live-apply path so the operator
+            // does not have to restart the app. If it fails (older API build,
+            // server crashed, auth expired), fall back to the restart message --
+            // the file is already saved correctly either way.
+            try
+            {
+                ApiClient.HubReloadResult result = await _apiClient.ReloadHubAsync();
+                if (!m.Enabled)
+                {
+                    HubSaveMessage = "Saved. Hub reporting is now disabled.";
+                }
+                else if (result.IsConnected)
+                {
+                    HubSaveMessage = "Saved. Hub reconnected with the new settings -- this store is now online on HQ.";
+                }
+                else if (result.Enabled)
+                {
+                    HubSaveMessage =
+                        "Saved. Hub client restarted, but it has not connected yet. " +
+                        "Check the Hub URL is reachable from this PC and that the Store Key is correct " +
+                        "(use Test connection above to verify).";
+                }
+                else
+                {
+                    HubSaveMessage = "Saved, but Hub is not configured (URL or Store Key is empty).";
+                }
+            }
+            catch (Exception reloadEx)
+            {
+                HubSaveMessage =
+                    "Saved to disk, but live reload failed (" + reloadEx.Message + "). " +
+                    "Restart the application for the new settings to take effect.";
+            }
         }
         catch (Exception ex)
         {
