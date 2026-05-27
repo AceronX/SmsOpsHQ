@@ -55,6 +55,13 @@ public static class DependencyInjection
         services.AddScoped<IRealtimeService, RealtimeService>();
         services.AddScoped<IReviewService, ReviewService>();
 
+        // Phase 4 of the central-Twilio-webhook redesign: the inbound + status
+        // pipelines were extracted from TwilioInboundController / TwilioStatusController
+        // so both the legacy HTTP webhook AND the Hub SignalR receiver (Phase 5)
+        // call the same code. Single source of truth for business rules.
+        services.AddScoped<IInboundSmsProcessor, InboundSmsProcessor>();
+        services.AddScoped<IMessageStatusProcessor, MessageStatusProcessor>();
+
         // Singleton: persists XPD path/credentials to %AppData%\SmsOpsHQ\xpd_config.json
         // and overlays them on top of appsettings.json. Both manual and scheduled
         // sync read through this service so an operator's saved config takes effect

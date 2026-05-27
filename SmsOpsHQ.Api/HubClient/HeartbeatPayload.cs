@@ -28,4 +28,8 @@ public sealed class HeartbeatPayload
 
     public DateTime? LastUserActivityUtc { get; set; }
     public int OnlineUserCount { get; set; }
+
+    // Twilio phones this store owns; HQ uses this to build its phone -> store
+    // routing table for the central Twilio webhook. See SmsOpsHQ.Hub.Contracts.
+    public List<StorePhoneSnapshot> Phones { get; set; } = new();
 }

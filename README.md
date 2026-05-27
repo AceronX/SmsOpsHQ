@@ -22,7 +22,7 @@ SmsOpsHQ/
   SmsOpsHQ.Infrastructure/  EF Core persistence, repositories, services (Twilio, sync, auth)
   SmsOpsHQ.Api/             ASP.NET Core Web API -- JWT auth, SignalR, Swagger
   SmsOpsHQ.Desktop/         WPF desktop client (MVVM, CommunityToolkit.Mvvm)
-  SmsOpsHQ.Tests/           xUnit test suite (388 tests)
+  SmsOpsHQ.Tests/           xUnit test suite (445 tests)
 ```
 
 **Core** defines the contracts. **Infrastructure** implements them. **Api** exposes HTTP endpoints. **Desktop** is the user-facing client. **Tests** covers everything.
@@ -70,7 +70,7 @@ Change these immediately in any non-development environment.
 
 ## Testing
 
-The test suite has **388 tests** organized into three categories:
+The test suite has **445 tests** organized into three categories:
 
 ### Run All Tests
 
@@ -217,20 +217,29 @@ Add to `appsettings.json`:
 {
   "Twilio": {
     "AccountSid": "ACxxxxx",
-    "AuthToken": "your-auth-token",
-    "WebhookBaseUrl": "https://your-public-domain.com"
+    "AuthToken": "your-auth-token"
   }
 }
 ```
 
-Configure Twilio webhooks on your Messaging Service or phone number:
+Credentials can also be stored in `%AppData%\SmsOpsHQ\twilio_config.json` (merged at API startup when `appsettings` fields are empty).
+
+**Outbound** SMS goes directly from this store API to Twilio — no public URL required on the store PC.
+
+**Inbound** SMS in production is delivered through **SmsOpsHQ.Hub**, which exposes a single public webhook URL for the entire deployment. Each store reports its Twilio numbers to the Hub via the heartbeat, the Hub looks up the owning store from the `To` number, and forwards the payload to this store over the existing SignalR agent channel. As a result, **store PCs no longer need ngrok or a per-store public URL in production**.
+
+Twilio webhook configuration (set once, on your Twilio Messaging Service, against the Hub's public URL — not the store):
 
 | Callback | URL |
 |----------|-----|
-| Inbound SMS | `https://your-domain/twilio-sms` |
-| Status updates | `https://your-domain/twilio-sms/status` |
+| Inbound SMS | `https://<your-hub-host>/twilio-sms` |
+| Status updates | `https://<your-hub-host>/twilio-sms/status` |
 
-Credentials can also be stored in `%AppData%\SmsOpsHQ\twilio_config.json` (merged at API startup when `appsettings` fields are empty).
+The local store endpoints at `POST /twilio-sms` and `POST /twilio-sms/status` remain available for development, manual testing, and emergency fallback if the Hub is unreachable. In production they should not be publicly exposed.
+
+See [`docs/CENTRAL_TWILIO_WEBHOOK_REQUIREMENTS.md`](../docs/CENTRAL_TWILIO_WEBHOOK_REQUIREMENTS.md) for the full architecture, [`docs/TWILIO_CUTOVER.md`](../docs/TWILIO_CUTOVER.md) for the one-time switch from per-store ngrok to the central Hub URL, and [`docs/TWILIO_E2E_TEST_SCRIPT.md`](../docs/TWILIO_E2E_TEST_SCRIPT.md) for end-to-end verification.
+
+> **Trade-off:** because inbound SMS now flows through the Hub, the Hub server and its public tunnel must be available **24/7** for incoming messages. **Outbound** SMS is unaffected by Hub downtime. If the store agent is offline when an inbound webhook arrives, the Hub queues it and replays automatically when the agent reconnects.
 
 ---
 
@@ -264,7 +273,7 @@ All endpoints require JWT Bearer auth except login, health, and root.
 
 **Reviews:** Review channels, review requests, and optional automation for new XPD tickets.
 
-**HQ Hub (optional):** When `Hub:Enabled` is true, the API reports heartbeats and maintains a SignalR agent connection to [SmsOpsHQ.Hub](../SmsOpsHQ.Hub) for central monitoring. See the Hub README for setup.
+**HQ Hub (required for inbound SMS in production):** When `Hub:Enabled` is true, the API reports heartbeats (now including the store's Twilio numbers) and maintains a SignalR agent connection to [SmsOpsHQ.Hub](../SmsOpsHQ.Hub). The Hub provides central monitoring, remote commands, and acts as the **single public Twilio webhook endpoint** for the entire deployment, routing inbound SMS and delivery-status callbacks to this store over SignalR. Outbound SMS is independent of the Hub. See the Hub README for setup.
 
 ---
 
@@ -360,12 +369,15 @@ sc.exe start SmsOpsHQ
 - [ ] `dotnet test SmsOpsHQ.sln` passes
 - [ ] `dotnet build -c Release` succeeds
 - [ ] `SMSOPSHQ_JWT_SECRET` env var is set to a strong random value
-- [ ] Twilio credentials configured
+- [ ] Twilio Account SID + Auth Token configured (for **outbound** sending)
 - [ ] `Cors:AllowedOrigins` set to actual production origins
 - [ ] Default admin password changed
 - [ ] SQLite database file path is writable
-- [ ] Twilio webhook URLs pointed to public API address (`/twilio-sms` and `/twilio-sms/status`)
-- [ ] If using HQ Hub: `Hub:StoreKey` and `Hub:Url` configured on each store API
+- [ ] `Hub:Enabled = true` and `Hub:Url`, `Hub:StoreKey`, `Hub:DeploymentId` configured (this store joins the central Hub for monitoring and **inbound SMS**)
+- [ ] Twilio webhook URL configured **on the Hub's public URL** (`https://<hub-host>/twilio-sms` and `/twilio-sms/status`), **not** on this store's public address
+- [ ] No ngrok / per-store public tunnel started on the store PC (no longer required in the central-Hub architecture)
+- [ ] At least one row exists in `TwilioNumbers` for this store (otherwise the Hub will not know to route inbound SMS here)
+- [ ] After first heartbeat, the **Stores → Store detail** page on the Hub shows this store's number(s) without the "No Twilio numbers reported" warning
 
 ### Side-by-Side with Legacy Python API
 

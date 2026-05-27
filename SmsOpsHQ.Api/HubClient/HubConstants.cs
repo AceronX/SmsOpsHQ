@@ -20,5 +20,10 @@ public static class HubConstants
         // HQ -> Store
         public const string RunXpdSyncNow = nameof(RunXpdSyncNow);
         public const string RequestImmediateHeartbeat = nameof(RequestImmediateHeartbeat);
+
+        // HQ -> Store: central Twilio webhook relay (central-webhook design).
+        // Payload types: TwilioInboundRelayPayload / TwilioStatusRelayPayload.
+        public const string DeliverInboundSms = nameof(DeliverInboundSms);
+        public const string DeliverMessageStatus = nameof(DeliverMessageStatus);
     }
 }

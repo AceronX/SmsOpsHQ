@@ -17,6 +17,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Test project needs access to a handful of internal helpers
+         (HubSignalRClient.HandleInboundRelayAsync, HeartbeatPusher.BuildPhoneListAsync)
+         that aren't worth exposing publicly. -->
+    <InternalsVisibleTo Include="SmsOpsHQ.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Scripts\export_xpd_to_sql.vbs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>export_xpd_to_sql.vbs</Link>

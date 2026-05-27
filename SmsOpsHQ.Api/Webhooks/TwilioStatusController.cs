@@ -1,30 +1,27 @@
 using Microsoft.AspNetCore.Mvc;
-using SmsOpsHQ.Core.Entities;
-using SmsOpsHQ.Core.Repositories;
+using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Services;
 
 namespace SmsOpsHQ.Api.Webhooks;
 
-// Handles Twilio delivery status callbacks. No [Authorize] -- Twilio sends these.
-// Route: POST /twilio-sms/status
+// Handles Twilio delivery status callbacks sent directly to this store (legacy
+// /per-store webhook path or local dev). No [Authorize] -- Twilio sends these
+// unauthenticated. Route: POST /twilio-sms/status
 //
-// Updates message delivery status (delivered, failed, undelivered, etc.)
-// and pushes a realtime notification so the desktop client updates the UI.
+// The pipeline lives in IMessageStatusProcessor so the central Hub SignalR
+// receiver can run the exact same logic (see Phase 5).
 [ApiController]
 [Route("twilio-sms")]
 public sealed class TwilioStatusController : ControllerBase
 {
-    private readonly IMessageRepository _messageRepo;
-    private readonly IRealtimeService _realtimeService;
+    private readonly IMessageStatusProcessor _processor;
     private readonly ILogger<TwilioStatusController> _logger;
 
     public TwilioStatusController(
-        IMessageRepository messageRepo,
-        IRealtimeService realtimeService,
+        IMessageStatusProcessor processor,
         ILogger<TwilioStatusController> logger)
     {
-        _messageRepo = messageRepo;
-        _realtimeService = realtimeService;
+        _processor = processor;
         _logger = logger;
     }
 
@@ -33,32 +30,21 @@ public sealed class TwilioStatusController : ControllerBase
     {
         IFormCollection form = await Request.ReadFormAsync(cancellationToken);
 
-        string messageSid = form["MessageSid"].ToString();
-        string messageStatus = form["MessageStatus"].ToString();
-        string? errorCode = form.ContainsKey("ErrorCode") ? form["ErrorCode"].ToString() : null;
-
-        if (string.IsNullOrEmpty(messageSid))
-            return Ok(new { status = "ok" });
-
-        // Capitalize status to match convention (Twilio sends lowercase: "delivered", "failed")
-        string normalizedStatus = char.ToUpper(messageStatus[0]) + messageStatus[1..];
-
-        // Update message in DB
-        await _messageRepo.UpdateStatusBySidAsync(
-            messageSid, normalizedStatus, errorCode, null, cancellationToken);
-
-        // Look up the message to get StoreId/ThreadId for realtime push
-        Message? message = await _messageRepo.FindBySidAsync(messageSid, cancellationToken);
-        if (message is not null)
+        MessageStatusUpdate update = new()
         {
-            await _realtimeService.PushMessageStatusAsync(
-                message.StoreId,
-                message.ThreadId,
-                message.MessageId,
-                messageSid,
-                normalizedStatus,
-                errorCode,
-                cancellationToken);
+            MessageSid = form["MessageSid"].ToString(),
+            MessageStatus = form["MessageStatus"].ToString(),
+            ErrorCode = form.ContainsKey("ErrorCode") ? form["ErrorCode"].ToString() : null,
+            ReceivedAtUtc = DateTime.UtcNow,
+        };
+
+        MessageStatusProcessingResult result = await _processor.ProcessAsync(update, cancellationToken);
+
+        if (result.Kind == MessageStatusResultKind.Error)
+        {
+            _logger.LogError(
+                "Status callback pipeline returned Error for sid={Sid}: {Reason}",
+                update.MessageSid, result.Reason);
         }
 
         return Ok(new { status = "ok" });

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Infrastructure.Persistence;
+using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 namespace SmsOpsHQ.Api.HubClient;
 
@@ -275,6 +276,12 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
         XpdSyncSchedulerStatus schedulerStatus = xpdScheduler.GetStatus();
         DateTime? schedulerNextUtc = ParseLocalDateTime(schedulerStatus.NextRunTime);
 
+        // Twilio numbers owned by this store; HQ uses them to build its
+        // phone -> store routing table for the central Twilio webhook
+        // (SmsOpsHQ.Hub Phase 2). Missing/empty list is OK and means the Hub
+        // will surface a "no phones reported" warning on the store detail page.
+        List<StorePhoneSnapshot> phones = await BuildPhoneListAsync(db, cancellationToken);
+
         return new HeartbeatPayload
         {
             DeploymentId = _deploymentId,
@@ -299,8 +306,33 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
             ActiveTicketCount = activeTicketCount,
 
             LastUserActivityUtc = lastUserActivity,
-            OnlineUserCount = 0  // M3: track via SignalR connection count
+            OnlineUserCount = 0,  // M3: track via SignalR connection count
+
+            Phones = phones,
         };
+    }
+
+    /// <summary>
+    /// Snapshot of this store's active Twilio numbers for the Hub routing
+    /// table. <see cref="StorePhoneSnapshot.IsDefault"/> reflects the owning
+    /// store's <c>DefaultNumberId</c>. Internal so unit tests can hit it
+    /// directly against an in-memory SQLite without the rest of the pusher.
+    /// </summary>
+    internal static async Task<List<StorePhoneSnapshot>> BuildPhoneListAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        // Join in one query so the default-number flag doesn't require a
+        // second per-row lookup.
+        var rows = await (
+            from n in db.TwilioNumbers
+            join s in db.Stores on n.StoreId equals s.StoreId
+            where n.IsActive
+            select new { n.PhoneE164, IsDefault = s.DefaultNumberId == n.NumberId })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.PhoneE164))
+            .Select(r => new StorePhoneSnapshot { PhoneE164 = r.PhoneE164, IsDefault = r.IsDefault })
+            .ToList();
     }
 
     private static string GetAppVersion()

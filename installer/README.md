@@ -53,11 +53,14 @@ Output installer:
 2. Run as Administrator (installer requests admin for `Program Files`)
 3. After install, open **SmsOps HQ** from the Start menu
 4. First-run configuration:
-   - **Settings → Twilio** — Account SID, Auth Token, Messaging Service SID (if required)
+   - **Settings → Twilio** — Account SID and Auth Token (used for **outbound** SMS only)
+   - **Settings → Hub** (or edit `%AppData%\SmsOpsHQ\hub_config.json`) — `Hub:Enabled = true` plus the `Url`, `StoreKey`, and `DeploymentId` issued by the HQ admin
    - **Settings → Database** — XPD paths if you sync pawn data
    - Change the default `admin` / `password` login
 
 No separate .NET install is required on the store PC (self-contained publish).
+
+> **No public URL / no ngrok required on the store PC.** Inbound SMS in production is routed through **SmsOpsHQ.Hub** (the master console). The store API only needs outbound HTTPS to Twilio (for sending) and to the Hub (for SignalR + heartbeats). See the central architecture in [`../../docs/CENTRAL_TWILIO_WEBHOOK_REQUIREMENTS.md`](../../docs/CENTRAL_TWILIO_WEBHOOK_REQUIREMENTS.md) and the per-store cutover steps in [`../../docs/TWILIO_CUTOVER.md`](../../docs/TWILIO_CUTOVER.md).
 
 ## Portable deploy (no installer)
 
@@ -67,7 +70,9 @@ Use the ZIP from `publish-store.ps1` or extract `bin\Publish\Store\` to e.g. `C:
 
 | Issue | What to check |
 |-------|----------------|
-| SMS not delivered | Settings → Twilio banner must show **LIVE**, not MOCK |
+| Outbound SMS not delivered | Settings → Twilio banner must show **LIVE**, not MOCK; confirm Account SID + Auth Token are correct |
+| Inbound SMS not arriving | Confirm the Hub is reachable from this PC (check `Hub:Url`), and that this store's number(s) appear on its **Store detail** page on the Hub (heartbeat populates the routing table). If the Hub is down, inbound SMS will not be delivered to any store. |
+| Store appears **offline** on the Hub | Hub URL/key wrong, Hub down, or no internet on the store PC. The desktop client still works offline; messages will catch up when the Hub returns (queued by Twilio + replayed by the Hub on reconnect). |
 | API won't start | `api\logs\smsops-*.log` under install folder |
 | Port 5000 in use | Another API instance or old Python API on same port |
 | Build: Inno not found | Install Inno Setup 6, reopen PowerShell, run `build-setup.ps1` again |

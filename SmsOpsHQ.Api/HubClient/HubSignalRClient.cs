@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.SignalR.Client;
+using SmsOpsHQ.Core.DTOs;
 using SmsOpsHQ.Core.Services;
 
 namespace SmsOpsHQ.Api.HubClient;
@@ -188,6 +190,30 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
             });
         });
 
+        // Central Twilio webhook relays from HQ. The Hub already looked up the
+        // owning store from the phone number and is targeting our deployment
+        // SignalR group, but we re-check the deployment id in the payload as
+        // defense in depth: a Hub bug, a misconfigured store key, or a
+        // mis-routed group send must NEVER cause one store to ingest another
+        // store's customer SMS into its local DB.
+        conn.On<TwilioInboundRelayPayload>(HubConstants.AgentMethods.DeliverInboundSms, payload =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await HandleInboundRelayAsync(payload, _cts!.Token); }
+                catch (Exception ex) { _logger.LogWarning(ex, "DeliverInboundSms handler failed"); }
+            });
+        });
+
+        conn.On<TwilioStatusRelayPayload>(HubConstants.AgentMethods.DeliverMessageStatus, payload =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await HandleStatusRelayAsync(payload, _cts!.Token); }
+                catch (Exception ex) { _logger.LogWarning(ex, "DeliverMessageStatus handler failed"); }
+            });
+        });
+
         conn.Reconnecting += err =>
         {
             _logger.LogWarning("Hub SignalR connection lost; reconnecting... ({Reason})", err?.Message ?? "(no error)");
@@ -279,6 +305,117 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
         // happens when SignalR is down.
         await _pusher.SendOnceAsync(ct);
     }
+
+    /// <summary>
+    /// Processes a Hub-relayed inbound SMS by dispatching to the same
+    /// <see cref="IInboundSmsProcessor"/> the local HTTP webhook uses.
+    /// Internal so unit tests can call it without spinning up a SignalR server.
+    /// </summary>
+    internal async Task HandleInboundRelayAsync(TwilioInboundRelayPayload payload, CancellationToken ct)
+    {
+        if (!IsAddressedToUs(payload, payload?.DeploymentId, payload?.MessageSid, nameof(HubConstants.AgentMethods.DeliverInboundSms)))
+            return;
+
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        IInboundSmsProcessor processor = scope.ServiceProvider.GetRequiredService<IInboundSmsProcessor>();
+
+        InboundSmsRequest request = MapToInboundRequest(payload);
+        InboundSmsProcessingResult result = await processor.ProcessAsync(request, ct);
+
+        _logger.LogInformation(
+            "Hub-relayed inbound SMS: sid={Sid} kind={Kind} store={StoreId} message={MessageId}",
+            payload.MessageSid, result.Kind, result.StoreId, result.MessageId);
+    }
+
+    /// <summary>
+    /// Processes a Hub-relayed delivery status callback by dispatching to the
+    /// shared <see cref="IMessageStatusProcessor"/>.
+    /// </summary>
+    internal async Task HandleStatusRelayAsync(TwilioStatusRelayPayload payload, CancellationToken ct)
+    {
+        if (!IsAddressedToUs(payload, payload?.DeploymentId, payload?.MessageSid, nameof(HubConstants.AgentMethods.DeliverMessageStatus)))
+            return;
+
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        IMessageStatusProcessor processor = scope.ServiceProvider.GetRequiredService<IMessageStatusProcessor>();
+
+        MessageStatusUpdate update = MapToStatusUpdate(payload);
+        MessageStatusProcessingResult result = await processor.ProcessAsync(update, ct);
+
+        _logger.LogInformation(
+            "Hub-relayed status callback: sid={Sid} status={Status} kind={Kind} message={MessageId}",
+            payload.MessageSid, payload.MessageStatus, result.Kind, result.MessageId);
+    }
+
+    // Defense-in-depth guard for both relay handlers: drop the payload (with
+    // a structured warning) unless it is non-null AND its DeploymentId matches
+    // ours. The Hub already groups by deployment id, but a Hub bug, a wrongly
+    // configured store key, or a mis-routed group send must NEVER cause one
+    // store to ingest another store's customer SMS into its local DB.
+    //
+    // NotNullWhen lets the caller treat the original payload as non-null after
+    // the guard returns true, so the handler bodies stay clean of `!`/`payload!`.
+    private bool IsAddressedToUs(
+        [NotNullWhen(true)] object? payload,
+        string? payloadDeploymentId,
+        string? messageSid,
+        string methodName)
+    {
+        if (payload is null)
+        {
+            _logger.LogWarning("{Method} received null payload; dropping.", methodName);
+            return false;
+        }
+
+        string ourDeploymentId = _pusher.DeploymentId ?? string.Empty;
+        if (string.IsNullOrEmpty(ourDeploymentId) ||
+            !string.Equals(payloadDeploymentId, ourDeploymentId, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "{Method} addressed to deployment {Other} (we are {Mine}); dropping. sid={Sid}",
+                methodName, payloadDeploymentId, ourDeploymentId, messageSid);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Wire-format → processor-input mapping for the inbound relay.</summary>
+    internal static InboundSmsRequest MapToInboundRequest(TwilioInboundRelayPayload p)
+    {
+        InboundSmsRequest req = new()
+        {
+            MessageSid = p.MessageSid ?? string.Empty,
+            From = p.From ?? string.Empty,
+            To = p.To ?? string.Empty,
+            Body = p.Body ?? string.Empty,
+            NumMedia = p.NumMedia,
+            ReceivedAtUtc = p.ReceivedAtUtc == default ? null : p.ReceivedAtUtc,
+        };
+        if (p.Media is not null)
+        {
+            foreach (RelayMediaItem m in p.Media)
+            {
+                if (string.IsNullOrEmpty(m.Url)) continue;
+                req.Media.Add(new InboundMediaItem
+                {
+                    Index = m.Index,
+                    Url = m.Url,
+                    ContentType = m.ContentType,
+                });
+            }
+        }
+        return req;
+    }
+
+    /// <summary>Wire-format → processor-input mapping for the status relay.</summary>
+    internal static MessageStatusUpdate MapToStatusUpdate(TwilioStatusRelayPayload p) => new()
+    {
+        MessageSid = p.MessageSid ?? string.Empty,
+        MessageStatus = p.MessageStatus ?? string.Empty,
+        ErrorCode = p.ErrorCode,
+        ReceivedAtUtc = p.ReceivedAtUtc == default ? null : p.ReceivedAtUtc,
+    };
 
     public async ValueTask DisposeAsync()
     {
