@@ -18,6 +18,21 @@ public interface IXpdSyncScheduler
 
     // Snapshot of scheduler state for status endpoints / HQ console.
     XpdSyncSchedulerStatus GetStatus();
+
+    // Re-read the scheduler's effective config (xpd_sync_config.json overlay
+    // first, falling back to appsettings.json) and restart the timer in-place.
+    // Used by POST /api/sync/scheduler/reload so the desktop Settings UI can
+    // toggle Enabled / change IntervalMinutes / change RunOnStartup without
+    // requiring an app restart -- same UX as the Hub reload.
+    //
+    // Behavior:
+    //   - Always Stop()s the existing timer first (so an interval change takes
+    //     effect on the very next tick).
+    //   - If the new config has Enabled=true, calls Start() right after.
+    //   - Idempotent: safe to call when the scheduler is already stopped/disabled.
+    //   - Never throws -- a malformed overlay falls back to safe defaults so the
+    //     UI's Save action can't brick the API.
+    Task ReloadAsync(CancellationToken cancellationToken = default);
 }
 
 // Status snapshot of the XPD sync scheduler.

@@ -384,12 +384,42 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _hubConfigPath = string.Empty;
 
+    // ── XPD hourly auto-sync (Settings -> XPD -> Hourly auto-sync panel) ──
+    //
+    // These wrap %AppData%\SmsOpsHQ\xpd_sync_config.json and the API endpoints
+    // GET /api/sync/scheduler/status + POST /api/sync/scheduler/reload. After
+    // Save we both write the file and call reload so the change applies live
+    // (same UX as the Hub panel) -- no app restart required.
+
+    [ObservableProperty]
+    private bool _xpdSchedulerEnabled;
+
+    [ObservableProperty]
+    private int _xpdSchedulerIntervalMinutes = 60;
+
+    [ObservableProperty]
+    private bool _xpdSchedulerRunOnStartup;
+
+    [ObservableProperty]
+    private bool _xpdSchedulerSaveBusy;
+
+    [ObservableProperty]
+    private string _xpdSchedulerSaveMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _xpdSchedulerStatusText = "Not loaded";
+
+    [ObservableProperty]
+    private string _xpdSchedulerConfigPath = string.Empty;
+
     private readonly HubConfigService? _hubConfig;
+    private readonly XpdSyncSchedulerConfigService? _xpdSchedConfig;
 
     public SettingsViewModel(ApiClient apiClient, AppState appState, TwilioConfigService twilioConfig,
         XBlueService xblueService, XBlueConfigService xblueConfig,
         CustomerQualityQueryService? qualityQueryService = null,
-        HubConfigService? hubConfig = null)
+        HubConfigService? hubConfig = null,
+        XpdSyncSchedulerConfigService? xpdSchedConfig = null)
     {
         _apiClient = apiClient;
         _appState = appState;
@@ -398,10 +428,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _xblueConfig = xblueConfig;
         _qualityQueryService = qualityQueryService;
         _hubConfig = hubConfig;
+        _xpdSchedConfig = xpdSchedConfig;
         SelectedStoreId = _appState.CurrentStoreId;
         LoadTwilioConfigFromFile();
         LoadXBlueIntoViewModel();
         LoadHubConfigFromFile();
+        LoadXpdSchedulerConfigFromFile();
     }
 
     private void LoadHubConfigFromFile()
@@ -414,6 +446,125 @@ public sealed partial class SettingsViewModel : ViewModelBase
         HubDeploymentId = m.DeploymentId;
         HubIntervalSeconds = m.IntervalSeconds <= 0 ? 60 : m.IntervalSeconds;
         HubConfigPath = _hubConfig.ConfigFilePath;
+    }
+
+    // ── XPD scheduler (Settings -> XPD -> Hourly auto-sync) ──────────────
+
+    private void LoadXpdSchedulerConfigFromFile()
+    {
+        if (_xpdSchedConfig is null) return;
+        XpdSyncSchedulerConfigService.XpdSyncSchedulerConfigModel m = _xpdSchedConfig.Load();
+        XpdSchedulerEnabled = m.Enabled;
+        XpdSchedulerIntervalMinutes = m.IntervalMinutes < 1 ? 60 : m.IntervalMinutes;
+        XpdSchedulerRunOnStartup = m.RunOnStartup;
+        XpdSchedulerConfigPath = _xpdSchedConfig.ConfigFilePath;
+        // Status starts as "Not loaded" until RefreshXpdSchedulerStatus runs --
+        // the Settings page kicks that off when it opens.
+    }
+
+    [RelayCommand]
+    private async Task SaveXpdSchedulerConfig()
+    {
+        if (_xpdSchedConfig is null)
+        {
+            XpdSchedulerSaveMessage = "Auto-sync controls are not available in this build.";
+            return;
+        }
+
+        if (XpdSchedulerIntervalMinutes < 1 || XpdSchedulerIntervalMinutes > 24 * 60)
+        {
+            XpdSchedulerSaveMessage = "Interval must be between 1 and 1440 minutes (24 h).";
+            return;
+        }
+
+        XpdSchedulerSaveBusy = true;
+        XpdSchedulerSaveMessage = string.Empty;
+        try
+        {
+            XpdSyncSchedulerConfigService.XpdSyncSchedulerConfigModel m = new()
+            {
+                Enabled = XpdSchedulerEnabled,
+                IntervalMinutes = XpdSchedulerIntervalMinutes,
+                RunOnStartup = XpdSchedulerRunOnStartup
+            };
+            await Task.Run(() => _xpdSchedConfig.Save(m));
+
+            // Ask the local API to re-read the file and restart the timer in place.
+            // The file is already saved correctly on disk regardless of whether
+            // the live reload succeeds -- worst case the operator restarts the app.
+            try
+            {
+                ApiClient.XpdSchedulerStatus status = await _apiClient.ReloadSyncSchedulerAsync();
+                XpdSchedulerSaveMessage = FormatScheduleSaveSummary(m, status);
+                XpdSchedulerStatusText = FormatSchedulerStatusLine(status);
+            }
+            catch (Exception reloadEx)
+            {
+                XpdSchedulerSaveMessage =
+                    "Saved to disk, but live reload failed (" + reloadEx.Message + "). " +
+                    "Restart the application for the new settings to take effect.";
+            }
+        }
+        catch (Exception ex)
+        {
+            XpdSchedulerSaveMessage = "Save failed: " + ex.Message;
+        }
+        finally
+        {
+            XpdSchedulerSaveBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RefreshXpdSchedulerStatus()
+    {
+        try
+        {
+            ApiClient.XpdSchedulerStatus status = await _apiClient.GetSyncSchedulerStatusAsync();
+            XpdSchedulerStatusText = FormatSchedulerStatusLine(status);
+        }
+        catch (Exception ex)
+        {
+            XpdSchedulerStatusText = "Could not read scheduler status: " + ex.Message;
+        }
+    }
+
+    private static string FormatScheduleSaveSummary(
+        XpdSyncSchedulerConfigService.XpdSyncSchedulerConfigModel saved,
+        ApiClient.XpdSchedulerStatus live)
+    {
+        if (!saved.Enabled)
+            return "Saved. Hourly auto-sync is now OFF.";
+
+        // When the operator just turned it on, surface the next run time so
+        // they know roughly when to expect the first refresh.
+        string nextText = string.IsNullOrWhiteSpace(live.NextRunTime)
+            ? "(next run time pending)"
+            : "next run at " + live.NextRunTime;
+        return live.Running
+            ? $"Saved. Hourly auto-sync is ON every {saved.IntervalMinutes} min ({nextText})."
+            : $"Saved, but the scheduler did not start. Check Database tab for XPD config and try again.";
+    }
+
+    private static string FormatSchedulerStatusLine(ApiClient.XpdSchedulerStatus s)
+    {
+        if (!s.Running)
+            return s.IntervalMinutes > 0
+                ? $"Auto-sync is OFF (configured interval {s.IntervalMinutes} min)."
+                : "Auto-sync is OFF.";
+
+        // Decorate with the recent run outcome so the operator can spot a
+        // persistently-failing schedule at a glance.
+        string outcome;
+        if (s.TotalRunCount == 0)
+            outcome = "no runs yet";
+        else if (s.LastRunSuccess)
+            outcome = $"last run OK at {s.LastRunTime ?? "?"}";
+        else
+            outcome = $"LAST RUN FAILED: {s.LastRunError ?? "?"}";
+
+        string nextText = string.IsNullOrWhiteSpace(s.NextRunTime) ? "?" : s.NextRunTime;
+        return $"Auto-sync ON every {s.IntervalMinutes} min. Next at {nextText} ({outcome}).";
     }
 
     [RelayCommand]
@@ -949,6 +1100,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
             await RefreshSyncStatusAsync();
             await LoadPreflightAsync();
+            // Pull live scheduler status alongside preflight so the "Auto-sync ON
+            // / OFF + next run" line under the toggle is accurate the moment the
+            // tab opens (not just after the operator clicks Refresh manually).
+            await RefreshXpdSchedulerStatus();
         }
         catch (Exception ex)
         {

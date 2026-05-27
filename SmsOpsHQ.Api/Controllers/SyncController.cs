@@ -339,4 +339,31 @@ public sealed class SyncController : ControllerBase
 
         return Accepted(new { message = "Sync started" });
     }
+
+    // POST /api/sync/scheduler/reload
+    // Re-reads the hourly XPD scheduler settings from %AppData%\SmsOpsHQ\xpd_sync_config.json
+    // (overlay) falling back to appsettings.json, then restarts the timer in-place.
+    // Called by the desktop Settings UI right after Save so the operator does
+    // NOT have to restart the app to flip Enabled / change IntervalMinutes /
+    // toggle RunOnStartup. Mirrors POST /api/hub/reload.
+    [HttpPost("scheduler/reload")]
+    public async Task<IActionResult> ReloadScheduler(CancellationToken cancellationToken)
+    {
+        if (!User.IsHqUser())
+            return Problem(statusCode: 403, detail: "Only HQ users can change the sync scheduler");
+
+        try
+        {
+            await _syncScheduler.ReloadAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // The scheduler is best-effort -- if it threw, log loudly but still
+            // return the new (possibly partially applied) status so the UI can
+            // show what's actually live.
+            _logger.LogError(ex, "XPD scheduler reload failed");
+        }
+
+        return Ok(_syncScheduler.GetStatus());
+    }
 }

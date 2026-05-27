@@ -492,6 +492,81 @@
                                             <TextBlock Text="Run sync now" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
+
+                                    <!-- ── Hourly auto-sync (toggles XpdSyncScheduler via xpd_sync_config.json) ── -->
+                                    <Border Height="1" Background="{StaticResource Divider}" Margin="0,16,0,12"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="&#xE823;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="13" Foreground="{StaticResource TextSecondary}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Hourly auto-sync" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="When enabled, the API runs a full XPD sync in the background on a recurring interval -- no clicks required. Status updates live; restart not needed."
+                                               FontSize="11" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap"
+                                               Margin="0,0,0,10"/>
+
+                                    <CheckBox IsChecked="{Binding XpdSchedulerEnabled}"
+                                              Content="Enable hourly auto-sync"
+                                              FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Sync interval (minutes)" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" Width="80"
+                                                 Text="{Binding XpdSchedulerIntervalMinutes, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsEnabled="{Binding XpdSchedulerEnabled}"
+                                                 FontSize="12" Padding="6,4" HorizontalContentAlignment="Right"/>
+                                    </Grid>
+
+                                    <CheckBox IsChecked="{Binding XpdSchedulerRunOnStartup}"
+                                              IsEnabled="{Binding XpdSchedulerEnabled}"
+                                              Content="Run sync once 15s after the app starts"
+                                              FontSize="11" Margin="0,0,0,10"/>
+
+                                    <Border Background="#F0F9FF" CornerRadius="6" Padding="10,8" Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE9F5;" FontFamily="{StaticResource IconFont}"
+                                                       FontSize="11" Foreground="{StaticResource Primary}"
+                                                       VerticalAlignment="Top" Margin="0,1,8,0"/>
+                                            <TextBlock Text="{Binding XpdSchedulerStatusText}"
+                                                       FontSize="11" Foreground="{StaticResource TextSecondary}"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0"
+                                                Command="{Binding SaveXpdSchedulerConfigCommand}"
+                                                IsEnabled="{Binding XpdSchedulerSaveBusy, Converter={StaticResource InvertBool}}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Padding="14,9" FontSize="12" FontWeight="SemiBold"
+                                                HorizontalAlignment="Stretch" Margin="0,0,8,0">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}"
+                                                           FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Save auto-sync settings" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="1"
+                                                Command="{Binding RefreshXpdSchedulerStatusCommand}"
+                                                Style="{StaticResource GhostButton}"
+                                                Padding="12,7" FontSize="11"
+                                                Content="Refresh"
+                                                ToolTip="Re-read the live scheduler status from the API"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding XpdSchedulerSaveMessage}" FontSize="11"
+                                               Foreground="{StaticResource Primary}" TextWrapping="Wrap"
+                                               Margin="0,4,0,0"
+                                               Visibility="{Binding XpdSchedulerSaveMessage, Converter={StaticResource StringToVisibility}}"/>
                                 </StackPanel>
                             </Border>
 

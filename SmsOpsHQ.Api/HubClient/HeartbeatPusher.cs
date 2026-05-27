@@ -79,8 +79,32 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<HeartbeatPusher> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IStoreEventBus? _eventBus;
     private readonly DateTime _startedUtc = DateTime.UtcNow;
     private readonly object _lock = new();
+
+    // ── Activity-driven immediate heartbeats (real-time SMS counters / status) ──
+    //
+    // Debounce: collapse a burst of N activity events into ONE outbound heartbeat
+    // fired ~BurstDebounce after the last event in the burst. Implemented with a
+    // single Timer that Change()'s its due-time each time a new event arrives.
+    //
+    // Throttle: enforce a minimum gap BurstThrottle between consecutive immediate
+    // sends so a continuous trickle of events (e.g. an SMS blast) doesn't generate
+    // a continuous stream of heartbeats. The throttle is bypassed by the periodic
+    // schedule -- regular ticks always fire on time regardless.
+    //
+    // Net effect: SMS sent/received counters on the Hub update in 2-5 s instead
+    // of waiting up to IntervalSeconds (default 60s). Cheap (one HTTP per burst).
+    //
+    // BurstDebounce/BurstThrottle are instance properties (not static readonly)
+    // so unit tests can shrink them to milliseconds and avoid sleeping for 5+s.
+    // Production code never mutates them.
+    private readonly object _burstLock = new();
+    private Timer? _burstTimer;
+    private DateTime _lastImmediateSentUtc = DateTime.MinValue;
+    internal TimeSpan BurstDebounce { get; set; } = TimeSpan.FromSeconds(2);
+    internal TimeSpan BurstThrottle { get; set; } = TimeSpan.FromSeconds(5);
 
     // Mutable: Reload() swaps these atomically (one writer holding _lock; readers
     // see consistent individual fields, and the brief race between fields during a
@@ -103,16 +127,26 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
         IServiceScopeFactory scopeFactory,
-        ILogger<HeartbeatPusher> logger)
+        ILogger<HeartbeatPusher> logger,
+        IStoreEventBus? eventBus = null)
     {
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _eventBus = eventBus;
 
         // Same logic as Reload() but without touching the timer (we haven't been
         // Start()ed yet).
         ApplySettings(LoadSettings(GetDefaultOverlayPath()));
+
+        // Subscribe to the event bus right away (not in Start()) so SMS events
+        // that arrive while the SignalR client is the one driving heartbeats
+        // (i.e. Start() is never called -- the SignalR client owns the schedule)
+        // still trigger fresh pushes. NotifyActivity is the producer-side filter:
+        // if Hub isn't configured we drop on the floor at OnActivity entry.
+        if (_eventBus is not null)
+            _eventBus.ActivityChanged += OnActivity;
     }
 
     public void Start()
@@ -373,7 +407,70 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
         catch { return ""; }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        if (_eventBus is not null)
+            _eventBus.ActivityChanged -= OnActivity;
+        lock (_burstLock)
+        {
+            _burstTimer?.Dispose();
+            _burstTimer = null;
+        }
+        Stop();
+    }
+
+    // ── Activity-driven immediate heartbeat (real-time updates) ──────────
+    //
+    // Called from the event bus on the producer's thread (the SMS pipeline).
+    // Must be FAST: no I/O, just schedule a timer. The actual send happens on
+    // a thread-pool thread when the timer fires.
+    private void OnActivity(StoreActivityEvent evt)
+    {
+        // No point scheduling immediate sends if Hub reporting isn't even on.
+        // The periodic timer (when configured) will eventually surface state.
+        if (!IsConfigured) return;
+
+        lock (_burstLock)
+        {
+            TimeSpan sinceLastSend = DateTime.UtcNow - _lastImmediateSentUtc;
+            // Two cases:
+            //   sinceLastSend >= BurstThrottle: free to debounce-and-send normally
+            //       (fire BurstDebounce after the last event in the burst).
+            //   sinceLastSend <  BurstThrottle: we just sent recently; coalesce
+            //       further events to fire exactly BurstThrottle after the last
+            //       send so we never send more than 1 immediate per throttle window.
+            TimeSpan due = sinceLastSend < BurstThrottle
+                ? (BurstThrottle - sinceLastSend)
+                : BurstDebounce;
+
+            _burstTimer ??= new Timer(_ => FireBurst(evt.Source), null, Timeout.Infinite, Timeout.Infinite);
+            // Change() resets the due-time -- continuous events keep pushing the
+            // timer back (proper debounce) up to the throttle ceiling above.
+            try { _burstTimer.Change(due, Timeout.InfiniteTimeSpan); }
+            catch (ObjectDisposedException) { /* race with Dispose; ignore */ }
+        }
+    }
+
+    private void FireBurst(string source)
+    {
+        // Stamp first so a follow-up event arriving while we're awaiting the
+        // HTTP call falls into the throttle branch above (no second immediate).
+        _lastImmediateSentUtc = DateTime.UtcNow;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                bool ok = await SendOnceAsync();
+                _logger.LogDebug(
+                    "Immediate heartbeat fired (source={Source}, ok={Ok})", source, ok);
+            }
+            catch (Exception ex)
+            {
+                // SendOnceAsync already catches; defensive net.
+                _logger.LogWarning(ex, "Immediate heartbeat ({Source}) threw", source);
+            }
+        });
+    }
 
     // ──────────────────────────────────────────────────────────────────────
     // Reload (M5)

@@ -22,6 +22,7 @@ public sealed class MessagesController : ControllerBase
     private readonly IIdentityResolver _identityResolver;
     private readonly ITwilioService _twilioService;
     private readonly IRealtimeService _realtimeService;
+    private readonly IStoreEventBus? _eventBus;
     private readonly ILogger<MessagesController> _logger;
 
     public MessagesController(
@@ -33,7 +34,8 @@ public sealed class MessagesController : ControllerBase
         IIdentityResolver identityResolver,
         ITwilioService twilioService,
         IRealtimeService realtimeService,
-        ILogger<MessagesController> logger)
+        ILogger<MessagesController> logger,
+        IStoreEventBus? eventBus = null)
     {
         _messageRepo = messageRepo;
         _threadRepo = threadRepo;
@@ -43,6 +45,7 @@ public sealed class MessagesController : ControllerBase
         _identityResolver = identityResolver;
         _twilioService = twilioService;
         _realtimeService = realtimeService;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -178,6 +181,10 @@ public sealed class MessagesController : ControllerBase
         await _realtimeService.PushMessageNewAsync(
             request.StoreId, thread.ThreadId, messageDto, threadDto, cancellationToken);
 
+        // Real-time Hub update: wake the heartbeat pusher so the dashboard's
+        // "messages sent today" counter refreshes within ~2s.
+        _eventBus?.NotifyActivity("sms.sent");
+
         return Ok(new
         {
             status = "ok",
@@ -236,6 +243,10 @@ public sealed class MessagesController : ControllerBase
 
         await _realtimeService.PushMessageNewAsync(
             request.StoreId, thread.ThreadId, noteDto, emptyThreadDto, cancellationToken);
+
+        // Notes don't change SMS counters but they do bump "last activity",
+        // and the operator added them moments ago -- worth surfacing fast.
+        _eventBus?.NotifyActivity("note.created");
 
         return Ok(new { status = "ok", message_id = note.MessageId });
     }

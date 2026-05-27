@@ -38,6 +38,21 @@ public interface IHubSignalRClient
     /// Url/StoreKey, this leaves the client cleanly disconnected.
     /// </summary>
     Task ReloadAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Graceful shutdown: send the SignalR <c>goodbye</c> frame and wait up to
+    /// <paramref name="timeout"/> for the server to acknowledge before tearing
+    /// the connection down. The store's WPF app calls this via the
+    /// <c>POST /api/hub/shutdown</c> endpoint right before it kills the
+    /// bundled API process, so the Hub's <c>OnDisconnectedAsync</c> fires
+    /// within ~1 second instead of waiting for the SignalR keepalive timeout
+    /// (~15s with the tightened defaults, ~30s with stock defaults).
+    ///
+    /// Returns immediately if the client is not started, not connected, or
+    /// already stopped. Never throws; failure to gracefully stop falls back
+    /// to the existing fire-and-forget <see cref="Stop"/> path.
+    /// </summary>
+    Task StopAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 }
 
 public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
@@ -131,6 +146,59 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
         }
     }
 
+    public async Task StopAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        // Snapshot the connection under the lock and clear instance state so a
+        // concurrent Start()/Stop()/ReloadAsync() can't fight us. We do the
+        // actual async StopAsync OUTSIDE the lock because awaiting under a
+        // sync lock would deadlock callers and risks priority inversion.
+        HubConnection? conn;
+        lock (_lock)
+        {
+            if (!_started) return;
+            _started = false;
+
+            _heartbeatTimer?.Dispose();
+            _heartbeatTimer = null;
+
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
+
+            conn = _connection;
+            _connection = null;
+        }
+
+        if (conn is null) return;
+
+        // Bounded wait: even on a flaky network the WPF shutdown path must
+        // not hang for tens of seconds. CancellationTokenSource composes the
+        // caller's token with our timeout so either source can short-circuit.
+        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        try
+        {
+            await conn.StopAsync(timeoutCts.Token).ConfigureAwait(false);
+            _logger.LogInformation("Hub SignalR client gracefully stopped (goodbye sent)");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "Hub SignalR graceful stop hit the {Timeout}ms timeout; falling back to dispose-and-drop",
+                (int)timeout.TotalMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Hub SignalR graceful stop threw; falling back to dispose-and-drop");
+        }
+        finally
+        {
+            try { await conn.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Hub SignalR DisposeAsync after StopAsync threw"); }
+        }
+    }
+
     public async Task ReloadAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Hub SignalR client reload requested");
@@ -158,7 +226,7 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
     private HubConnection BuildConnection()
     {
         string url = _pusher.HubUrl + HubConstants.AgentHubPath;
-        return new HubConnectionBuilder()
+        HubConnection conn = new HubConnectionBuilder()
             .WithUrl(url, options =>
             {
                 // Auth via header (like the REST heartbeat) AND access_token
@@ -179,6 +247,19 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
                 TimeSpan.FromSeconds(30)
             })
             .Build();
+
+        // Mirror the Hub's tightened SignalR cadence (set in
+        // SmsOpsHQ.Hub.Server/Program.cs). Defaults are 15s/30s; we use 5s/15s
+        // so an ungraceful disconnect (power loss, killed process, cable
+        // unplug) shows up on the Hub dashboard within ~15s worst-case
+        // instead of ~30s. KeepAliveInterval drives how often WE ping the
+        // server (which keeps the server's ClientTimeoutInterval from
+        // firing); ServerTimeout is how long WE wait before declaring the
+        // server dead. Both must be set AFTER Build(); they are not on the
+        // builder.
+        conn.KeepAliveInterval = TimeSpan.FromSeconds(5);
+        conn.ServerTimeout = TimeSpan.FromSeconds(15);
+        return conn;
     }
 
     private void HookCommandHandlers(HubConnection conn)

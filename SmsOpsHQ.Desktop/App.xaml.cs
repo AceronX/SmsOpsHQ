@@ -96,6 +96,7 @@ public partial class App : Application
         services.AddSingleton<CacheService>();
         services.AddSingleton<TwilioConfigService>();
         services.AddSingleton<HubConfigService>();
+        services.AddSingleton<XpdSyncSchedulerConfigService>();
         services.AddSingleton<XBlueConfigService>();
         services.AddSingleton<LateCustomersQueryService>();
         services.AddSingleton<CustomerQualityQueryService>();
@@ -134,7 +135,8 @@ public partial class App : Application
             sp.GetRequiredService<XBlueService>(),
             sp.GetRequiredService<XBlueConfigService>(),
             sp.GetRequiredService<CustomerQualityQueryService>(),
-            sp.GetRequiredService<HubConfigService>()));
+            sp.GetRequiredService<HubConfigService>(),
+            sp.GetRequiredService<XpdSyncSchedulerConfigService>()));
 
         services.AddTransient<LateCustomersViewModel>(sp => new LateCustomersViewModel(
             sp.GetRequiredService<ApiClient>(),
@@ -219,8 +221,31 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Order matters here. We must tell the bundled API to gracefully close
+        // its Hub SignalR connection BEFORE we hard-kill the API process via
+        // _localApiHost.Dispose(). Otherwise the Hub server only learns the
+        // store is gone via the SignalR keepalive timeout (~15-30s), and the
+        // dashboard's "live" badge and Status pill lag behind reality.
+        //
+        // The shutdown call has its own 3s timeout and swallows all errors,
+        // so this path can never hang or throw on the way out.
+        ApiClient? apiClient = _serviceProvider?.GetService<ApiClient>();
+        if (apiClient is not null)
+        {
+            try
+            {
+                apiClient.ShutdownHubAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Defensive: ShutdownHubAsync already swallows internally, but
+                // we still don't want a stray exception to short-circuit the
+                // rest of OnExit and leak a child API process.
+            }
+        }
+
         _serviceProvider?.GetService<SignalRClient>()?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        _serviceProvider?.GetService<ApiClient>()?.Dispose();
+        apiClient?.Dispose();
         _serviceProvider?.GetService<XBlueService>()?.Dispose();
         _serviceProvider?.Dispose();
         _localApiHost?.Dispose();

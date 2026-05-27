@@ -39,6 +39,13 @@ try
         string hubAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         string hubConfigPath = System.IO.Path.Combine(hubAppData, "SmsOpsHQ", "hub_config.json");
         builder.Configuration.AddJsonFile(hubConfigPath, optional: true, reloadOnChange: false);
+
+        // Same pattern for the hourly XPD sync scheduler. The desktop UI's
+        // Settings -> XPD -> Hourly auto-sync panel writes this file and then
+        // calls POST /api/sync/scheduler/reload to apply without an app restart.
+        // Shape: { "XpdSync": { "Enabled":..., "IntervalMinutes":..., "RunOnStartup":... } }
+        string xpdSchedConfigPath = System.IO.Path.Combine(hubAppData, "SmsOpsHQ", "xpd_sync_config.json");
+        builder.Configuration.AddJsonFile(xpdSchedConfigPath, optional: true, reloadOnChange: false);
     }
 
     // Replace default logging with Serilog.
@@ -218,6 +225,13 @@ try
     // Singleton because it owns the periodic Timer + cumulative success/failure
     // counters, and HttpClientFactory keeps actual HttpClient instances cheap.
     builder.Services.AddHttpClient();
+
+    // Store-side activity bus: lets SMS send / SMS receive / thread-read /
+    // etc. wake the HeartbeatPusher so the Hub dashboard's counters reflect
+    // these events within ~2s instead of waiting for the next periodic tick.
+    // Singleton: producers and the HeartbeatPusher all share one bus.
+    builder.Services.AddSingleton<IStoreEventBus, StoreEventBus>();
+
     builder.Services.AddSingleton<IHeartbeatPusher, HeartbeatPusher>();
     // M3: SignalR-based agent client. Owns the heartbeat schedule when Hub
     // is configured and falls back to HeartbeatPusher's REST POST when SignalR

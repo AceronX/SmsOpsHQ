@@ -17,6 +17,7 @@ public sealed class ThreadsController : ControllerBase
     private readonly IMessageRepository _messageRepo;
     private readonly ICustomerRepository _customerRepo;
     private readonly IStoreRepository _storeRepo;
+    private readonly IStoreEventBus? _eventBus;
     private readonly ILogger<ThreadsController> _logger;
 
     public ThreadsController(
@@ -24,12 +25,14 @@ public sealed class ThreadsController : ControllerBase
         IMessageRepository messageRepo,
         ICustomerRepository customerRepo,
         IStoreRepository storeRepo,
-        ILogger<ThreadsController> logger)
+        ILogger<ThreadsController> logger,
+        IStoreEventBus? eventBus = null)
     {
         _threadRepo = threadRepo;
         _messageRepo = messageRepo;
         _customerRepo = customerRepo;
         _storeRepo = storeRepo;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -127,7 +130,12 @@ public sealed class ThreadsController : ControllerBase
             return Problem(statusCode: 404, detail: "Thread not found");
 
         if (thread.UnreadCount > 0)
+        {
             await _threadRepo.MarkReadAsync(threadId, cancellationToken);
+            // Drives the Hub's "unread count" tile back down within ~2s instead
+            // of waiting for the next periodic heartbeat.
+            _eventBus?.NotifyActivity("thread.read");
+        }
 
         // Load messages (up to 200)
         List<Message> messages = await _messageRepo.GetByThreadAsync(storeId, threadId, 200, cancellationToken);

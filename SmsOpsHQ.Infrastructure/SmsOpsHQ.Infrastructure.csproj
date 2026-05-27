@@ -18,6 +18,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Exposes internal test seams (e.g. XpdSyncScheduler.ReloadFromPathAsync)
+         to the unit test project without leaking them to runtime callers. -->
+    <InternalsVisibleTo Include="SmsOpsHQ.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

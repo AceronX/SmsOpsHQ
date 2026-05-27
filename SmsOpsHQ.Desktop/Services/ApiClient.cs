@@ -502,6 +502,111 @@ public sealed class ApiClient : IDisposable
         public int IntervalSeconds { get; init; }
     }
 
+    // ── XPD hourly auto-sync scheduler ───────────────────────────────────
+
+    /// <summary>
+    /// Returns the live status of the hourly XPD auto-sync scheduler -- whether
+    /// it's running, the next/last run times, success/failure counts. Used by
+    /// Settings -&gt; XPD to render the status line under the toggle.
+    /// </summary>
+    public async Task<XpdSchedulerStatus> GetSyncSchedulerStatusAsync()
+    {
+        JsonElement r = await GetJsonAsync("/api/sync/scheduler/status");
+        return ParseSchedulerStatus(r);
+    }
+
+    /// <summary>
+    /// Tells the API to re-read <c>xpd_sync_config.json</c> and restart the
+    /// scheduler in place. Used by Settings -&gt; XPD -&gt; "Save auto-sync"
+    /// right after <c>XpdSyncSchedulerConfigService.Save</c> writes the file,
+    /// so the operator does NOT have to restart the app for the new Enabled /
+    /// IntervalMinutes / RunOnStartup to take effect.
+    /// </summary>
+    public async Task<XpdSchedulerStatus> ReloadSyncSchedulerAsync()
+    {
+        JsonElement r = await PostJsonAsync("/api/sync/scheduler/reload");
+        return ParseSchedulerStatus(r);
+    }
+
+    private static XpdSchedulerStatus ParseSchedulerStatus(JsonElement r)
+    {
+        return new XpdSchedulerStatus
+        {
+            Running = r.TryGetProperty("running", out JsonElement run) && run.GetBoolean(),
+            IntervalMinutes = r.TryGetProperty("intervalMinutes", out JsonElement im)
+                              && im.TryGetInt32(out int imv) ? imv : 0,
+            NextRunTime = r.TryGetProperty("nextRunTime", out JsonElement n)
+                          && n.ValueKind == JsonValueKind.String ? n.GetString() : null,
+            LastRunTime = r.TryGetProperty("lastRunTime", out JsonElement l)
+                          && l.ValueKind == JsonValueKind.String ? l.GetString() : null,
+            LastRunSuccess = r.TryGetProperty("lastRunSuccess", out JsonElement ls)
+                             && ls.GetBoolean(),
+            LastRunError = r.TryGetProperty("lastRunError", out JsonElement le)
+                           && le.ValueKind == JsonValueKind.String ? le.GetString() : null,
+            TotalRunCount = r.TryGetProperty("totalRunCount", out JsonElement tc)
+                            && tc.TryGetInt32(out int tcv) ? tcv : 0,
+            SuccessCount = r.TryGetProperty("successCount", out JsonElement sc)
+                           && sc.TryGetInt32(out int scv) ? scv : 0,
+            FailureCount = r.TryGetProperty("failureCount", out JsonElement fc)
+                           && fc.TryGetInt32(out int fcv) ? fcv : 0,
+            RunInProgress = r.TryGetProperty("runInProgress", out JsonElement rip)
+                            && rip.GetBoolean()
+        };
+    }
+
+    /// <summary>Decoded result of <c>GET /api/sync/scheduler/status</c> and reload.</summary>
+    public sealed class XpdSchedulerStatus
+    {
+        public bool Running { get; init; }
+        public int IntervalMinutes { get; init; }
+        public string? NextRunTime { get; init; }
+        public string? LastRunTime { get; init; }
+        public bool LastRunSuccess { get; init; }
+        public string? LastRunError { get; init; }
+        public int TotalRunCount { get; init; }
+        public int SuccessCount { get; init; }
+        public int FailureCount { get; init; }
+        public bool RunInProgress { get; init; }
+    }
+
+    /// <summary>
+    /// Asks the local API to gracefully close its Hub SignalR connection
+    /// (sending the SignalR "goodbye" frame so the Hub fires
+    /// OnDisconnectedAsync immediately rather than waiting for the keepalive
+    /// timeout). Called from <c>App.OnExit</c> right before the bundled API
+    /// process is killed.
+    ///
+    /// Bounded so the shutdown path never hangs: passes a 3-second
+    /// HttpClient timeout AND treats <em>any</em> failure as a successful
+    /// no-op. The worst case (API already dead, network gone, 401 because the
+    /// user is logged out) is that the Hub falls back to its keepalive
+    /// timeout (~15s with the tightened defaults) -- annoying but not broken.
+    /// </summary>
+    public async Task ShutdownHubAsync()
+    {
+        using HttpRequestMessage req = new(HttpMethod.Post, "/api/hub/shutdown")
+        {
+            Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json")
+        };
+        // Local HttpClient with its own short timeout so the BaseAddress'd
+        // long-lived client isn't disturbed and the WPF shutdown path can't
+        // hang on a slow/dead localhost API.
+        using HttpClient bounded = new()
+        {
+            BaseAddress = _httpClient.BaseAddress,
+            Timeout = TimeSpan.FromSeconds(3)
+        };
+        bounded.DefaultRequestHeaders.Authorization = _httpClient.DefaultRequestHeaders.Authorization;
+        try
+        {
+            using HttpResponseMessage _ = await bounded.SendAsync(req).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Intentional: shutdown must never throw on the way out.
+        }
+    }
+
     // ── HTTP helpers ─────────────────────────────────────────────────
 
     private async Task<JsonElement> GetJsonAsync(string url)

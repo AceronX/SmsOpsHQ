@@ -40,6 +40,7 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
     private readonly IQuarantineService _quarantineService;
     private readonly IIdentityResolver _identityResolver;
     private readonly IRealtimeService _realtimeService;
+    private readonly IStoreEventBus? _eventBus;
     private readonly ILogger<InboundSmsProcessor> _logger;
 
     public InboundSmsProcessor(
@@ -52,7 +53,8 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
         IQuarantineService quarantineService,
         IIdentityResolver identityResolver,
         IRealtimeService realtimeService,
-        ILogger<InboundSmsProcessor> logger)
+        ILogger<InboundSmsProcessor> logger,
+        IStoreEventBus? eventBus = null)
     {
         _messageRepo = messageRepo;
         _threadRepo = threadRepo;
@@ -63,6 +65,7 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
         _quarantineService = quarantineService;
         _identityResolver = identityResolver;
         _realtimeService = realtimeService;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -232,6 +235,12 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
 
         await _realtimeService.PushMessageNewAsync(
             store.StoreId, thread.ThreadId, messageDto, threadDto, cancellationToken);
+
+        // Wake the HeartbeatPusher so the Hub dashboard's received/unread
+        // counters refresh within a couple seconds instead of waiting for the
+        // next periodic heartbeat (up to IntervalSeconds late). Bus is optional
+        // for back-compat with legacy callers / tests that don't wire one.
+        _eventBus?.NotifyActivity("sms.received");
 
         _logger.LogInformation(
             "Inbound SMS processed: store={StoreId} thread={ThreadId} message={MessageId} sid={Sid}",

@@ -5,10 +5,14 @@ using SmsOpsHQ.Api.HubClient;
 namespace SmsOpsHQ.Api.Controllers;
 
 /// <summary>
-/// Operator endpoints for the store's HQ Hub client. Currently exposes only
-/// <c>POST /api/hub/reload</c>, which the desktop Settings UI calls right after
-/// saving <c>hub_config.json</c> so the new URL/StoreKey/DeploymentId take
-/// effect without an app restart.
+/// Operator endpoints for the store's HQ Hub client.
+///   * <c>POST /api/hub/reload</c>   - desktop Settings UI calls this after
+///     saving <c>hub_config.json</c> so the new URL/StoreKey/DeploymentId take
+///     effect without an app restart.
+///   * <c>POST /api/hub/shutdown</c> - the desktop app's <c>OnExit</c> calls
+///     this right before it kills the bundled API process, so the SignalR
+///     "goodbye" reaches the Hub and the dashboard flips to offline within
+///     ~1 second instead of waiting for the SignalR keepalive timeout.
 /// </summary>
 [ApiController]
 [Authorize]
@@ -70,5 +74,39 @@ public sealed class HubController : ControllerBase
             deploymentId = _pusher.DeploymentId,
             intervalSeconds = _pusher.IntervalSeconds
         });
+    }
+
+    /// <summary>
+    /// Gracefully close the SignalR connection to HQ (sends the SignalR
+    /// "goodbye" frame and waits up to ~2s for the server to ack). The
+    /// desktop app calls this synchronously from <c>App.OnExit</c>, BEFORE it
+    /// hard-kills the bundled API process, so the Hub's
+    /// <c>OnDisconnectedAsync</c> fires immediately and the dashboard flips
+    /// to offline within ~1 second.
+    ///
+    /// Idempotent: safe to call when the client is already stopped, never
+    /// connected, or Hub reporting is disabled. Never returns 5xx for those
+    /// cases -- they're a normal "no-op" outcome.
+    /// </summary>
+    [HttpPost("shutdown")]
+    public async Task<IActionResult> Shutdown(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Hub shutdown requested by {User}", User.Identity?.Name ?? "(anon)");
+
+        // 2s is enough for a WebSocket close handshake on any sane network.
+        // The request itself can be cancelled by the client closing early.
+        try
+        {
+            await _signalR.StopAsync(TimeSpan.FromSeconds(2), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // StopAsync swallows its own failures, but be defensive: even if
+            // graceful stop blew up, we want the response to be a clean 200 so
+            // the desktop shutdown path doesn't pop a dialog.
+            _logger.LogWarning(ex, "Hub graceful shutdown threw; the API will exit anyway");
+        }
+
+        return Ok(new { stopped = !_signalR.IsConnected });
     }
 }
