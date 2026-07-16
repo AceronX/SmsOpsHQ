@@ -6,6 +6,8 @@ namespace SmsOpsHQ.Api.Controllers;
 
 /// <summary>
 /// Operator endpoints for the store's HQ Hub client.
+///   * <c>GET /api/hub/status</c>    - returns the effective, secret-free Hub
+///     configuration and live connection diagnostics.
 ///   * <c>POST /api/hub/reload</c>   - desktop Settings UI calls this after
 ///     saving <c>hub_config.json</c> so the new URL/StoreKey/DeploymentId take
 ///     effect without an app restart.
@@ -31,6 +33,16 @@ public sealed class HubController : ControllerBase
         _signalR = signalR;
         _pusher = pusher;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Return the effective Hub settings and current connection diagnostics.
+    /// The Store Key is intentionally never included.
+    /// </summary>
+    [HttpGet("status")]
+    public IActionResult Status()
+    {
+        return Ok(BuildStatus());
     }
 
     /// <summary>
@@ -66,14 +78,7 @@ public sealed class HubController : ControllerBase
             catch (OperationCanceledException) { break; }
         }
 
-        return Ok(new
-        {
-            enabled = _pusher.IsConfigured,
-            isConnected = _signalR.IsConnected,
-            hubUrl = _pusher.HubUrl,
-            deploymentId = _pusher.DeploymentId,
-            intervalSeconds = _pusher.IntervalSeconds
-        });
+        return Ok(BuildStatus());
     }
 
     /// <summary>
@@ -109,4 +114,38 @@ public sealed class HubController : ControllerBase
 
         return Ok(new { stopped = !_signalR.IsConnected });
     }
+
+    private HubStatusResponse BuildStatus()
+    {
+        HeartbeatPusherStatus status = _pusher.GetStatus();
+        return new HubStatusResponse
+        {
+            Enabled = status.Enabled,
+            Configured = _pusher.IsConfigured,
+            IsConnected = _signalR.IsConnected,
+            HubUrl = status.HubUrl,
+            DeploymentId = status.DeploymentId,
+            IntervalSeconds = status.IntervalSeconds,
+            LastAttemptUtc = status.LastAttemptUtc,
+            LastSuccessUtc = status.LastSuccessUtc,
+            LastError = status.LastError,
+            SuccessCount = status.SuccessCount,
+            FailureCount = status.FailureCount
+        };
+    }
+}
+
+public sealed class HubStatusResponse
+{
+    public bool Enabled { get; init; }
+    public bool Configured { get; init; }
+    public bool IsConnected { get; init; }
+    public string HubUrl { get; init; } = string.Empty;
+    public string DeploymentId { get; init; } = string.Empty;
+    public int IntervalSeconds { get; init; }
+    public DateTime? LastAttemptUtc { get; init; }
+    public DateTime? LastSuccessUtc { get; init; }
+    public string? LastError { get; init; }
+    public int SuccessCount { get; init; }
+    public int FailureCount { get; init; }
 }

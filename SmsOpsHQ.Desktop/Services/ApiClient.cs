@@ -475,6 +475,13 @@ public sealed class ApiClient : IDisposable
 
     // ── HQ Hub ───────────────────────────────────────────────────────
 
+    public async Task<HubStatusResult> GetHubStatusAsync(CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await _httpClient.GetAsync("/api/hub/status", cancellationToken);
+        JsonElement result = await ProcessResponseAsync(response);
+        return ParseHubStatus(result);
+    }
+
     /// <summary>
     /// Tells the local API to re-read hub_config.json and rebuild its SignalR
     /// connection in-place. Used by Settings &gt; HQ Hub &gt; Save so the operator
@@ -483,23 +490,74 @@ public sealed class ApiClient : IDisposable
     public async Task<HubReloadResult> ReloadHubAsync()
     {
         JsonElement result = await PostJsonAsync("/api/hub/reload");
+        HubStatusResult status = ParseHubStatus(result);
         return new HubReloadResult
         {
+            Enabled = status.Enabled,
+            Configured = status.Configured,
+            IsConnected = status.IsConnected,
+            HubUrl = status.HubUrl,
+            DeploymentId = status.DeploymentId,
+            IntervalSeconds = status.IntervalSeconds
+        };
+    }
+
+    private static HubStatusResult ParseHubStatus(JsonElement result)
+    {
+        return new HubStatusResult
+        {
             Enabled = result.TryGetProperty("enabled", out JsonElement en) && en.GetBoolean(),
+            Configured = result.TryGetProperty("configured", out JsonElement co) && co.GetBoolean(),
             IsConnected = result.TryGetProperty("isConnected", out JsonElement ic) && ic.GetBoolean(),
             HubUrl = result.TryGetProperty("hubUrl", out JsonElement u) ? u.GetString() ?? string.Empty : string.Empty,
             DeploymentId = result.TryGetProperty("deploymentId", out JsonElement d) ? d.GetString() ?? string.Empty : string.Empty,
-            IntervalSeconds = result.TryGetProperty("intervalSeconds", out JsonElement i) && i.TryGetInt32(out int s) ? s : 0
+            IntervalSeconds = result.TryGetProperty("intervalSeconds", out JsonElement i) && i.TryGetInt32(out int s) ? s : 0,
+            LastAttemptUtc = ReadNullableDateTime(result, "lastAttemptUtc"),
+            LastSuccessUtc = ReadNullableDateTime(result, "lastSuccessUtc"),
+            LastError = result.TryGetProperty("lastError", out JsonElement e) && e.ValueKind == JsonValueKind.String
+                ? e.GetString()
+                : null,
+            SuccessCount = result.TryGetProperty("successCount", out JsonElement sc) && sc.TryGetInt32(out int successes)
+                ? successes
+                : 0,
+            FailureCount = result.TryGetProperty("failureCount", out JsonElement fc) && fc.TryGetInt32(out int failures)
+                ? failures
+                : 0
         };
+    }
+
+    private static DateTime? ReadNullableDateTime(JsonElement result, string propertyName)
+    {
+        return result.TryGetProperty(propertyName, out JsonElement value)
+               && value.ValueKind == JsonValueKind.String
+               && value.TryGetDateTime(out DateTime parsed)
+            ? parsed
+            : null;
     }
 
     public sealed class HubReloadResult
     {
         public bool Enabled { get; init; }
+        public bool Configured { get; init; }
         public bool IsConnected { get; init; }
         public string HubUrl { get; init; } = string.Empty;
         public string DeploymentId { get; init; } = string.Empty;
         public int IntervalSeconds { get; init; }
+    }
+
+    public sealed class HubStatusResult
+    {
+        public bool Enabled { get; init; }
+        public bool Configured { get; init; }
+        public bool IsConnected { get; init; }
+        public string HubUrl { get; init; } = string.Empty;
+        public string DeploymentId { get; init; } = string.Empty;
+        public int IntervalSeconds { get; init; }
+        public DateTime? LastAttemptUtc { get; init; }
+        public DateTime? LastSuccessUtc { get; init; }
+        public string? LastError { get; init; }
+        public int SuccessCount { get; init; }
+        public int FailureCount { get; init; }
     }
 
     // ── XPD hourly auto-sync scheduler ───────────────────────────────────

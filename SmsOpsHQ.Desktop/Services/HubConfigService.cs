@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using SmsOpsHQ.Core.Utilities;
 
 namespace SmsOpsHQ.Desktop.Services;
 
@@ -85,6 +86,15 @@ public sealed class HubConfigService
     {
         ArgumentNullException.ThrowIfNull(model);
 
+        HubConfigurationValidationResult validation = HubConfigurationValidator.Validate(
+            model.Enabled,
+            model.Url,
+            model.StoreKey,
+            model.DeploymentId,
+            model.IntervalSeconds);
+        if (!validation.IsValid)
+            throw new ArgumentException(string.Join(" ", validation.Errors), nameof(model));
+
         // Wrap in {"Hub": {...}} so appsettings-style readers (AddJsonFile)
         // can layer this directly on top of appsettings.json without any
         // custom merging logic on the API side.
@@ -93,10 +103,10 @@ public sealed class HubConfigService
             Hub = new
             {
                 model.Enabled,
-                model.Url,
-                model.StoreKey,
-                model.DeploymentId,
-                model.IntervalSeconds
+                Url = validation.Url,
+                StoreKey = validation.StoreKey,
+                DeploymentId = validation.DeploymentId,
+                IntervalSeconds = validation.IntervalSeconds
             }
         };
 

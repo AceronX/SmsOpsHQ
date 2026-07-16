@@ -38,6 +38,7 @@ public sealed class HeartbeatPusherActivityBusTests
                 ["Hub:Enabled"] = "true",
                 ["Hub:Url"] = "http://localhost:9",
                 ["Hub:StoreKey"] = "k",
+                ["Hub:DeploymentId"] = "test-deployment",
                 ["Hub:IntervalSeconds"] = "60"
             },
             bus);
@@ -91,7 +92,8 @@ public sealed class HeartbeatPusherActivityBusTests
             {
                 ["Hub:Enabled"] = "true",
                 ["Hub:Url"] = "http://localhost:9",
-                ["Hub:StoreKey"] = "k"
+                ["Hub:StoreKey"] = "k",
+                ["Hub:DeploymentId"] = "test-deployment"
             },
             bus);
         pusher.BurstDebounce = TimeSpan.FromMilliseconds(100);
@@ -120,7 +122,8 @@ public sealed class HeartbeatPusherActivityBusTests
             {
                 ["Hub:Enabled"] = "true",
                 ["Hub:Url"] = "http://localhost:9",
-                ["Hub:StoreKey"] = "k"
+                ["Hub:StoreKey"] = "k",
+                ["Hub:DeploymentId"] = "test-deployment"
             },
             bus);
         pusher.BurstDebounce = TimeSpan.FromMilliseconds(100);
@@ -154,7 +157,8 @@ public sealed class HeartbeatPusherActivityBusTests
             {
                 ["Hub:Enabled"] = "true",
                 ["Hub:Url"] = "http://localhost:9",
-                ["Hub:StoreKey"] = "k"
+                ["Hub:StoreKey"] = "k",
+                ["Hub:DeploymentId"] = "test-deployment"
             },
             bus);
         pusher.BurstDebounce = TimeSpan.FromMilliseconds(50);

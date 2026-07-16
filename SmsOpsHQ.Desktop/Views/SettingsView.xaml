@@ -1766,6 +1766,50 @@
                                        FontSize="12" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,0,0,16"/>
 
                             <Border Background="{StaticResource Surface}" CornerRadius="10" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" Padding="18,16" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,12">
+                                        <Button DockPanel.Dock="Right" Command="{Binding RefreshHubStatusCommand}"
+                                                IsEnabled="{Binding HubStatusBusy, Converter={StaticResource InvertBool}}"
+                                                Style="{StaticResource GhostButton}" Padding="12,7">
+                                            <TextBlock Text="Refresh status" FontSize="12"/>
+                                        </Button>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="10" Height="10" CornerRadius="5" Margin="0,0,8,0">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{StaticResource Error}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HubIsConnected}" Value="True">
+                                                                <Setter Property="Background" Value="{StaticResource Success}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                            </Border>
+                                            <TextBlock Text="{Binding HubConnectionStatus}" FontSize="14" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimary}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <TextBlock Text="Effective Hub URL used by the API" FontSize="11"
+                                               Foreground="{StaticResource TextMuted}"/>
+                                    <TextBlock Text="{Binding HubEffectiveUrl}" FontSize="12" FontFamily="Consolas"
+                                               Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,2,0,10"/>
+
+                                    <TextBlock Text="Last successful heartbeat" FontSize="11"
+                                               Foreground="{StaticResource TextMuted}"/>
+                                    <TextBlock Text="{Binding HubLastSuccessText}" FontSize="12"
+                                               Foreground="{StaticResource TextPrimary}" Margin="0,2,0,10"/>
+
+                                    <TextBlock Text="Last connection error" FontSize="11"
+                                               Foreground="{StaticResource TextMuted}"/>
+                                    <TextBlock Text="{Binding HubLastError}" FontSize="12"
+                                               Foreground="{StaticResource Error}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{StaticResource Surface}" CornerRadius="10" BorderBrush="{StaticResource Border}"
                                     BorderThickness="1" Padding="20,18" Margin="0,0,0,20">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#000000" Opacity="0.04" BlurRadius="12" ShadowDepth="0"/>
@@ -1838,7 +1882,7 @@
                                                 <TextBlock Text="&#xE968;" FontFamily="{StaticResource IconFont}"
                                                            FontSize="13" Margin="0,0,8,0"
                                                            Foreground="{StaticResource TextPrimary}"/>
-                                                <TextBlock Text="Test connection" FontSize="13"
+                                                <TextBlock Text="Test URL and Store Key" FontSize="13"
                                                            Foreground="{StaticResource TextPrimary}"/>
                                             </StackPanel>
                                         </Button>
@@ -1880,7 +1924,7 @@
                             <TextBlock FontSize="11" Foreground="{StaticResource TextMuted}" TextWrapping="Wrap">
                                 <Run Text="Settings are saved to "/>
                                 <Run Text="{Binding HubConfigPath, Mode=OneWay}" FontFamily="Consolas"/>
-                                <Run Text=" and read by the bundled API on next start."/>
+                                <Run Text=" and applied live by the bundled API after Save."/>
                             </TextBlock>
                         </StackPanel>
                     </ScrollViewer>

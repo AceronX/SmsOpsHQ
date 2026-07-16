@@ -83,6 +83,8 @@ public sealed class HubSignalRClientStopAsyncTests
         public void Start() { }
         public void Stop() { }
         public void Reload() { }
+        public void RecordConnectionError(string? error) { }
+        public void RecordSignalRHeartbeatSuccess() { }
         public Task<bool> SendOnceAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
         public HeartbeatPusherStatus GetStatus() => new();
         public Task<HeartbeatPayload> BuildPayloadAsync(CancellationToken cancellationToken = default) =>

@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SmsOpsHQ.Core.Services;
+using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Infrastructure.Persistence;
 using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
@@ -26,6 +27,15 @@ public interface IHeartbeatPusher
     HeartbeatPusherStatus GetStatus();
 
     /// <summary>
+    /// Records the most recent SignalR connection error for the operator status
+    /// endpoint. Passing <see langword="null"/> clears the connection error.
+    /// </summary>
+    void RecordConnectionError(string? error);
+
+    /// <summary>Records a heartbeat successfully delivered over SignalR.</summary>
+    void RecordSignalRHeartbeatSuccess();
+
+    /// <summary>
     /// Build a fresh HeartbeatPayload describing this store right now.
     /// Exposed so the SignalR client can send the same payload over a
     /// persistent connection without going through the REST stack.
@@ -40,7 +50,7 @@ public interface IHeartbeatPusher
     string DeploymentId { get; }
     /// <summary>Heartbeat cadence in seconds.</summary>
     int IntervalSeconds { get; }
-    /// <summary>True when Hub:Enabled=true and the URL/key are present.</summary>
+    /// <summary>True when the enabled Hub settings pass runtime validation.</summary>
     bool IsConfigured { get; }
 
     /// <summary>
@@ -119,7 +129,8 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
     private bool _running;
     private DateTime? _lastSuccessUtc;
     private DateTime? _lastAttemptUtc;
-    private string? _lastError;
+    private string? _lastHeartbeatError;
+    private string? _lastConnectionError;
     private int _successCount;
     private int _failureCount;
 
@@ -163,10 +174,10 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(_hubUrl) || string.IsNullOrWhiteSpace(_storeKey))
+            if (!IsConfigured)
             {
                 _logger.LogWarning(
-                    "Hub heartbeat enabled but Hub:Url or Hub:StoreKey is missing. Skipping.");
+                    "Hub heartbeat enabled but URL, Store Key, or Deployment ID is missing or invalid. Skipping.");
                 return;
             }
 
@@ -178,8 +189,8 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
             _running = true;
 
             _logger.LogInformation(
-                "Hub heartbeat started: target={Url}, every {Interval}s, deploymentId={Deployment}",
-                _hubUrl, _intervalSeconds,
+                "Hub heartbeat started: endpoint={Endpoint}, every {Interval}s, deploymentId={Deployment}",
+                HubEndpointLogFormatter.SafeHostAndPort(_hubUrl), _intervalSeconds,
                 string.IsNullOrEmpty(_deploymentId) ? "(unset)" : _deploymentId);
         }
     }
@@ -227,7 +238,7 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 string body = await SafeReadAsync(response, cancellationToken);
-                _lastError = $"HTTP {(int)response.StatusCode}: {body}";
+                _lastHeartbeatError = $"HTTP {(int)response.StatusCode}: {body}";
                 _failureCount++;
                 _logger.LogWarning(
                     "Hub heartbeat failed: {Status} {Body}",
@@ -236,15 +247,16 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
             }
 
             _lastSuccessUtc = DateTime.UtcNow;
-            _lastError = null;
+            _lastHeartbeatError = null;
             _successCount++;
             return true;
         }
         catch (Exception ex)
         {
-            _lastError = ex.Message;
+            string safeMessage = HubEndpointLogFormatter.RedactSecret(ex.Message, _storeKey);
+            _lastHeartbeatError = safeMessage;
             _failureCount++;
-            _logger.LogWarning(ex, "Hub heartbeat threw");
+            _logger.LogWarning("Hub heartbeat threw: {Message}", safeMessage);
             return false;
         }
     }
@@ -260,19 +272,38 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
             IntervalSeconds = _intervalSeconds,
             LastSuccessUtc = _lastSuccessUtc,
             LastAttemptUtc = _lastAttemptUtc,
-            LastError = _lastError,
+            LastError = _lastConnectionError ?? _lastHeartbeatError,
             SuccessCount = _successCount,
             FailureCount = _failureCount
         };
+    }
+
+    public void RecordConnectionError(string? error)
+    {
+        _lastConnectionError = string.IsNullOrWhiteSpace(error)
+            ? null
+            : "SignalR: " + HubEndpointLogFormatter.RedactSecret(error, _storeKey);
+    }
+
+    public void RecordSignalRHeartbeatSuccess()
+    {
+        DateTime now = DateTime.UtcNow;
+        _lastAttemptUtc = now;
+        _lastSuccessUtc = now;
+        _lastHeartbeatError = null;
+        _successCount++;
     }
 
     public string HubUrl => _hubUrl;
     public string StoreKey => _storeKey;
     public string DeploymentId => _deploymentId;
     public int IntervalSeconds => _intervalSeconds;
-    public bool IsConfigured => _enabled
-                                && !string.IsNullOrWhiteSpace(_hubUrl)
-                                && !string.IsNullOrWhiteSpace(_storeKey);
+    public bool IsConfigured => HubConfigurationValidator.Validate(
+        _enabled,
+        _hubUrl,
+        _storeKey,
+        _deploymentId,
+        _intervalSeconds).IsValid && _enabled;
 
     public async Task<HeartbeatPayload> BuildPayloadAsync(CancellationToken cancellationToken = default)
     {
@@ -507,9 +538,10 @@ public sealed class HeartbeatPusher : IHeartbeatPusher, IDisposable
 
             ApplySettings(next);
             _logger.LogInformation(
-                "Hub heartbeat reloaded: enabled={Enabled}, url={Url}, interval={Interval}s, deployment={Deployment}",
+                "Hub heartbeat reloaded: enabled={Enabled}, configured={Configured}, endpoint={Endpoint}, interval={Interval}s, deployment={Deployment}",
                 _enabled,
-                string.IsNullOrEmpty(_hubUrl) ? "(unset)" : _hubUrl,
+                IsConfigured,
+                HubEndpointLogFormatter.SafeHostAndPort(_hubUrl),
                 _intervalSeconds,
                 string.IsNullOrEmpty(_deploymentId) ? "(unset)" : _deploymentId);
 

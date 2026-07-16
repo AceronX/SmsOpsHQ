@@ -384,6 +384,24 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _hubConfigPath = string.Empty;
 
+    [ObservableProperty]
+    private bool _hubStatusBusy;
+
+    [ObservableProperty]
+    private bool _hubIsConnected;
+
+    [ObservableProperty]
+    private string _hubConnectionStatus = "Not checked";
+
+    [ObservableProperty]
+    private string _hubEffectiveUrl = "Not checked";
+
+    [ObservableProperty]
+    private string _hubLastSuccessText = "Never";
+
+    [ObservableProperty]
+    private string _hubLastError = "None reported";
+
     // ── XPD hourly auto-sync (Settings -> XPD -> Hourly auto-sync panel) ──
     //
     // These wrap %AppData%\SmsOpsHQ\xpd_sync_config.json and the API endpoints
@@ -444,7 +462,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         HubUrl = m.Url;
         HubStoreKey = m.StoreKey;
         HubDeploymentId = m.DeploymentId;
-        HubIntervalSeconds = m.IntervalSeconds <= 0 ? 60 : m.IntervalSeconds;
+        HubIntervalSeconds = Math.Max(HubConfigurationValidator.MinimumIntervalSeconds, m.IntervalSeconds);
         HubConfigPath = _hubConfig.ConfigFilePath;
     }
 
@@ -575,44 +593,56 @@ public sealed partial class SettingsViewModel : ViewModelBase
         HubSaveMessage = string.Empty;
         try
         {
-            // Trim everything that isn't intentionally whitespace. The store key
-            // is base64-ish (no leading/trailing whitespace ever expected).
+            HubConfigurationValidationResult validation = HubConfigurationValidator.Validate(
+                HubEnabled,
+                HubUrl,
+                HubStoreKey,
+                HubDeploymentId,
+                HubIntervalSeconds);
+            if (!validation.IsValid)
+            {
+                HubSaveMessage = "Not saved: " + string.Join(" ", validation.Errors);
+                return;
+            }
+
             HubConfigService.HubConfigModel m = new()
             {
                 Enabled = HubEnabled,
-                Url = (HubUrl ?? string.Empty).Trim(),
-                StoreKey = (HubStoreKey ?? string.Empty).Trim(),
-                DeploymentId = (HubDeploymentId ?? string.Empty).Trim(),
-                IntervalSeconds = HubIntervalSeconds <= 0 ? 60 : HubIntervalSeconds
+                Url = validation.Url,
+                StoreKey = validation.StoreKey,
+                DeploymentId = validation.DeploymentId,
+                IntervalSeconds = validation.IntervalSeconds
             };
             await Task.Run(() => _hubConfig.Save(m));
+            HubUrl = m.Url;
+            HubStoreKey = m.StoreKey;
+            HubDeploymentId = m.DeploymentId;
+            HubIntervalSeconds = m.IntervalSeconds;
 
-            // Ask the local API to re-read the file and rebuild its SignalR
-            // connection in-place. This is the live-apply path so the operator
-            // does not have to restart the app. If it fails (older API build,
-            // server crashed, auth expired), fall back to the restart message --
-            // the file is already saved correctly either way.
             try
             {
-                ApiClient.HubReloadResult result = await _apiClient.ReloadHubAsync();
+                ApiClient.HubReloadResult reload = await _apiClient.ReloadHubAsync();
                 if (!m.Enabled)
                 {
+                    await RefreshHubStatus();
                     HubSaveMessage = "Saved. Hub reporting is now disabled.";
-                }
-                else if (result.IsConnected)
-                {
-                    HubSaveMessage = "Saved. Hub reconnected with the new settings -- this store is now online on HQ.";
-                }
-                else if (result.Enabled)
-                {
-                    HubSaveMessage =
-                        "Saved. Hub client restarted, but it has not connected yet. " +
-                        "Check the Hub URL is reachable from this PC and that the Store Key is correct " +
-                        "(use Test connection above to verify).";
                 }
                 else
                 {
-                    HubSaveMessage = "Saved, but Hub is not configured (URL or Store Key is empty).";
+                    ApiClient.HubStatusResult status = await PollHubStatusAfterSave(reload);
+                    if (status.IsConnected)
+                    {
+                        HubSaveMessage = "Saved. SignalR is connected and this store is online on HQ.";
+                    }
+                    else
+                    {
+                        string error = string.IsNullOrWhiteSpace(status.LastError)
+                            ? "No connection error has been reported yet."
+                            : status.LastError;
+                        HubSaveMessage =
+                            $"Saved, but Hub is disconnected. Effective URL: {DisplayUrl(status.HubUrl)}. " +
+                            $"Last error: {error}";
+                    }
                 }
             }
             catch (Exception reloadEx)
@@ -633,6 +663,79 @@ public sealed partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task RefreshHubStatus()
+    {
+        HubStatusBusy = true;
+        try
+        {
+            ApiClient.HubStatusResult status = await _apiClient.GetHubStatusAsync();
+            ApplyHubStatus(status);
+        }
+        catch (Exception ex)
+        {
+            HubIsConnected = false;
+            HubConnectionStatus = "Unavailable";
+            HubLastError = ex.Message;
+        }
+        finally
+        {
+            HubStatusBusy = false;
+        }
+    }
+
+    private async Task<ApiClient.HubStatusResult> PollHubStatusAfterSave(ApiClient.HubReloadResult reload)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        ApiClient.HubStatusResult latest = new()
+        {
+            Enabled = reload.Enabled,
+            Configured = reload.Configured,
+            IsConnected = reload.IsConnected,
+            HubUrl = reload.HubUrl,
+            DeploymentId = reload.DeploymentId,
+            IntervalSeconds = reload.IntervalSeconds
+        };
+        ApplyHubStatus(latest);
+
+        try
+        {
+            while (!timeout.IsCancellationRequested)
+            {
+                latest = await _apiClient.GetHubStatusAsync(timeout.Token);
+                ApplyHubStatus(latest);
+                if (latest.IsConnected || !latest.Enabled || !latest.Configured)
+                    return latest;
+
+                await Task.Delay(TimeSpan.FromMilliseconds(500), timeout.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The bounded polling window expired. Return the last real status.
+        }
+
+        return latest;
+    }
+
+    private void ApplyHubStatus(ApiClient.HubStatusResult status)
+    {
+        HubIsConnected = status.IsConnected;
+        HubConnectionStatus = status.IsConnected
+            ? "Connected"
+            : status.Enabled ? "Disconnected" : "Disabled";
+        HubEffectiveUrl = DisplayUrl(status.HubUrl);
+        HubLastSuccessText = status.LastSuccessUtc.HasValue
+            ? status.LastSuccessUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm:ss tt")
+            : "Never";
+        HubLastError = string.IsNullOrWhiteSpace(status.LastError)
+            ? "None reported"
+            : status.LastError;
+    }
+
+    private static string DisplayUrl(string? url) =>
+        string.IsNullOrWhiteSpace(url) ? "(not configured)" : url;
+
+    [RelayCommand]
     private async Task TestHubConnection()
     {
         HubTestBusy = true;
@@ -645,6 +748,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
             if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(key))
             {
                 HubTestMessage = "Enter Hub URL and Store Key first.";
+                return;
+            }
+            if (!HubConfigurationValidator.TryValidateUrl(url))
+            {
+                HubTestMessage = "Enter an absolute Hub URL beginning with http:// or https://.";
                 return;
             }
 
@@ -660,7 +768,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
                     ? n.GetString() ?? "(unknown)"
                     : "(unknown)";
                 int storeId = doc.RootElement.TryGetProperty("store_id", out JsonElement i) && i.TryGetInt32(out int sid) ? sid : 0;
-                HubTestMessage = $"OK -- Hub recognized this key as store '{storeName}' (id {storeId}).";
+                HubTestMessage =
+                    $"URL and Store Key accepted for store '{storeName}' (id {storeId}). " +
+                    "See SignalR status above for the live store connection.";
                 HubTestSuccess = true;
             }
             else if ((int)response.StatusCode == 401)

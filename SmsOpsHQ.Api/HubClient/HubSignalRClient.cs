@@ -84,10 +84,21 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
         lock (_lock)
         {
             if (_started) return;
+
+            HeartbeatPusherStatus status = _pusher.GetStatus();
+            _logger.LogInformation(
+                "Hub startup summary: enabled={Enabled}, configured={Configured}, endpoint={Endpoint}, deployment={Deployment}, signalRConnected={Connected}, intervalSeconds={Interval}",
+                status.Enabled,
+                _pusher.IsConfigured,
+                HubEndpointLogFormatter.SafeHostAndPort(status.HubUrl),
+                string.IsNullOrWhiteSpace(status.DeploymentId) ? "(unset)" : status.DeploymentId,
+                IsConnected,
+                status.IntervalSeconds);
+
             if (!_pusher.IsConfigured)
             {
                 _logger.LogInformation(
-                    "Hub SignalR client disabled (Hub:Enabled=false or missing Url/StoreKey).");
+                    "Hub SignalR client disabled or incompletely configured.");
                 return;
             }
             _started = true;
@@ -115,9 +126,6 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
             TimeSpan.FromSeconds(8),
             TimeSpan.FromSeconds(_pusher.IntervalSeconds));
 
-            _logger.LogInformation(
-                "Hub SignalR client starting: target={Url}, every {Interval}s",
-                _pusher.HubUrl, _pusher.IntervalSeconds);
         }
     }
 
@@ -332,11 +340,14 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
 
         conn.Reconnecting += err =>
         {
-            _logger.LogWarning("Hub SignalR connection lost; reconnecting... ({Reason})", err?.Message ?? "(no error)");
+            string reason = HubEndpointLogFormatter.RedactSecret(err?.Message ?? "(no error)", _pusher.StoreKey);
+            _pusher.RecordConnectionError(reason);
+            _logger.LogWarning("Hub SignalR connection lost; reconnecting... ({Reason})", reason);
             return Task.CompletedTask;
         };
         conn.Reconnected += id =>
         {
+            _pusher.RecordConnectionError(null);
             _logger.LogInformation("Hub SignalR reconnected (cid={ConnId})", id);
             return Task.CompletedTask;
         };
@@ -345,7 +356,9 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
             // After WithAutomaticReconnect exhausts retries, Closed fires.
             // We restart the connect loop so we keep trying forever (the store
             // PC may be offline overnight; we want to come back when network does).
-            _logger.LogWarning("Hub SignalR connection closed ({Reason}); will retry", err?.Message ?? "graceful");
+            string reason = HubEndpointLogFormatter.RedactSecret(err?.Message ?? "graceful", _pusher.StoreKey);
+            _pusher.RecordConnectionError(reason);
+            _logger.LogWarning("Hub SignalR connection closed ({Reason}); will retry", reason);
             return Task.CompletedTask;
         };
     }
@@ -366,15 +379,21 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
                 try
                 {
                     await conn.StartAsync(ct);
-                    _logger.LogInformation("Hub SignalR connected");
+                    _pusher.RecordConnectionError(null);
+                    _logger.LogInformation(
+                        "Hub SignalR connected: endpoint={Endpoint}, deployment={Deployment}",
+                        HubEndpointLogFormatter.SafeHostAndPort(_pusher.HubUrl),
+                        _pusher.DeploymentId);
                     backoff = TimeSpan.FromSeconds(5);
                 }
                 catch (OperationCanceledException) { return; }
                 catch (Exception ex)
                 {
+                    string safeMessage = HubEndpointLogFormatter.RedactSecret(ex.Message, _pusher.StoreKey);
+                    _pusher.RecordConnectionError(safeMessage);
                     _logger.LogWarning(
                         "Hub SignalR connect failed: {Message}. Retrying in {Backoff}s",
-                        ex.Message, backoff.TotalSeconds);
+                        safeMessage, backoff.TotalSeconds);
                     try { await Task.Delay(backoff, ct); } catch { return; }
                     backoff = TimeSpan.FromSeconds(Math.Min(60, backoff.TotalSeconds * 1.5));
                     continue;
@@ -407,11 +426,16 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
             try
             {
                 await _connection!.InvokeAsync(HubConstants.AgentMethods.ReceiveHeartbeat, payload, ct);
+                _pusher.RecordSignalRHeartbeatSuccess();
                 return;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Heartbeat over SignalR failed; falling back to REST");
+                string safeMessage = HubEndpointLogFormatter.RedactSecret(ex.Message, _pusher.StoreKey);
+                _pusher.RecordConnectionError(safeMessage);
+                _logger.LogWarning(
+                    "Heartbeat over SignalR failed ({Message}); falling back to REST",
+                    safeMessage);
                 // fall through to REST below
             }
         }

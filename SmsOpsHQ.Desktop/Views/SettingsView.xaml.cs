@@ -266,7 +266,7 @@ public partial class SettingsView : UserControl
             vm.HubStoreKey = box.Password;
     }
 
-    private void HubTab_Loaded(object sender, RoutedEventArgs e)
+    private async void HubTab_Loaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)
         {
@@ -277,6 +277,7 @@ public partial class SettingsView : UserControl
             // Clear any stale messages from a previous open.
             vm.HubTestMessage = string.Empty;
             vm.HubSaveMessage = string.Empty;
+            await vm.RefreshHubStatusCommand.ExecuteAsync(null);
         }
     }
 }

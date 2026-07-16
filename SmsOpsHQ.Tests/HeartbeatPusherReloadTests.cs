@@ -103,6 +103,7 @@ public sealed class HeartbeatPusherReloadTests : IDisposable
             ["Hub:Enabled"] = "true",
             ["Hub:Url"] = "https://hq.example.com",
             ["Hub:StoreKey"] = "still-here",
+            ["Hub:DeploymentId"] = "main-counter",
             ["Hub:IntervalSeconds"] = "60"
         });
         Assert.True(pusher.IsConfigured);
@@ -173,6 +174,53 @@ public sealed class HeartbeatPusherReloadTests : IDisposable
     }
 
     [Fact]
+    public void Reload_EnabledWithoutDeploymentId_IsNotConfigured()
+    {
+        HeartbeatPusher pusher = BuildPusher(new());
+        WriteOverlay(new
+        {
+            Hub = new
+            {
+                Enabled = true,
+                Url = "https://hq.example.com",
+                StoreKey = "k",
+                DeploymentId = "",
+                IntervalSeconds = 60
+            }
+        });
+
+        pusher.ReloadFromPath(_tempOverlayPath);
+
+        Assert.False(pusher.IsConfigured);
+    }
+
+    [Fact]
+    public void RecordSignalRHeartbeatSuccess_UpdatesHeartbeatStatusWithoutHidingConnectionError()
+    {
+        HeartbeatPusher pusher = BuildPusher(new()
+        {
+            ["Hub:Enabled"] = "true",
+            ["Hub:Url"] = "https://hq.example.com",
+            ["Hub:StoreKey"] = "secret-key",
+            ["Hub:DeploymentId"] = "main-counter",
+            ["Hub:IntervalSeconds"] = "60"
+        });
+
+        pusher.RecordConnectionError("connection refused for secret-key");
+        pusher.RecordSignalRHeartbeatSuccess();
+
+        HeartbeatPusherStatus status = pusher.GetStatus();
+        Assert.NotNull(status.LastAttemptUtc);
+        Assert.NotNull(status.LastSuccessUtc);
+        Assert.Equal(1, status.SuccessCount);
+        Assert.Contains("[redacted]", status.LastError);
+        Assert.DoesNotContain("secret-key", status.LastError);
+
+        pusher.RecordConnectionError(null);
+        Assert.Null(pusher.GetStatus().LastError);
+    }
+
+    [Fact]
     public void Reload_OverlayUnreadable_FallsBackToAppsettings()
     {
         HeartbeatPusher pusher = BuildPusher(new()
@@ -180,6 +228,7 @@ public sealed class HeartbeatPusherReloadTests : IDisposable
             ["Hub:Enabled"] = "true",
             ["Hub:Url"] = "https://fallback.example.com",
             ["Hub:StoreKey"] = "fallback-key",
+            ["Hub:DeploymentId"] = "fallback-deployment",
             ["Hub:IntervalSeconds"] = "60"
         });
 
