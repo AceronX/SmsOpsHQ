@@ -7,6 +7,7 @@ public sealed class ThreadEntity
     public int StoreId { get; set; }
     public int? CustomerId { get; set; }
     public int? TwilioNumberId { get; set; }
+    public string? ContactPhoneE164 { get; set; }
     public int? IdentityId { get; set; }
     public string Status { get; set; } = "Open";
     public int? AssignedToUserId { get; set; }

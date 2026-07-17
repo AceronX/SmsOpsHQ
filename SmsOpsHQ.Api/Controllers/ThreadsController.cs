@@ -95,6 +95,7 @@ public sealed class ThreadsController : ControllerBase
             result.Add(new
             {
                 thread_id = t.ThreadId,
+                contact_phone = t.ContactPhoneE164,
                 customer = customerDto is not null ? new
                 {
                     id = customerDto.CustomerId,
@@ -185,6 +186,7 @@ public sealed class ThreadsController : ControllerBase
                 thread_id = thread.ThreadId,
                 status = thread.Status,
                 twilio_number_id = thread.TwilioNumberId,
+                contact_phone = thread.ContactPhoneE164,
                 customer = customerDto is not null ? new
                 {
                     id = customerDto.CustomerId,
@@ -321,6 +323,7 @@ public sealed class ThreadsController : ControllerBase
                     id = t.ThreadId,
                     status = t.Status,
                     twilio_number_id = t.TwilioNumberId,
+                    contact_phone = t.ContactPhoneE164,
                     customer = customerData
                 },
                 messages = messagesByThread.GetValueOrDefault(t.ThreadId, new List<object>())

@@ -132,7 +132,10 @@ public sealed partial class InboxViewModel : ViewModelBase
         {
             string? search = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText;
             JsonElement result = await _apiClient.GetInboxAsync(
-                _appState.CurrentStoreId, SelectedFilter, search);
+                _appState.CurrentStoreId,
+                SelectedFilter,
+                search,
+                _appState.CurrentTwilioNumberId);
 
             var freshItems = new List<InboxThreadItem>();
             foreach (JsonElement json in result.EnumerateArray())
@@ -478,6 +481,10 @@ public sealed partial class InboxViewModel : ViewModelBase
         var item = new InboxThreadItem
         {
             ThreadId = json.GetProperty("thread_id").GetInt32(),
+            CustomerPhone = json.TryGetProperty("contact_phone", out var contactPhone)
+                            && contactPhone.ValueKind == JsonValueKind.String
+                ? contactPhone.GetString() ?? string.Empty
+                : string.Empty,
             UnreadCount = json.GetProperty("unread_count").GetInt32(),
             Status = json.GetProperty("status").GetString() ?? "Open"
         };
@@ -512,8 +519,6 @@ public sealed partial class InboxViewModel : ViewModelBase
 
         string name = cust.TryGetProperty("name", out var nameEl)
             ? nameEl.GetString() ?? "" : "";
-        item.CustomerPhone = cust.TryGetProperty("phone", out var phoneEl)
-            ? phoneEl.GetString() ?? "" : "";
         item.CustomerName = string.IsNullOrWhiteSpace(name) ? item.CustomerPhone : name;
 
         if (cust.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Number)

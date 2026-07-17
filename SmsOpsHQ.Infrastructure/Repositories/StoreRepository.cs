@@ -47,6 +47,32 @@ public sealed class StoreRepository : IStoreRepository
         return number?.Store is null ? null : MapToDomain(number.Store);
     }
 
+    public async Task<TwilioNumber?> GetNumberByPhoneAsync(
+        string phoneE164,
+        CancellationToken cancellationToken = default)
+    {
+        TwilioNumberEntity? number = await _db.TwilioNumbers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                t => t.PhoneE164 == phoneE164 && t.IsActive,
+                cancellationToken);
+
+        return number is null
+            ? null
+            : new TwilioNumber
+            {
+                NumberId = number.NumberId,
+                StoreId = number.StoreId,
+                PhoneE164 = number.PhoneE164,
+                FriendlyName = number.FriendlyName,
+                TwilioSid = number.TwilioSid,
+                MessagingServiceSid = number.MessagingServiceSid,
+                CapabilitiesJson = number.CapabilitiesJson,
+                IsActive = number.IsActive,
+                CreatedAt = number.CreatedAt
+            };
+    }
+
     // Returns the default Twilio number's E.164 phone for a store.
     // Uses the store's DefaultNumberId to find the TwilioNumber.
     // Returns null if DefaultNumberId is 0 (no Twilio number set).

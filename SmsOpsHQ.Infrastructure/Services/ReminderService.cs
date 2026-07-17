@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using SmsOpsHQ.Core.Entities;
 using SmsOpsHQ.Core.Repositories;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Core.Utilities;
@@ -20,8 +21,6 @@ public sealed class ReminderService : IReminderService
     private readonly ILogger<ReminderService> _logger;
     private readonly IThreadRepository? _threadRepo;
     private readonly IMessageRepository? _messageRepo;
-    private readonly ICustomerRepository? _customerRepo;
-    private readonly IIdentityResolver? _identityResolver;
 
     private static readonly int[] ReminderIntervals = { -7, 0, 7, 14, 30 };
 
@@ -46,9 +45,7 @@ public sealed class ReminderService : IReminderService
         ILogger<ReminderService> logger,
         IConfiguration? configuration = null,
         IThreadRepository? threadRepo = null,
-        IMessageRepository? messageRepo = null,
-        ICustomerRepository? customerRepo = null,
-        IIdentityResolver? identityResolver = null)
+        IMessageRepository? messageRepo = null)
     {
         _db = db;
         _twilioService = twilioService;
@@ -56,8 +53,6 @@ public sealed class ReminderService : IReminderService
         _logger = logger;
         _threadRepo = threadRepo;
         _messageRepo = messageRepo;
-        _customerRepo = customerRepo;
-        _identityResolver = identityResolver;
         _testMode = configuration?.GetValue("Reminders:TestMode", false) ?? false;
         _sendDelayMs = configuration?.GetValue("Reminders:SendDelayMs", 2000) ?? 2000;
         _batchSize = configuration?.GetValue("Reminders:BatchSize", 10) ?? 10;
@@ -699,7 +694,7 @@ public sealed class ReminderService : IReminderService
         int storeId, string fromE164, string toE164, string body,
         string? twilioSid, CancellationToken cancellationToken)
     {
-        if (_threadRepo is null || _messageRepo is null || _customerRepo is null)
+        if (_threadRepo is null || _messageRepo is null)
         {
             _logger.LogDebug("Conversation repos not available; skipping thread lookup");
             return;
@@ -707,21 +702,18 @@ public sealed class ReminderService : IReminderService
 
         try
         {
-            var customer = await _customerRepo.FindByPhoneAsync(storeId, toE164, cancellationToken);
-
-            int? identityId = _identityResolver is not null
-                ? await _identityResolver.ResolveIdentityIdAsync(storeId, toE164, cancellationToken)
-                : null;
-
-            if (customer is null && identityId is null)
+            TwilioNumber? storeNumber = await _storePhoneResolver.GetStoreNumberByPhoneAsync(
+                fromE164, cancellationToken);
+            if (storeNumber is null || storeNumber.StoreId != storeId)
             {
-                _logger.LogInformation(
-                    "No existing customer or identity for {Phone}; reminder is reminders-tab only", toE164);
+                _logger.LogWarning(
+                    "Reminder sender {Sender} is not an active number for store {StoreId}; skipping conversation append",
+                    fromE164, storeId);
                 return;
             }
 
-            var thread = await _threadRepo.FindOpenByCustomerAsync(
-                storeId, identityId, customer?.CustomerId, cancellationToken);
+            var thread = await _threadRepo.FindOpenAsync(
+                storeId, storeNumber.NumberId, toE164, cancellationToken);
 
             if (thread is null)
             {

@@ -64,8 +64,12 @@ public sealed class MessagesController : ControllerBase
 
         int userId = User.GetUserId();
 
+        string? normalizedTo = PhoneUtils.NormalizeToE164(request.ToPhone);
+        if (normalizedTo is null)
+            return Problem(statusCode: 400, detail: "Destination phone must be a valid US phone number.");
+
         // 2. Opt-out check
-        bool isOptedOut = await _optOutRepo.ExistsAsync(request.StoreId, request.ToPhone, cancellationToken);
+        bool isOptedOut = await _optOutRepo.ExistsAsync(request.StoreId, normalizedTo, cancellationToken);
         if (isOptedOut)
             return Problem(statusCode: 400, detail: "Customer is opted out.");
 
@@ -95,32 +99,50 @@ public sealed class MessagesController : ControllerBase
                 request.StoreId, request.ThreadId.Value, cancellationToken);
             if (existingThread is null)
                 return Problem(statusCode: 404, detail: "Thread not found");
+
+            if (!string.Equals(existingThread.ContactPhoneE164, normalizedTo, StringComparison.Ordinal))
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Conversation phone mismatch",
+                    detail: "The destination phone does not match this conversation.");
+            }
+
+            if (existingThread.TwilioNumberId != sender.TwilioNumberId)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Conversation sender mismatch",
+                    detail: "The selected store number does not match this conversation.");
+            }
+
             thread = existingThread;
         }
         else
         {
-            // Normalize phone to E.164 early so FindOrCreateAsync matches Twilio's
-            // E.164 format and avoids creating duplicate customer/thread records.
-            string normalizedPhone = PhoneUtils.NormalizeToE164(request.ToPhone) ?? request.ToPhone;
-
             // Try to resolve identity from phone index (XPD-synced CustomerPhones).
             // If the phone is not in the database, identityId will be null — that's fine;
             // we still create a thread and customer so SMS can be sent to anyone.
             int? identityId = await _identityResolver.ResolveIdentityIdAsync(
-                request.StoreId, normalizedPhone, cancellationToken);
+                request.StoreId, normalizedTo, cancellationToken);
 
             if (identityId is null)
             {
                 _logger.LogInformation(
                     "Phone {Phone} not found in XPD for store {StoreId}; sending to unknown contact",
-                    normalizedPhone, request.StoreId);
+                    normalizedTo, request.StoreId);
             }
 
             Customer customer = await _customerRepo.FindOrCreateAsync(
-                request.StoreId, normalizedPhone, cancellationToken);
+                request.StoreId, normalizedTo, cancellationToken);
 
             thread = await _threadRepo.FindOrCreateAsync(
-                request.StoreId, identityId, customer.CustomerId, cancellationToken);
+                request.StoreId,
+                sender.TwilioNumberId,
+                normalizedTo,
+                identityId,
+                customer.CustomerId,
+                cancellationToken);
 
             if (thread.CustomerId is null || thread.CustomerId == 0)
             {
@@ -130,7 +152,6 @@ public sealed class MessagesController : ControllerBase
 
         // 5. Classify and create outbound message (Status = Queued)
         string category = MessageClassifier.Classify(request.Body);
-        string normalizedTo = PhoneUtils.NormalizeToE164(request.ToPhone) ?? request.ToPhone;
 
         Message message = await _messageRepo.CreateOutboundAsync(
             request.StoreId, thread.ThreadId, fromNumber,
@@ -186,6 +207,8 @@ public sealed class MessagesController : ControllerBase
         {
             ThreadId = thread.ThreadId,
             StoreId = request.StoreId,
+            TwilioNumberId = thread.TwilioNumberId,
+            ContactPhoneE164 = thread.ContactPhoneE164,
             Status = thread.Status,
             LastMessageAt = message.CreatedAt,
             UnreadCount = thread.UnreadCount
@@ -252,7 +275,9 @@ public sealed class MessagesController : ControllerBase
         ThreadDto emptyThreadDto = new ThreadDto
         {
             ThreadId = thread.ThreadId,
-            StoreId = request.StoreId
+            StoreId = request.StoreId,
+            TwilioNumberId = thread.TwilioNumberId,
+            ContactPhoneE164 = thread.ContactPhoneE164
         };
 
         await _realtimeService.PushMessageNewAsync(

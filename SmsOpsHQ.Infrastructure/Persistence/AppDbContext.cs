@@ -261,13 +261,21 @@ public sealed class AppDbContext : DbContext
                 .IsRequired()
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-            // CustomerId and TwilioNumberId are deprecated columns kept
-            // for backward compatibility. No FK constraints are modeled.
+            thread.Property(t => t.ContactPhoneE164)
+                .HasMaxLength(32);
+
+            // CustomerId remains for profile metadata. TwilioNumberId is part
+            // of the phone-scoped conversation key. No FK is modeled for the
+            // legacy-compatible columns.
 
             thread.HasIndex(t => t.StoreId);
             thread.HasIndex(t => t.IdentityId);
             thread.HasIndex(t => t.LastMessageAt);
             thread.HasIndex(t => t.Status);
+            thread.HasIndex(t => t.ContactPhoneE164);
+            thread.HasIndex(t => new { t.StoreId, t.TwilioNumberId, t.ContactPhoneE164 })
+                .IsUnique()
+                .HasFilter("ContactPhoneE164 IS NOT NULL AND TwilioNumberId IS NOT NULL");
 
             thread.HasOne(t => t.Store)
                 .WithMany()

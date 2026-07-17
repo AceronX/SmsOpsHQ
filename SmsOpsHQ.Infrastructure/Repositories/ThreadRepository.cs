@@ -18,36 +18,32 @@ public sealed class ThreadRepository : IThreadRepository
         _db = db;
     }
 
-    // Upserts a thread by (StoreId, IdentityId), then falls back to (StoreId, CustomerId).
-    // This ensures unknown contacts (identityId=null) still reuse existing threads.
-    public async Task<Thread> FindOrCreateAsync(int storeId, int? identityId, int? customerId = null,
+    public async Task<Thread> FindOrCreateAsync(
+        int storeId,
+        int twilioNumberId,
+        string contactPhoneE164,
+        int? identityId,
+        int? customerId,
         CancellationToken cancellationToken = default)
     {
-        if (identityId is not null)
-        {
-            ThreadEntity? existing = await _db.Threads
-                .FirstOrDefaultAsync(
-                    t => t.StoreId == storeId && t.IdentityId == identityId,
-                    cancellationToken);
+        if (string.IsNullOrWhiteSpace(contactPhoneE164))
+            throw new ArgumentException("A normalized contact phone is required.", nameof(contactPhoneE164));
 
-            if (existing is not null)
-                return MapToDomain(existing);
-        }
+        ThreadEntity? existing = await _db.Threads
+            .FirstOrDefaultAsync(
+                t => t.StoreId == storeId
+                     && t.TwilioNumberId == twilioNumberId
+                     && t.ContactPhoneE164 == contactPhoneE164,
+                cancellationToken);
 
-        if (customerId is not null && customerId != 0)
-        {
-            ThreadEntity? existing = await _db.Threads
-                .FirstOrDefaultAsync(
-                    t => t.StoreId == storeId && t.CustomerId == customerId,
-                    cancellationToken);
-
-            if (existing is not null)
-                return MapToDomain(existing);
-        }
+        if (existing is not null)
+            return MapToDomain(existing);
 
         ThreadEntity entity = new ThreadEntity
         {
             StoreId = storeId,
+            TwilioNumberId = twilioNumberId,
+            ContactPhoneE164 = contactPhoneE164,
             IdentityId = identityId,
             CustomerId = customerId,
             Status = "Open",
@@ -56,41 +52,43 @@ public sealed class ThreadRepository : IThreadRepository
         };
 
         _db.Threads.Add(entity);
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            _db.Entry(entity).State = EntityState.Detached;
+            ThreadEntity? concurrent = await _db.Threads
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.StoreId == storeId
+                         && t.TwilioNumberId == twilioNumberId
+                         && t.ContactPhoneE164 == contactPhoneE164,
+                    cancellationToken);
+            if (concurrent is not null)
+                return MapToDomain(concurrent);
+            throw;
+        }
 
         return MapToDomain(entity);
     }
 
-    // Find an existing open thread for a customer without creating one.
-    // Checks by IdentityId first, then CustomerId -- same precedence as FindOrCreateAsync.
-    public async Task<Thread?> FindOpenByCustomerAsync(int storeId, int? identityId, int? customerId,
+    public async Task<Thread?> FindOpenAsync(
+        int storeId,
+        int twilioNumberId,
+        string contactPhoneE164,
         CancellationToken cancellationToken = default)
     {
-        if (identityId is not null)
-        {
-            ThreadEntity? byIdentity = await _db.Threads
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    t => t.StoreId == storeId && t.IdentityId == identityId && t.Status == "Open",
-                    cancellationToken);
+        ThreadEntity? entity = await _db.Threads
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.StoreId == storeId
+                                      && t.TwilioNumberId == twilioNumberId
+                                      && t.ContactPhoneE164 == contactPhoneE164
+                                      && t.Status == "Open",
+                cancellationToken);
 
-            if (byIdentity is not null)
-                return MapToDomain(byIdentity);
-        }
-
-        if (customerId is not null && customerId != 0)
-        {
-            ThreadEntity? byCustomer = await _db.Threads
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    t => t.StoreId == storeId && t.CustomerId == customerId && t.Status == "Open",
-                    cancellationToken);
-
-            if (byCustomer is not null)
-                return MapToDomain(byCustomer);
-        }
-
-        return null;
+        return entity is null ? null : MapToDomain(entity);
     }
 
     // Get inbox threads for a store, ordered by LastMessageAt DESC.
@@ -149,14 +147,16 @@ public sealed class ThreadRepository : IThreadRepository
         if (twilioNumberId is not null)
             query = query.Where(t => t.TwilioNumberId == twilioNumberId || t.TwilioNumberId == null);
 
-        // Search by customer name or phone (join to Customer via navigation)
+        // Search by the conversation phone or customer profile metadata.
         if (!string.IsNullOrWhiteSpace(search))
         {
             string term = search.Trim();
-            query = query.Where(t => t.CustomerId != null && t.Customer != null &&
-                ((t.Customer.FirstName != null && t.Customer.FirstName.Contains(term)) ||
+            query = query.Where(t =>
+                (t.ContactPhoneE164 != null && t.ContactPhoneE164.Contains(term)) ||
+                (t.CustomerId != null && t.Customer != null &&
+                 ((t.Customer.FirstName != null && t.Customer.FirstName.Contains(term)) ||
                  (t.Customer.LastName != null && t.Customer.LastName.Contains(term)) ||
-                 (t.Customer.PhoneE164 != null && t.Customer.PhoneE164.Contains(term))));
+                 (t.Customer.PhoneE164 != null && t.Customer.PhoneE164.Contains(term)))));
         }
 
         return query;
@@ -271,6 +271,7 @@ public sealed class ThreadRepository : IThreadRepository
             StoreId = entity.StoreId,
             CustomerId = entity.CustomerId,
             TwilioNumberId = entity.TwilioNumberId,
+            ContactPhoneE164 = entity.ContactPhoneE164,
             IdentityId = entity.IdentityId,
             Status = entity.Status,
             AssignedToUserId = entity.AssignedToUserId,

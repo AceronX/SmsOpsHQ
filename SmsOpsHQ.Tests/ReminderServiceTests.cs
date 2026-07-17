@@ -8,6 +8,7 @@ using SmsOpsHQ.Core.Entities;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Infrastructure.Persistence;
 using SmsOpsHQ.Infrastructure.Persistence.Entities;
+using SmsOpsHQ.Infrastructure.Repositories;
 using SmsOpsHQ.Infrastructure.Services;
 using Xunit;
 
@@ -378,6 +379,63 @@ public class ReminderServiceTests : IDisposable
         Assert.Equal("sent", sent[0].Status);
     }
 
+    [Fact]
+    public async Task SendReminderAsync_AppendsOnlyToExactPhoneScopedOpenThread()
+    {
+        const string contactPhone = "+17185559876";
+        TwilioNumberEntity defaultNumber = await _db.TwilioNumbers
+            .SingleAsync(n => n.StoreId == _storeId);
+        TwilioNumberEntity otherNumber = new()
+        {
+            StoreId = _storeId,
+            PhoneE164 = "+13479527213",
+            FriendlyName = "Other",
+            IsActive = true
+        };
+        _db.TwilioNumbers.Add(otherNumber);
+        await _db.SaveChangesAsync();
+
+        ThreadRepository threadRepo = new(_db);
+        Core.Entities.Thread exactThread = await threadRepo.FindOrCreateAsync(
+            _storeId, defaultNumber.NumberId, contactPhone, null, null);
+        Core.Entities.Thread otherThread = await threadRepo.FindOrCreateAsync(
+            _storeId, otherNumber.NumberId, contactPhone, null, null);
+
+        ITwilioService twilioService = new TwilioService(
+            Options.Create(new TwilioSettings()), NullLogger<TwilioService>.Instance);
+        IStorePhoneResolver phoneResolver = new StorePhoneResolver(new TestStoreRepository(_db));
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "Reminders:TestMode", "true" }
+            })
+            .Build();
+        ReminderService service = new(
+            _db,
+            twilioService,
+            phoneResolver,
+            NullLogger<ReminderService>.Instance,
+            configuration: config,
+            threadRepo: threadRepo,
+            messageRepo: new MessageRepository(_db));
+
+        ReminderSendResult result = await service.SendReminderAsync(new SendReminderRequest
+        {
+            TicketKey = 9001,
+            CustomerKey = 55,
+            Phone = contactPhone,
+            TransNo = "T-9001",
+            DueDate = "6/1/2026",
+            DaysDiff = -7,
+            StoreId = _storeId
+        });
+
+        Assert.True(result.Success);
+        MessageEntity message = await _db.Messages.AsNoTracking().SingleAsync();
+        Assert.Equal(exactThread.ThreadId, message.ThreadId);
+        Assert.NotEqual(otherThread.ThreadId, message.ThreadId);
+    }
+
     // ── Test helpers ─────────────────────────────────────────────────
 
     // Minimal IStoreRepository implementation for tests.
@@ -403,6 +461,23 @@ public class ReminderServiceTests : IDisposable
             TwilioNumberEntity? tn = await _db.TwilioNumbers
                 .FirstOrDefaultAsync(t => t.NumberId == store.DefaultNumberId, ct);
             return tn?.PhoneE164;
+        }
+
+        public async Task<TwilioNumber?> GetNumberByPhoneAsync(
+            string phoneE164,
+            CancellationToken ct = default)
+        {
+            TwilioNumberEntity? tn = await _db.TwilioNumbers
+                .FirstOrDefaultAsync(t => t.PhoneE164 == phoneE164 && t.IsActive, ct);
+            return tn is null
+                ? null
+                : new TwilioNumber
+                {
+                    NumberId = tn.NumberId,
+                    StoreId = tn.StoreId,
+                    PhoneE164 = tn.PhoneE164,
+                    IsActive = tn.IsActive
+                };
         }
 
         public Task<Store?> GetByIdAsync(int storeId, CancellationToken ct = default)

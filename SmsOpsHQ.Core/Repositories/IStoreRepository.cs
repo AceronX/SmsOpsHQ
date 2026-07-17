@@ -15,6 +15,10 @@ public interface IStoreRepository
     // Looks up TwilioNumbers and returns the associated store.
     Task<Store?> GetByPhoneAsync(string toE164, CancellationToken cancellationToken = default);
 
+    // Find the active store number represented by an E.164 phone.
+    Task<TwilioNumber?> GetNumberByPhoneAsync(string phoneE164,
+        CancellationToken cancellationToken = default);
+
     // Get the default Twilio phone number (E.164) for a store.
     // Returns null if no default number is configured.
     Task<string?> GetDefaultNumberAsync(int storeId, CancellationToken cancellationToken = default);

@@ -6,6 +6,8 @@ public sealed class ThreadDto
     public int ThreadId { get; set; }
     public int StoreId { get; set; }
     public int? IdentityId { get; set; }
+    public int? TwilioNumberId { get; set; }
+    public string? ContactPhoneE164 { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime? LastMessageAt { get; set; }
     public int UnreadCount { get; set; }

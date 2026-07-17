@@ -6,13 +6,14 @@ namespace SmsOpsHQ.Core.Repositories;
 // Data-access contract for Thread entities.
 public interface IThreadRepository
 {
-    // Find an existing thread or create a new one.
-    // Looks up by (StoreId, IdentityId) first, then falls back to (StoreId, CustomerId).
-    Task<Thread> FindOrCreateAsync(int storeId, int? identityId, int? customerId = null,
+    // Find or create by the exact conversation key. Identity/customer IDs are
+    // metadata only and never cause another phone conversation to be reused.
+    Task<Thread> FindOrCreateAsync(int storeId, int twilioNumberId, string contactPhoneE164,
+        int? identityId, int? customerId,
         CancellationToken cancellationToken = default);
 
-    // Find an existing open thread for a customer. Returns null if no open thread exists.
-    Task<Thread?> FindOpenByCustomerAsync(int storeId, int? identityId, int? customerId,
+    // Find an open thread by the exact conversation key.
+    Task<Thread?> FindOpenAsync(int storeId, int twilioNumberId, string contactPhoneE164,
         CancellationToken cancellationToken = default);
 
     // Get inbox threads for a store, ordered by LastMessageAt DESC.

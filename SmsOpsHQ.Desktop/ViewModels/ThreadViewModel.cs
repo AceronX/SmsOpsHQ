@@ -382,15 +382,23 @@ public sealed partial class ThreadViewModel : ViewModelBase
 
     private void ParseCustomerInfo(JsonElement result)
     {
-        if (!result.TryGetProperty("thread", out var threadElem) ||
-            !threadElem.TryGetProperty("customer", out var cust) ||
-            cust.ValueKind != JsonValueKind.Object)
+        if (!result.TryGetProperty("thread", out var threadElem))
             return;
+
+        CustomerPhone = threadElem.TryGetProperty("contact_phone", out var contactPhone)
+                        && contactPhone.ValueKind == JsonValueKind.String
+            ? contactPhone.GetString() ?? string.Empty
+            : string.Empty;
+
+        if (!threadElem.TryGetProperty("customer", out var cust) ||
+            cust.ValueKind != JsonValueKind.Object)
+        {
+            CustomerName = string.IsNullOrWhiteSpace(CustomerPhone) ? "Unknown" : CustomerPhone;
+            return;
+        }
 
         string rawName = cust.TryGetProperty("name", out var nameEl)
             ? nameEl.GetString() ?? "" : "";
-        CustomerPhone = cust.TryGetProperty("phone", out var phoneEl)
-            ? phoneEl.GetString() ?? "" : "";
         CustomerName = string.IsNullOrWhiteSpace(rawName)
             ? (string.IsNullOrWhiteSpace(CustomerPhone) ? "Unknown" : CustomerPhone)
             : rawName;

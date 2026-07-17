@@ -104,8 +104,23 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
             return new InboundSmsProcessingResult(InboundSmsResultKind.NoStoreMatch, null, null, null, "no_store_match");
         }
 
-        string? storePhone = await _storePhoneResolver.GetStorePhoneAsync(store.StoreId, cancellationToken);
-        string storePhoneE164 = storePhone ?? to;
+        string normalizedStorePhone = PhoneUtils.NormalizeToE164(to) ?? to;
+        TwilioNumber? storeNumber = await _storePhoneResolver.GetStoreNumberByPhoneAsync(
+            normalizedStorePhone, cancellationToken);
+        if (storeNumber is null || storeNumber.StoreId != store.StoreId)
+        {
+            _logger.LogWarning(
+                "Inbound SMS: destination is not an active number for store {StoreId}. To={To} sid={Sid}",
+                store.StoreId, to, messageSid);
+            return new InboundSmsProcessingResult(
+                InboundSmsResultKind.NoStoreMatch,
+                store.StoreId,
+                null,
+                null,
+                "no_store_number_match");
+        }
+
+        string storePhoneE164 = storeNumber.PhoneE164;
 
         // 3. Validate (body + metadata)
         PhoneValidationResult validationResult = _phoneValidation.ValidateMessage(
@@ -152,16 +167,28 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
                 validationResult.FailureReason);
         }
 
+        string? contactPhoneE164 = PhoneUtils.NormalizeToE164(from);
+        if (contactPhoneE164 is null)
+        {
+            return new InboundSmsProcessingResult(
+                InboundSmsResultKind.Error,
+                store.StoreId,
+                null,
+                null,
+                "invalid_contact_phone");
+        }
+
         // 4. STOP keywords (opt-out)
         string bodyTrimmed = body.Trim().ToUpperInvariant();
         if (StopKeywords.Contains(bodyTrimmed))
         {
-            await _optOutRepo.AddAsync(store.StoreId, from, "TwilioSTOP", cancellationToken);
+            await _optOutRepo.AddAsync(
+                store.StoreId, contactPhoneE164, "TwilioSTOP", cancellationToken);
         }
 
         // 5. Identity (optional; unknown phones still accepted)
         int? identityId = await _identityResolver.ResolveIdentityIdAsync(
-            store.StoreId, from, cancellationToken);
+            store.StoreId, contactPhoneE164, cancellationToken);
 
         if (identityId is null)
         {
@@ -172,10 +199,15 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
 
         // 6. Customer + Thread
         Customer customer = await _customerRepo.FindOrCreateAsync(
-            store.StoreId, from, cancellationToken);
+            store.StoreId, contactPhoneE164, cancellationToken);
 
         Core.Entities.Thread thread = await _threadRepo.FindOrCreateAsync(
-            store.StoreId, identityId, customer.CustomerId, cancellationToken);
+            store.StoreId,
+            storeNumber.NumberId,
+            contactPhoneE164,
+            identityId,
+            customer.CustomerId,
+            cancellationToken);
 
         if (thread.CustomerId is null || thread.CustomerId == 0)
         {
@@ -198,7 +230,7 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
 
         Message message = await _messageRepo.CreateInboundAsync(
             store.StoreId, thread.ThreadId, storePhoneE164,
-            from, to, body, mediaJson, category,
+            contactPhoneE164, storePhoneE164, body, mediaJson, category,
             cancellationToken);
 
         // Set TwilioSid (IMessageRepository.CreateInboundAsync does not accept SID at creation).
@@ -214,8 +246,8 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
             MessageId = message.MessageId,
             ThreadId = thread.ThreadId,
             Direction = "Inbound",
-            FromE164 = from,
-            ToE164 = to,
+            FromE164 = contactPhoneE164,
+            ToE164 = storePhoneE164,
             Body = body,
             Status = "Received",
             TwilioSid = messageSid,
@@ -228,6 +260,8 @@ public sealed class InboundSmsProcessor : IInboundSmsProcessor
         {
             ThreadId = thread.ThreadId,
             StoreId = store.StoreId,
+            TwilioNumberId = thread.TwilioNumberId,
+            ContactPhoneE164 = thread.ContactPhoneE164,
             LastMessageAt = message.CreatedAt,
             UnreadCount = thread.UnreadCount + 1,
             Status = "Open",

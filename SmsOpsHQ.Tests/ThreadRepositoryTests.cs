@@ -14,6 +14,7 @@ public class ThreadRepositoryTests : IDisposable
     private readonly AppDbContext _db;
     private readonly ThreadRepository _repo;
     private readonly int _storeId;
+    private readonly int _twilioNumberId;
 
     public ThreadRepositoryTests()
     {
@@ -30,6 +31,16 @@ public class ThreadRepositoryTests : IDisposable
         _db.SaveChanges();
         _storeId = store.StoreId;
 
+        TwilioNumberEntity number = new()
+        {
+            StoreId = _storeId,
+            PhoneE164 = "+15550000001",
+            IsActive = true
+        };
+        _db.TwilioNumbers.Add(number);
+        _db.SaveChanges();
+        _twilioNumberId = number.NumberId;
+
         _repo = new ThreadRepository(_db);
     }
 
@@ -44,11 +55,13 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task FindOrCreateAsync_NewThread_CreatesIt()
     {
-        Thread thread = await _repo.FindOrCreateAsync(_storeId, identityId: 42);
+        Thread thread = await CreateThreadAsync(identityId: 42);
 
         Assert.True(thread.ThreadId > 0);
         Assert.Equal(_storeId, thread.StoreId);
         Assert.Equal(42, thread.IdentityId);
+        Assert.Equal(_twilioNumberId, thread.TwilioNumberId);
+        Assert.Equal("+15551110001", thread.ContactPhoneE164);
         Assert.Equal("Open", thread.Status);
         Assert.Equal(0, thread.UnreadCount);
     }
@@ -56,17 +69,55 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task FindOrCreateAsync_ExistingThread_ReturnsExisting()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 42);
-        Thread found = await _repo.FindOrCreateAsync(_storeId, identityId: 42);
+        Thread created = await CreateThreadAsync(identityId: 42);
+        Thread found = await CreateThreadAsync(identityId: 99);
 
         Assert.Equal(created.ThreadId, found.ThreadId);
     }
 
     [Fact]
-    public async Task FindOrCreateAsync_NullIdentity_AlwaysCreatesNew()
+    public async Task FindOrCreateAsync_SameIdentityDifferentPhone_CreatesSeparateThreads()
     {
-        Thread t1 = await _repo.FindOrCreateAsync(_storeId, identityId: null);
-        Thread t2 = await _repo.FindOrCreateAsync(_storeId, identityId: null);
+        Thread t1 = await CreateThreadAsync(identityId: 42, phone: "+15551110001");
+        Thread t2 = await CreateThreadAsync(identityId: 42, phone: "+15551110002");
+
+        Assert.NotEqual(t1.ThreadId, t2.ThreadId);
+    }
+
+    [Fact]
+    public async Task FindOrCreateAsync_SameCustomerDifferentPhone_CreatesSeparateThreads()
+    {
+        CustomerEntity customer = new()
+        {
+            StoreId = _storeId,
+            PhoneE164 = "+15551110003"
+        };
+        _db.Customers.Add(customer);
+        await _db.SaveChangesAsync();
+
+        Thread t1 = await CreateThreadAsync(
+            identityId: null, customerId: customer.CustomerId, phone: "+15551110003");
+        Thread t2 = await CreateThreadAsync(
+            identityId: null, customerId: customer.CustomerId, phone: "+15551110004");
+
+        Assert.NotEqual(t1.ThreadId, t2.ThreadId);
+    }
+
+    [Fact]
+    public async Task FindOrCreateAsync_SamePhoneDifferentStoreNumber_CreatesSeparateThreads()
+    {
+        TwilioNumberEntity secondNumber = new()
+        {
+            StoreId = _storeId,
+            PhoneE164 = "+15550000002",
+            IsActive = true
+        };
+        _db.TwilioNumbers.Add(secondNumber);
+        await _db.SaveChangesAsync();
+
+        Thread t1 = await CreateThreadAsync(identityId: 42, phone: "+15551110005");
+        Thread t2 = await CreateThreadAsync(
+            identityId: 42, phone: "+15551110005", numberId: secondNumber.NumberId);
 
         Assert.NotEqual(t1.ThreadId, t2.ThreadId);
     }
@@ -78,8 +129,9 @@ public class ThreadRepositoryTests : IDisposable
         _db.Stores.Add(store2);
         _db.SaveChanges();
 
-        Thread t1 = await _repo.FindOrCreateAsync(_storeId, identityId: 42);
-        Thread t2 = await _repo.FindOrCreateAsync(store2.StoreId, identityId: 42);
+        Thread t1 = await CreateThreadAsync(identityId: 42);
+        Thread t2 = await _repo.FindOrCreateAsync(
+            store2.StoreId, _twilioNumberId, "+15551110001", 42, null);
 
         Assert.NotEqual(t1.ThreadId, t2.ThreadId);
     }
@@ -224,7 +276,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task GetByIdAsync_Exists_ReturnsThread()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
         Thread? found = await _repo.GetByIdAsync(_storeId, created.ThreadId);
 
         Assert.NotNull(found);
@@ -234,7 +286,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task GetByIdAsync_WrongStore_ReturnsNull()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
         Thread? found = await _repo.GetByIdAsync(99999, created.ThreadId);
 
         Assert.Null(found);
@@ -245,7 +297,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task UpdateLastMessageAtAsync_UpdatesTimestamp()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
         DateTime now = new DateTime(2026, 2, 6, 12, 0, 0, DateTimeKind.Utc);
 
         await _repo.UpdateLastMessageAtAsync(created.ThreadId, now);
@@ -260,7 +312,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task IncrementUnreadAsync_IncrementsBy1()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
         Assert.Equal(0, created.UnreadCount);
 
         await _repo.IncrementUnreadAsync(created.ThreadId);
@@ -276,7 +328,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task MarkReadAsync_ResetsUnreadToZero()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
         await _repo.IncrementUnreadAsync(created.ThreadId);
         await _repo.IncrementUnreadAsync(created.ThreadId);
         await _repo.IncrementUnreadAsync(created.ThreadId);
@@ -293,7 +345,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task DeleteAsync_RemovesThread()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
 
         await _repo.DeleteAsync(_storeId, created.ThreadId);
 
@@ -304,7 +356,7 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task DeleteAsync_WrongStore_DoesNotDelete()
     {
-        Thread created = await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        Thread created = await CreateThreadAsync(identityId: 10);
 
         await _repo.DeleteAsync(99999, created.ThreadId);
 
@@ -317,9 +369,9 @@ public class ThreadRepositoryTests : IDisposable
     [Fact]
     public async Task DeleteAllAsync_RemovesAllForStore()
     {
-        await _repo.FindOrCreateAsync(_storeId, identityId: 10);
-        await _repo.FindOrCreateAsync(_storeId, identityId: 20);
-        await _repo.FindOrCreateAsync(_storeId, identityId: 30);
+        await CreateThreadAsync(identityId: 10, phone: "+15551110010");
+        await CreateThreadAsync(identityId: 20, phone: "+15551110020");
+        await CreateThreadAsync(identityId: 30, phone: "+15551110030");
 
         await _repo.DeleteAllAsync(_storeId);
 
@@ -334,7 +386,7 @@ public class ThreadRepositoryTests : IDisposable
         _db.Stores.Add(store2);
         _db.SaveChanges();
 
-        await _repo.FindOrCreateAsync(_storeId, identityId: 10);
+        await CreateThreadAsync(identityId: 10);
         _db.Threads.Add(new ThreadEntity { StoreId = store2.StoreId, Status = "Open" });
         _db.SaveChanges();
 
@@ -342,5 +394,19 @@ public class ThreadRepositoryTests : IDisposable
 
         List<Thread> store2Inbox = await _repo.GetInboxAsync(store2.StoreId, null, null, null);
         Assert.Single(store2Inbox);
+    }
+
+    private Task<Thread> CreateThreadAsync(
+        int? identityId,
+        string phone = "+15551110001",
+        int? customerId = null,
+        int? numberId = null)
+    {
+        return _repo.FindOrCreateAsync(
+            _storeId,
+            numberId ?? _twilioNumberId,
+            phone,
+            identityId,
+            customerId);
     }
 }

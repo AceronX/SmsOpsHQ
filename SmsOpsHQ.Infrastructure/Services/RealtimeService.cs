@@ -31,6 +31,7 @@ public sealed class RealtimeService : IRealtimeService
             message.FromE164, message.ToE164, message.Body, message.Status,
             message.TwilioSid, message.MediaJson, message.Category, message.CreatedAt };
         object threadPayload = new { thread.ThreadId, thread.StoreId, thread.Status,
+            thread.TwilioNumberId, thread.ContactPhoneE164,
             thread.LastMessageAt, thread.UnreadCount };
 
         await _hubContext.Clients.Group(group).SendAsync(

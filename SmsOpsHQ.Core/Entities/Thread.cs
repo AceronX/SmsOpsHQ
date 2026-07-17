@@ -11,8 +11,12 @@ public sealed class Thread
     // DEPRECATED: Use IdentityId. FK to Customers.CustomerId.
     public int? CustomerId { get; set; }
 
-    // DEPRECATED: Moved to message metadata. FK to TwilioNumbers.NumberId.
+    // Store-side number for this conversation. FK to TwilioNumbers.NumberId.
     public int? TwilioNumberId { get; set; }
+
+    // Customer-side phone that identifies this conversation. Null is reserved
+    // for legacy rows that could not be resolved during migration.
+    public string? ContactPhoneE164 { get; set; }
 
     // Canonical customer identity key (nullable during migration)
     public int? IdentityId { get; set; }

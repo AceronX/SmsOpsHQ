@@ -186,6 +186,8 @@ public class InboundSmsProcessorTests : IDisposable
         ThreadEntity thread = await _db.Threads.AsNoTracking().SingleAsync(t => t.ThreadId == result.ThreadId);
         Assert.Equal(_storeId, thread.StoreId);
         Assert.Equal(customer.CustomerId, thread.CustomerId);
+        Assert.Equal(CustomerPhone, thread.ContactPhoneE164);
+        Assert.NotNull(thread.TwilioNumberId);
         Assert.Equal(1, thread.UnreadCount);
     }
 
@@ -198,6 +200,28 @@ public class InboundSmsProcessorTests : IDisposable
         Assert.Equal(first.ThreadId, second.ThreadId);
         ThreadEntity thread = await _db.Threads.AsNoTracking().SingleAsync(t => t.ThreadId == first.ThreadId);
         Assert.Equal(2, thread.UnreadCount);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_MatchesExistingOutboundConversationKey()
+    {
+        TwilioNumberEntity number = await _db.TwilioNumbers.AsNoTracking()
+            .SingleAsync(n => n.StoreId == _storeId && n.PhoneE164 == StorePhone);
+        CustomerRepository customerRepo = new(_db);
+        Customer customer = await customerRepo.FindOrCreateAsync(_storeId, CustomerPhone);
+        ThreadRepository threadRepo = new(_db);
+        Core.Entities.Thread outboundThread = await threadRepo.FindOrCreateAsync(
+            _storeId,
+            number.NumberId,
+            CustomerPhone,
+            identityId: null,
+            customerId: customer.CustomerId);
+
+        InboundSmsProcessingResult inbound = await _processor.ProcessAsync(
+            Request(sid: "SM_matches_outbound"));
+
+        Assert.Equal(outboundThread.ThreadId, inbound.ThreadId);
+        Assert.Single(await _db.Threads.AsNoTracking().ToListAsync());
     }
 
     [Fact]
