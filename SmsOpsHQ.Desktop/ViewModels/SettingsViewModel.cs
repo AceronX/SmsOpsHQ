@@ -46,6 +46,8 @@ public sealed class ReviewHistoryItem
     public string PlatformName { get; set; } = string.Empty;
     public string MessageBody { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string ProviderStatus { get; set; } = string.Empty;
+    public string ErrorMessage { get; set; } = string.Empty;
     public DateTime SentAt { get; set; }
     public string SentAtText => SentAt.ToString("MMM d, yyyy  h:mm tt");
 }
@@ -2294,6 +2296,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 : "—",
             MessageBody = r.TryGetProperty("messageBody", out var mbE) ? mbE.GetString() ?? "" : "",
             Status = r.TryGetProperty("status", out var stE) ? stE.GetString() ?? "" : "",
+            ProviderStatus = r.TryGetProperty("providerStatus", out var psE) && psE.ValueKind == JsonValueKind.String
+                ? psE.GetString() ?? ""
+                : "",
+            ErrorMessage = r.TryGetProperty("errorMessage", out var erE) && erE.ValueKind == JsonValueKind.String
+                ? erE.GetString() ?? ""
+                : "",
             SentAt = r.TryGetProperty("sentAt", out var saE) && saE.TryGetDateTime(out DateTime dt)
                 ? dt.ToLocalTime()
                 : DateTime.MinValue

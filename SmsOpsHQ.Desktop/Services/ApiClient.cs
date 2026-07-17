@@ -202,10 +202,21 @@ public sealed class ApiClient : IDisposable
 
     // ── Reviews ──────────────────────────────────────────────────────
 
-    public async Task<JsonElement> SendReviewRequestAsync(int storeId, string phone)
+    public async Task<JsonElement> SendReviewRequestAsync(int storeId, string phone, int? twilioNumberId)
     {
-        var request = new { storeId, customerPhone = phone };
+        var request = new { storeId, customerPhone = phone, twilioNumberId };
         return await PostJsonAsync("/api/reviews/send", request);
+    }
+
+    public async Task<ReviewReadinessDto> GetReviewReadinessAsync(int storeId, int? twilioNumberId)
+    {
+        string url = $"/api/reviews/readiness?storeId={storeId}";
+        if (twilioNumberId.HasValue)
+            url += $"&twilioNumberId={twilioNumberId.Value}";
+
+        JsonElement json = await GetJsonAsync(url);
+        return JsonSerializer.Deserialize<ReviewReadinessDto>(json.GetRawText(), JsonOptions)
+               ?? new ReviewReadinessDto();
     }
 
     public async Task<JsonElement> GetReviewHistoryAsync(int storeId, int skip = 0, int take = 50) =>

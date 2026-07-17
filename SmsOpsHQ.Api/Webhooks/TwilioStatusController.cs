@@ -35,6 +35,7 @@ public sealed class TwilioStatusController : ControllerBase
             MessageSid = form["MessageSid"].ToString(),
             MessageStatus = form["MessageStatus"].ToString(),
             ErrorCode = form.ContainsKey("ErrorCode") ? form["ErrorCode"].ToString() : null,
+            ErrorMessage = form.ContainsKey("ErrorMessage") ? form["ErrorMessage"].ToString() : null,
             ReceivedAtUtc = DateTime.UtcNow,
         };
 

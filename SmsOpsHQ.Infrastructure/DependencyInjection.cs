@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<ITwilioService>(TwilioService.Create);
         services.AddScoped<IPhoneValidationService, PhoneValidationService>();
         services.AddScoped<IStorePhoneResolver, StorePhoneResolver>();
+        services.AddScoped<IOutboundNumberResolver, OutboundNumberResolver>();
         services.AddScoped<IIdentityResolver, IdentityResolver>();
         services.AddScoped<IQuarantineService, QuarantineService>();
         services.AddScoped<IRealtimeService, RealtimeService>();

@@ -11,7 +11,11 @@ public sealed class ReviewRequestEntity
     public int TemplateId { get; set; }
     public string MessageBody { get; set; } = string.Empty;
     public string? TwilioSid { get; set; }
-    public string Status { get; set; } = "Sent";
+    public string Status { get; set; } = "Accepted";
+    public string? ProviderStatus { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public DateTime? DeliveredAt { get; set; }
     public DateTime SentAt { get; set; }
 
     // Navigation

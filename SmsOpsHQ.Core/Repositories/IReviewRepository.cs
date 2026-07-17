@@ -25,6 +25,18 @@ public interface IReviewRepository
     Task<ReviewRequest> CreateRequestAsync(ReviewRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<ReviewRequest?> FindByTwilioSidAsync(string twilioSid,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> UpdateStatusByTwilioSidAsync(
+        string twilioSid,
+        string status,
+        string providerStatus,
+        string? errorCode,
+        string? errorMessage,
+        DateTime? deliveredAt,
+        CancellationToken cancellationToken = default);
+
     // Get paginated review request history for a store.
     Task<List<ReviewRequest>> GetRequestHistoryAsync(int storeId, int skip, int take,
         CancellationToken cancellationToken = default);

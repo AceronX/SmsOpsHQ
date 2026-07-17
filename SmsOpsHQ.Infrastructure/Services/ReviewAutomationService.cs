@@ -110,7 +110,11 @@ public sealed class ReviewAutomationService : IReviewAutomationService
 
             try
             {
-                await _reviewService.SendReviewRequestAsync(customer.StoreId, phone, cancellationToken);
+                await _reviewService.SendReviewRequestAsync(
+                    customer.StoreId,
+                    phone,
+                    twilioNumberId: null,
+                    cancellationToken: cancellationToken);
                 result.Sent++;
                 _logger.LogInformation(
                     "Review automation: sent for CustomerKey={Key} StoreId={StoreId}",

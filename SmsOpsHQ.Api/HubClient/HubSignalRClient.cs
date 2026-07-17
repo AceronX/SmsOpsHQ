@@ -554,6 +554,7 @@ public sealed class HubSignalRClient : IHubSignalRClient, IAsyncDisposable
         MessageSid = p.MessageSid ?? string.Empty,
         MessageStatus = p.MessageStatus ?? string.Empty,
         ErrorCode = p.ErrorCode,
+        ErrorMessage = null,
         ReceivedAtUtc = p.ReceivedAtUtc == default ? null : p.ReceivedAtUtc,
     };
 

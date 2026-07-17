@@ -37,14 +37,57 @@ public sealed class ReviewsController : ControllerBase
         try
         {
             ReviewRequestDto result = await _reviewService.SendReviewRequestAsync(
-                request.StoreId, request.CustomerPhone, cancellationToken);
+                request.StoreId, request.CustomerPhone, request.TwilioNumberId, cancellationToken);
 
             return Ok(result);
+        }
+        catch (OutboundNumberValidationException ex)
+        {
+            return Problem(
+                title: "Invalid sender number",
+                statusCode: StatusCodes.Status400BadRequest,
+                detail: ex.Message);
+        }
+        catch (OutboundSendException ex)
+        {
+            int statusCode = ex.Attempt.IsMock
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status502BadGateway;
+            ProblemDetails problem = new()
+            {
+                Title = ex.Attempt.IsMock
+                    ? "Twilio is in mock mode"
+                    : "Review request send failed",
+                Status = statusCode,
+                Detail = ex.Message
+            };
+            problem.Extensions["reviewRequestId"] = ex.Attempt.ReviewRequestId;
+            problem.Extensions["status"] = ex.Attempt.Status;
+            problem.Extensions["providerStatus"] = ex.Attempt.ProviderStatus;
+            problem.Extensions["isMock"] = ex.Attempt.IsMock;
+            problem.Extensions["errorCode"] = ex.Attempt.ErrorCode;
+            problem.Extensions["errorMessage"] = ex.Attempt.ErrorMessage;
+            return StatusCode(statusCode, problem);
         }
         catch (InvalidOperationException ex)
         {
             return Problem(statusCode: 400, detail: ex.Message);
         }
+    }
+
+    // GET /api/reviews/readiness?storeId=&twilioNumberId=
+    [HttpGet("readiness")]
+    public async Task<IActionResult> GetReadiness(
+        [FromQuery] int storeId,
+        [FromQuery] int? twilioNumberId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!User.CanAccessStore(storeId))
+            return Problem(statusCode: 403, detail: "Not authorized for this store");
+
+        ReviewReadinessDto readiness = await _reviewService.GetReadinessAsync(
+            storeId, twilioNumberId, cancellationToken);
+        return Ok(readiness);
     }
 
     // GET /api/reviews/history?storeId=&skip=&take=
@@ -61,14 +104,20 @@ public sealed class ReviewsController : ControllerBase
         List<ReviewRequest> history = await _reviewRepo.GetRequestHistoryAsync(
             storeId, skip, take, cancellationToken);
 
-        var result = history.Select(r => new
+        var result = history.Select(r => new ReviewRequestDto
         {
-            r.ReviewRequestId,
-            r.PhoneE164,
-            r.MessageBody,
-            r.Status,
-            r.SentAt,
-            r.PlatformName
+            ReviewRequestId = r.ReviewRequestId,
+            PhoneE164 = r.PhoneE164,
+            MessageBody = r.MessageBody,
+            Status = r.Status,
+            SentAt = r.SentAt,
+            PlatformName = r.PlatformName ?? string.Empty,
+            TwilioSid = r.TwilioSid,
+            ProviderStatus = r.ProviderStatus,
+            IsMock = string.Equals(r.Status, "Mock", StringComparison.OrdinalIgnoreCase),
+            ErrorCode = r.ErrorCode,
+            ErrorMessage = r.ErrorMessage,
+            DeliveredAt = r.DeliveredAt
         });
 
         return Ok(result);

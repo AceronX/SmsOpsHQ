@@ -5,6 +5,7 @@ public sealed class SendReviewRequest
 {
     public int StoreId { get; set; }
     public string CustomerPhone { get; set; } = string.Empty;
+    public int? TwilioNumberId { get; set; }
 }
 
 // Review request data returned in API responses.
@@ -16,6 +17,28 @@ public sealed class ReviewRequestDto
     public string MessageBody { get; set; } = string.Empty;
     public DateTime SentAt { get; set; }
     public string Status { get; set; } = string.Empty;
+    public string? TwilioSid { get; set; }
+    public string? ProviderStatus { get; set; }
+    public bool IsMock { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public DateTime? DeliveredAt { get; set; }
+}
+
+public sealed class ReviewReadinessDto
+{
+    public bool Ready { get; set; }
+    public int? TwilioNumberId { get; set; }
+    public string? FromPhoneE164 { get; set; }
+    public List<ReviewReadinessCheckDto> Checks { get; set; } = new();
+}
+
+public sealed class ReviewReadinessCheckDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public bool Passed { get; set; }
+    public string Message { get; set; } = string.Empty;
 }
 
 // Review channel data returned in API responses.

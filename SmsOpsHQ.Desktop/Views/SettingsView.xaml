@@ -1597,6 +1597,12 @@
                                                                             <DataTrigger Binding="{Binding Status}" Value="Failed">
                                                                                 <Setter Property="Background" Value="{StaticResource ErrorLight}"/>
                                                                             </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Status}" Value="Undelivered">
+                                                                                <Setter Property="Background" Value="{StaticResource ErrorLight}"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Status}" Value="Mock">
+                                                                                <Setter Property="Background" Value="{StaticResource ErrorLight}"/>
+                                                                            </DataTrigger>
                                                                         </Style.Triggers>
                                                                     </Style>
                                                                 </Border.Style>
@@ -1609,6 +1615,12 @@
                                                                                     <Setter Property="Foreground" Value="{StaticResource Success}"/>
                                                                                 </DataTrigger>
                                                                                 <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource Error}"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding Status}" Value="Undelivered">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource Error}"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding Status}" Value="Mock">
                                                                                     <Setter Property="Foreground" Value="{StaticResource Error}"/>
                                                                                 </DataTrigger>
                                                                             </Style.Triggers>
@@ -1638,6 +1650,10 @@
                                                                    Foreground="{StaticResource TextSecondary}"
                                                                    TextTrimming="CharacterEllipsis" MaxHeight="34"
                                                                    TextWrapping="Wrap"/>
+                                                        <TextBlock Text="{Binding ErrorMessage}" FontSize="11"
+                                                                   Foreground="{StaticResource Error}" TextWrapping="Wrap"
+                                                                   Margin="0,4,0,0"
+                                                                   Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}"/>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>

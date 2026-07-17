@@ -668,10 +668,14 @@ public sealed class AppDbContext : DbContext
 
             rr.Property(r => r.TwilioSid).HasMaxLength(64);
 
+            rr.Property(r => r.ProviderStatus).HasMaxLength(32);
+            rr.Property(r => r.ErrorCode).HasMaxLength(64);
+            rr.Property(r => r.ErrorMessage).HasMaxLength(512);
+
             rr.Property(r => r.Status)
                 .HasMaxLength(32)
                 .IsRequired()
-                .HasDefaultValue("Sent");
+                .HasDefaultValue("Accepted");
 
             rr.Property(r => r.SentAt)
                 .IsRequired()
@@ -680,6 +684,7 @@ public sealed class AppDbContext : DbContext
             rr.HasIndex(r => r.StoreId);
             rr.HasIndex(r => r.CustomerId);
             rr.HasIndex(r => r.SentAt);
+            rr.HasIndex(r => r.TwilioSid);
 
             rr.HasOne(r => r.Store)
                 .WithMany()

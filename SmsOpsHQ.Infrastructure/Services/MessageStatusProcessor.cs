@@ -14,15 +14,18 @@ namespace SmsOpsHQ.Infrastructure.Services;
 public sealed class MessageStatusProcessor : IMessageStatusProcessor
 {
     private readonly IMessageRepository _messageRepo;
+    private readonly IReviewRepository _reviewRepo;
     private readonly IRealtimeService _realtimeService;
     private readonly ILogger<MessageStatusProcessor> _logger;
 
     public MessageStatusProcessor(
         IMessageRepository messageRepo,
+        IReviewRepository reviewRepo,
         IRealtimeService realtimeService,
         ILogger<MessageStatusProcessor> logger)
     {
         _messageRepo = messageRepo;
+        _reviewRepo = reviewRepo;
         _realtimeService = realtimeService;
         _logger = logger;
     }
@@ -33,7 +36,7 @@ public sealed class MessageStatusProcessor : IMessageStatusProcessor
             return new MessageStatusProcessingResult(MessageStatusResultKind.Error, null, null, null, "Update was null.");
 
         string messageSid = update.MessageSid ?? string.Empty;
-        string messageStatus = update.MessageStatus ?? string.Empty;
+        string messageStatus = (update.MessageStatus ?? string.Empty).Trim();
         string? errorCode = update.ErrorCode;
 
         if (string.IsNullOrEmpty(messageSid))
@@ -46,35 +49,80 @@ public sealed class MessageStatusProcessor : IMessageStatusProcessor
         // lowercase "delivered", "failed", etc; existing DB rows use Title Case).
         string normalizedStatus = char.ToUpper(messageStatus[0]) + messageStatus[1..];
 
-        await _messageRepo.UpdateStatusBySidAsync(
-            messageSid, normalizedStatus, errorCode, errorText: null, cancellationToken);
-
         Message? message = await _messageRepo.FindBySidAsync(messageSid, cancellationToken);
-        if (message is null)
+        if (message is not null)
+        {
+            await _messageRepo.UpdateStatusBySidAsync(
+                messageSid, normalizedStatus, errorCode, update.ErrorMessage, cancellationToken);
+
+            await _realtimeService.PushMessageStatusAsync(
+                message.StoreId,
+                message.ThreadId,
+                message.MessageId,
+                messageSid,
+                normalizedStatus,
+                errorCode,
+                cancellationToken);
+
+            _logger.LogInformation(
+                "Status callback applied: store={StoreId} message={MessageId} sid={Sid} status={Status}",
+                message.StoreId, message.MessageId, messageSid, normalizedStatus);
+
+            return new MessageStatusProcessingResult(
+                MessageStatusResultKind.Updated,
+                message.StoreId,
+                message.ThreadId,
+                message.MessageId);
+        }
+
+        ReviewRequest? review = await _reviewRepo.FindByTwilioSidAsync(messageSid, cancellationToken);
+        if (review is null)
         {
             _logger.LogWarning(
                 "Status callback for unknown SID; nothing to update. sid={Sid} status={Status}",
                 messageSid, normalizedStatus);
-            return new MessageStatusProcessingResult(MessageStatusResultKind.NotFound, null, null, null, "sid_not_in_db");
+            return new MessageStatusProcessingResult(
+                MessageStatusResultKind.NotFound, null, null, null, "sid_not_in_db");
         }
 
-        await _realtimeService.PushMessageStatusAsync(
-            message.StoreId,
-            message.ThreadId,
-            message.MessageId,
+        string providerStatus = messageStatus;
+        string reviewStatus = providerStatus.ToLowerInvariant() switch
+        {
+            "delivered" => "Delivered",
+            "undelivered" => "Undelivered",
+            "failed" => "Failed",
+            _ => normalizedStatus
+        };
+        DateTime? deliveredAt = reviewStatus == "Delivered"
+            ? update.ReceivedAtUtc ?? DateTime.UtcNow
+            : null;
+        string? errorMessage = update.ErrorMessage;
+        if (string.IsNullOrWhiteSpace(errorMessage)
+            && (reviewStatus == "Failed" || reviewStatus == "Undelivered"))
+        {
+            errorMessage = string.IsNullOrWhiteSpace(errorCode)
+                ? $"Twilio reported {providerStatus}."
+                : $"Twilio reported {providerStatus} (error {errorCode}).";
+        }
+
+        await _reviewRepo.UpdateStatusByTwilioSidAsync(
             messageSid,
-            normalizedStatus,
+            reviewStatus,
+            providerStatus,
             errorCode,
+            errorMessage,
+            deliveredAt,
             cancellationToken);
 
         _logger.LogInformation(
-            "Status callback applied: store={StoreId} message={MessageId} sid={Sid} status={Status}",
-            message.StoreId, message.MessageId, messageSid, normalizedStatus);
+            "Review status callback applied: store={StoreId} reviewRequest={ReviewRequestId} sid={Sid} status={Status}",
+            review.StoreId, review.ReviewRequestId, messageSid, reviewStatus);
 
         return new MessageStatusProcessingResult(
             MessageStatusResultKind.Updated,
-            message.StoreId,
-            message.ThreadId,
-            message.MessageId);
+            review.StoreId,
+            null,
+            null,
+            $"review_request_updated:{review.ReviewRequestId}");
     }
 }

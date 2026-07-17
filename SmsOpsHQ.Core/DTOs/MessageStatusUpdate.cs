@@ -16,6 +16,9 @@ public sealed class MessageStatusUpdate
     /// <summary>Optional Twilio numeric error code on failed/undelivered.</summary>
     public string? ErrorCode { get; set; }
 
+    /// <summary>Optional provider error description when supplied by the ingress.</summary>
+    public string? ErrorMessage { get; set; }
+
     /// <summary>UTC timestamp captured by the original receiver (Twilio webhook
     /// or Hub). Falls back to "now" when missing.</summary>
     public DateTime? ReceivedAtUtc { get; set; }

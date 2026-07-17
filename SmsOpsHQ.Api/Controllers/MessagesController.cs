@@ -18,7 +18,7 @@ public sealed class MessagesController : ControllerBase
     private readonly IThreadRepository _threadRepo;
     private readonly ICustomerRepository _customerRepo;
     private readonly IOptOutRepository _optOutRepo;
-    private readonly IStoreRepository _storeRepo;
+    private readonly IOutboundNumberResolver _outboundNumberResolver;
     private readonly IIdentityResolver _identityResolver;
     private readonly ITwilioService _twilioService;
     private readonly IRealtimeService _realtimeService;
@@ -30,7 +30,7 @@ public sealed class MessagesController : ControllerBase
         IThreadRepository threadRepo,
         ICustomerRepository customerRepo,
         IOptOutRepository optOutRepo,
-        IStoreRepository storeRepo,
+        IOutboundNumberResolver outboundNumberResolver,
         IIdentityResolver identityResolver,
         ITwilioService twilioService,
         IRealtimeService realtimeService,
@@ -41,7 +41,7 @@ public sealed class MessagesController : ControllerBase
         _threadRepo = threadRepo;
         _customerRepo = customerRepo;
         _optOutRepo = optOutRepo;
-        _storeRepo = storeRepo;
+        _outboundNumberResolver = outboundNumberResolver;
         _identityResolver = identityResolver;
         _twilioService = twilioService;
         _realtimeService = realtimeService;
@@ -69,10 +69,23 @@ public sealed class MessagesController : ControllerBase
         if (isOptedOut)
             return Problem(statusCode: 400, detail: "Customer is opted out.");
 
-        // 3. Determine 'From' number (store default)
-        string? fromNumber = await _storeRepo.GetDefaultNumberAsync(request.StoreId, cancellationToken);
-        if (string.IsNullOrEmpty(fromNumber))
-            return Problem(statusCode: 500, detail: "Store has no default Twilio number configured.");
+        // 3. Resolve the exact requested sender. An explicit invalid selection
+        // never silently falls back to the store default.
+        OutboundNumberResolution sender;
+        try
+        {
+            sender = await _outboundNumberResolver.ResolveAsync(
+                request.StoreId, request.TwilioNumberId, cancellationToken);
+        }
+        catch (OutboundNumberValidationException ex)
+        {
+            return Problem(
+                title: "Invalid sender number",
+                statusCode: StatusCodes.Status400BadRequest,
+                detail: ex.Message);
+        }
+
+        string fromNumber = sender.PhoneE164;
 
         // 4. Resolve or load thread
         Core.Entities.Thread thread;
@@ -189,6 +202,7 @@ public sealed class MessagesController : ControllerBase
         {
             status = "ok",
             message_id = message.MessageId,
+            twilio_number_id = sender.TwilioNumberId,
             category,
             mock = twilioResult.IsMock,
             twilio = new

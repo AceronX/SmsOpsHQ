@@ -20,6 +20,7 @@ public class MessageStatusProcessorTests : IDisposable
     private readonly MessageStatusProcessor _processor;
     private readonly RecordingRealtimeService _realtime = new();
     private readonly MessageRepository _messageRepo;
+    private readonly ReviewRepository _reviewRepo;
     private readonly int _storeId;
     private readonly int _threadId;
 
@@ -43,7 +44,12 @@ public class MessageStatusProcessorTests : IDisposable
         _threadId = thread.ThreadId;
 
         _messageRepo = new MessageRepository(_db);
-        _processor = new MessageStatusProcessor(_messageRepo, _realtime, NullLogger<MessageStatusProcessor>.Instance);
+        _reviewRepo = new ReviewRepository(_db);
+        _processor = new MessageStatusProcessor(
+            _messageRepo,
+            _reviewRepo,
+            _realtime,
+            NullLogger<MessageStatusProcessor>.Instance);
     }
 
     public void Dispose()
@@ -171,6 +177,95 @@ public class MessageStatusProcessorTests : IDisposable
         // Three callbacks -> three realtime pushes is expected (existing behavior);
         // the DB row stays consistent.
         Assert.Equal(3, _realtime.StatusPushes.Count);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ReviewDelivered_UpdatesReviewAndDeliveredAt()
+    {
+        int reviewId = await SeedReviewRequestAsync("SM_review_delivered");
+        DateTime receivedAt = new(2026, 7, 17, 12, 0, 0, DateTimeKind.Utc);
+
+        MessageStatusProcessingResult result = await _processor.ProcessAsync(new MessageStatusUpdate
+        {
+            MessageSid = "SM_review_delivered",
+            MessageStatus = "delivered",
+            ReceivedAtUtc = receivedAt
+        });
+
+        Assert.Equal(MessageStatusResultKind.Updated, result.Kind);
+        Assert.Equal($"review_request_updated:{reviewId}", result.Reason);
+        ReviewRequestEntity row = await _db.ReviewRequests.AsNoTracking()
+            .SingleAsync(r => r.ReviewRequestId == reviewId);
+        Assert.Equal("Delivered", row.Status);
+        Assert.Equal("delivered", row.ProviderStatus);
+        Assert.Equal(receivedAt, row.DeliveredAt);
+        Assert.Null(row.ErrorCode);
+        Assert.Null(row.ErrorMessage);
+        Assert.Empty(_realtime.StatusPushes);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ReviewUndelivered_UpdatesErrorFields()
+    {
+        int reviewId = await SeedReviewRequestAsync("SM_review_undelivered");
+
+        MessageStatusProcessingResult result = await _processor.ProcessAsync(new MessageStatusUpdate
+        {
+            MessageSid = "SM_review_undelivered",
+            MessageStatus = "undelivered",
+            ErrorCode = "30007"
+        });
+
+        Assert.Equal(MessageStatusResultKind.Updated, result.Kind);
+        ReviewRequestEntity row = await _db.ReviewRequests.AsNoTracking()
+            .SingleAsync(r => r.ReviewRequestId == reviewId);
+        Assert.Equal("Undelivered", row.Status);
+        Assert.Equal("undelivered", row.ProviderStatus);
+        Assert.Equal("30007", row.ErrorCode);
+        Assert.Contains("30007", row.ErrorMessage);
+        Assert.Null(row.DeliveredAt);
+    }
+
+    private async Task<int> SeedReviewRequestAsync(string sid)
+    {
+        CustomerEntity customer = new()
+        {
+            StoreId = _storeId,
+            PhoneE164 = "+15559876543"
+        };
+        ReviewChannelEntity channel = new()
+        {
+            StoreId = _storeId,
+            PlatformName = "Google",
+            ReviewUrl = "https://reviews.example.test",
+            IsActive = true
+        };
+        TemplateEntity template = new()
+        {
+            StoreId = _storeId,
+            Name = "Review",
+            Body = "Please review us",
+            Category = "Review"
+        };
+        _db.AddRange(customer, channel, template);
+        await _db.SaveChangesAsync();
+
+        ReviewRequestEntity review = new()
+        {
+            StoreId = _storeId,
+            CustomerId = customer.CustomerId,
+            PhoneE164 = customer.PhoneE164,
+            ReviewChannelId = channel.ReviewChannelId,
+            TemplateId = template.TemplateId,
+            MessageBody = template.Body,
+            TwilioSid = sid,
+            Status = "Accepted",
+            ProviderStatus = "queued",
+            SentAt = DateTime.UtcNow
+        };
+        _db.ReviewRequests.Add(review);
+        await _db.SaveChangesAsync();
+        return review.ReviewRequestId;
     }
 
     private sealed class RecordingRealtimeService : IRealtimeService

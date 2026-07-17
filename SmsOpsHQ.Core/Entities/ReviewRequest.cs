@@ -20,8 +20,13 @@ public sealed class ReviewRequest
     // Denormalized from ReviewChannel for display purposes
     public string? PlatformName { get; set; }
 
-    // "Sent", "Failed", "Delivered"
-    public string Status { get; set; } = "Sent";
+    // "Accepted", "Delivered", "Undelivered", "Failed", or "Mock"
+    public string Status { get; set; } = "Accepted";
+
+    public string? ProviderStatus { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public DateTime? DeliveredAt { get; set; }
 
     public DateTime SentAt { get; set; }
 }

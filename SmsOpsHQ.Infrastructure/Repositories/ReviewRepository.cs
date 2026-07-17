@@ -74,6 +74,10 @@ public sealed class ReviewRepository : IReviewRepository
             MessageBody = request.MessageBody,
             TwilioSid = request.TwilioSid,
             Status = request.Status,
+            ProviderStatus = request.ProviderStatus,
+            ErrorCode = request.ErrorCode,
+            ErrorMessage = request.ErrorMessage,
+            DeliveredAt = request.DeliveredAt,
             SentAt = request.SentAt
         };
 
@@ -82,6 +86,41 @@ public sealed class ReviewRepository : IReviewRepository
 
         request.ReviewRequestId = entity.ReviewRequestId;
         return request;
+    }
+
+    public async Task<ReviewRequest?> FindByTwilioSidAsync(string twilioSid,
+        CancellationToken cancellationToken = default)
+    {
+        ReviewRequestEntity? entity = await _db.ReviewRequests
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TwilioSid == twilioSid, cancellationToken);
+
+        return entity is null ? null : MapRequestToDomain(entity);
+    }
+
+    public async Task<bool> UpdateStatusByTwilioSidAsync(
+        string twilioSid,
+        string status,
+        string providerStatus,
+        string? errorCode,
+        string? errorMessage,
+        DateTime? deliveredAt,
+        CancellationToken cancellationToken = default)
+    {
+        ReviewRequestEntity? entity = await _db.ReviewRequests
+            .FirstOrDefaultAsync(r => r.TwilioSid == twilioSid, cancellationToken);
+        if (entity is null)
+            return false;
+
+        entity.Status = status;
+        entity.ProviderStatus = providerStatus;
+        entity.ErrorCode = errorCode;
+        entity.ErrorMessage = errorMessage;
+        if (deliveredAt.HasValue && !entity.DeliveredAt.HasValue)
+            entity.DeliveredAt = deliveredAt;
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     public async Task<List<ReviewRequest>> GetRequestHistoryAsync(int storeId, int skip, int take,
@@ -186,6 +225,10 @@ public sealed class ReviewRepository : IReviewRepository
             MessageBody = entity.MessageBody,
             TwilioSid = entity.TwilioSid,
             Status = entity.Status,
+            ProviderStatus = entity.ProviderStatus,
+            ErrorCode = entity.ErrorCode,
+            ErrorMessage = entity.ErrorMessage,
+            DeliveredAt = entity.DeliveredAt,
             SentAt = entity.SentAt
         };
     }
