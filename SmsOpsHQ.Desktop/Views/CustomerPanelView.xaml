@@ -21,29 +21,6 @@
                 </Border>
             </WrapPanel>
 
-            <!-- Add Note to XPD: inline note input under the customer name. -->
-            <StackPanel Margin="0,0,0,10"
-                        Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}">
-                <TextBox Text="{Binding NoteInput, UpdateSourceTrigger=PropertyChanged}"
-                         TextWrapping="Wrap" AcceptsReturn="True" MinHeight="40" MaxHeight="70"
-                         FontSize="12" Padding="8,6" Margin="0,0,0,4"
-                         Tag="Write a note to XPD..."/>
-                <Button Command="{Binding AppendNoteXpdCommand}" Padding="8,5" FontSize="11"
-                        HorizontalAlignment="Left"
-                        IsEnabled="{Binding IsSavingNote, Converter={StaticResource InvertBool}}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
-                            <Setter Property="Background" Value="#F57F17"/>
-                        </Style>
-                    </Button.Style>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE70F;" FontFamily="{StaticResource IconFont}" FontSize="11"
-                                   Foreground="White" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                        <TextBlock Text="Add Note to XPD" Foreground="White" FontWeight="SemiBold" FontSize="11"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-
             <!-- Warning banner shown only when customer has a warning. -->
             <Border Background="#FEF2F2" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
                     Visibility="{Binding WarningText, Converter={StaticResource StringToVisibility}}">
@@ -431,25 +408,77 @@
 
             </StackPanel>
 
-            <!-- Customer, ticket, and item notes from XPD. -->
+            <!-- XPD is an imported mirror; these notes are intentionally read-only. -->
             <Border Background="#FFFDE7" CornerRadius="8" Padding="14,12"
                     BorderBrush="#FFF59D" BorderThickness="1" Margin="0,0,0,12"
                     Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>
-                    <TextBlock Text="CUSTOMER NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                    <TextBlock Text="XPD NOTES — READ ONLY" FontSize="11" FontWeight="Bold"
+                               Foreground="#B45309" Margin="0,0,0,10"/>
+                    <TextBlock Text="CUSTOMER" FontSize="10" FontWeight="SemiBold"
                                Foreground="#F57F17" Margin="0,0,0,4"/>
                     <TextBlock Text="{Binding CustomerNotes}" FontSize="12" Foreground="#5D4037"
                                TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                    <TextBlock Text="TICKET NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                    <TextBlock Text="TICKET" FontSize="10" FontWeight="SemiBold"
                                Foreground="#F57F17" Margin="0,0,0,4"/>
                     <TextBlock Text="{Binding TicketNotes}" FontSize="12" Foreground="#5D4037"
                                TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                    <TextBlock Text="ITEM NOTES (XPD)" FontSize="10" FontWeight="SemiBold"
+                    <TextBlock Text="ITEM" FontSize="10" FontWeight="SemiBold"
                                Foreground="#F57F17" Margin="0,0,0,4"/>
                     <TextBlock Text="{Binding ItemNotes}" FontSize="12" Foreground="#5D4037"
                                TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- App-owned notes persist independently of XPD synchronization. -->
+            <Border Background="{StaticResource Surface}" CornerRadius="8" Padding="14,12"
+                    BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,0,12"
+                    Visibility="{Binding IsCustomerFound, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="APP NOTES" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimary}" Margin="0,0,0,10"/>
+
+                    <TextBlock Text="No app notes yet." FontSize="12"
+                               Foreground="{StaticResource TextMuted}" Margin="0,0,0,10"
+                               Visibility="{Binding HasAppNotes, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}"/>
+
+                    <ItemsControl ItemsSource="{Binding AppNotes}"
+                                  Visibility="{Binding HasAppNotes, Converter={StaticResource BoolToVisibility}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#F8FAFC" CornerRadius="5" Padding="9,7"
+                                        BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,7">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Content}" FontSize="12"
+                                                   Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Metadata}" FontSize="10"
+                                                   Foreground="{StaticResource TextMuted}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBox Text="{Binding NoteInput, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap" AcceptsReturn="True" MinHeight="48" MaxHeight="90"
+                             MaxLength="4000" FontSize="12" Padding="8,6" Margin="0,3,0,6"
+                             ToolTip="Write an app note (maximum 4000 characters)"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Command="{Binding AddAppNoteCommand}" Style="{StaticResource PrimaryButton}"
+                                Padding="10,5" FontSize="11"
+                                HorizontalAlignment="Left"
+                                IsEnabled="{Binding IsSavingNote, Converter={StaticResource InvertBool}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE70F;" FontFamily="{StaticResource IconFont}" FontSize="11"
+                                           Foreground="White" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="Add Note" Foreground="White" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="{Binding NoteSaveStatus}" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Success}" VerticalAlignment="Center" Margin="9,0,0,0"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

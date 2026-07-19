@@ -24,6 +24,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<ItemEntity> Items => Set<ItemEntity>();
     public DbSet<PawnPaymentEntity> PawnPayments => Set<PawnPaymentEntity>();
     public DbSet<CustomerPhoneEntity> CustomerPhones => Set<CustomerPhoneEntity>();
+    public DbSet<CustomerAppNoteEntity> CustomerAppNotes => Set<CustomerAppNoteEntity>();
 
     // Messaging (inbox, threads, templates)
     public DbSet<ThreadEntity> Threads => Set<ThreadEntity>();
@@ -61,12 +62,42 @@ public sealed class AppDbContext : DbContext
         ConfigureItems(modelBuilder);
         ConfigurePawnPayments(modelBuilder);
         ConfigureCustomerPhones(modelBuilder);
+        ConfigureCustomerAppNotes(modelBuilder);
         ConfigureSmsReminders(modelBuilder);
         ConfigureSmsExcluded(modelBuilder);
         ConfigureSmsUnsubscribed(modelBuilder);
         ConfigureReviewChannels(modelBuilder);
         ConfigureReviewRequests(modelBuilder);
         ConfigureReviewAutomationState(modelBuilder);
+    }
+
+    private static void ConfigureCustomerAppNotes(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CustomerAppNoteEntity>(note =>
+        {
+            note.ToTable("CustomerAppNotes");
+            note.HasKey(n => n.CustomerAppNoteId);
+
+            note.Property(n => n.Content)
+                .HasMaxLength(4000)
+                .IsRequired();
+
+            note.Property(n => n.CreatedAtUtc)
+                .IsRequired();
+
+            note.HasIndex(n => new { n.StoreId, n.CustomerKey });
+            note.HasIndex(n => n.CreatedAtUtc);
+
+            note.HasOne<StoreEntity>()
+                .WithMany()
+                .HasForeignKey(n => n.StoreId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            note.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(n => n.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     // ── Stores ────────────────────────────────────────────────────────

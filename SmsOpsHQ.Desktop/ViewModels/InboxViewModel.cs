@@ -311,13 +311,18 @@ public sealed partial class InboxViewModel : ViewModelBase
     {
         CurrentThreadViewModel?.Detach();
 
-        var threadVm = new ThreadViewModel(
+        ThreadViewModel? threadVm = null;
+        threadVm = new ThreadViewModel(
             _apiClient, _appState, _navigation, _signalRClient,
             item.ThreadId, item.CustomerName, _xblueService,
             sendSmsDialogService: _sendSmsDialogService,
             qualityQueryService: _qualityQueryService,
             phonePickerService: _phonePickerService,
-            setRightPanel: p => CustomerPanel = p,
+            setRightPanel: p =>
+            {
+                if (ReferenceEquals(CurrentThreadViewModel, threadVm))
+                    CustomerPanel = p;
+            },
             onCloseRequested: () => { CurrentThreadViewModel = null; CustomerPanel = null; },
             onMessagesLoaded: () => { item.UnreadCount = 0; });
 

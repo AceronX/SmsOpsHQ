@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IThreadRepository, ThreadRepository>();
         services.AddScoped<ICustomerRepository, CustomerRepository>();
+        services.AddScoped<ICustomerAppNoteRepository, CustomerAppNoteRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<IOptOutRepository, OptOutRepository>();
         services.AddScoped<ITicketRepository, TicketRepository>();

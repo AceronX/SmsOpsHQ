@@ -21,6 +21,7 @@ namespace SmsOpsHQ.Api.Controllers;
 public sealed partial class CustomersController : ControllerBase
 {
     private readonly ICustomerRepository _customerRepo;
+    private readonly ICustomerAppNoteRepository _customerAppNoteRepo;
     private readonly ITicketRepository _ticketRepo;
     private readonly IIdentityResolver _identityResolver;
     private readonly AppDbContext _db;
@@ -29,6 +30,7 @@ public sealed partial class CustomersController : ControllerBase
 
     public CustomersController(
         ICustomerRepository customerRepo,
+        ICustomerAppNoteRepository customerAppNoteRepo,
         ITicketRepository ticketRepo,
         IIdentityResolver identityResolver,
         AppDbContext db,
@@ -36,6 +38,7 @@ public sealed partial class CustomersController : ControllerBase
         IConfiguration configuration)
     {
         _customerRepo = customerRepo;
+        _customerAppNoteRepo = customerAppNoteRepo;
         _ticketRepo = ticketRepo;
         _identityResolver = identityResolver;
         _db = db;
@@ -638,6 +641,7 @@ public sealed partial class CustomersController : ControllerBase
 
     // POST /api/customers/append-note-xpd
     // Appends a timestamped note to a customer's Notes field in Customers.
+    [Obsolete("Compatibility only. App notes must use /api/customers/{customerKey}/app-notes.")]
     [HttpPost("customers/append-note-xpd")]
     public async Task<IActionResult> AppendNoteToXpd(
         [FromBody] AppendNoteXpdRequest request,
@@ -713,8 +717,8 @@ public sealed partial class CustomersController : ControllerBase
             return Ok(new
             {
                 status = "ok",
-                message = "Note saved to local database. Run XPD sync to update the XPD file.",
-                note = "Changes are in local SQLite only until next XPD sync"
+                message = "Compatibility endpoint updated the local XPD mirror only.",
+                note = "This change is not pushed to XPD and may be overwritten by the next XPD sync."
             });
         }
         catch (Exception ex)

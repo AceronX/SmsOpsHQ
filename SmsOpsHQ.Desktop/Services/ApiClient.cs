@@ -11,7 +11,7 @@ namespace SmsOpsHQ.Desktop.Services;
 
 // Central HTTP client for all API communication.
 // All 60+ endpoints from the Python api_client.py are covered here.
-public sealed class ApiClient : IDisposable
+public sealed class ApiClient : ICustomerPanelApi, IDisposable
 {
     private readonly HttpClient _httpClient;
 
@@ -144,34 +144,60 @@ public sealed class ApiClient : IDisposable
     public async Task<JsonElement> GetPfxCustomersAsync(int days = 60) =>
         await GetJsonAsync($"/api/customers/pfx?days={days}");
 
-    public async Task<JsonElement> GetCustomerByPhoneAsync(string phone, int? selectedCustomerKey = null)
+    public async Task<JsonElement> GetCustomerByPhoneAsync(
+        string phone,
+        int? selectedCustomerKey = null,
+        CancellationToken cancellationToken = default)
     {
         string url = $"/api/customer/by-phone?phone={Uri.EscapeDataString(phone)}";
         if (selectedCustomerKey is int k)
             url += $"&selectedCustomerKey={k}";
-        return await GetJsonAsync(url);
+        return await GetJsonAsync(url, cancellationToken);
     }
 
-    public async Task<byte[]?> GetCustomerIdPhotoBytesAsync(int customerKey)
+    public async Task<byte[]?> GetCustomerIdPhotoBytesAsync(
+        int customerKey,
+        CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response =
-            await _httpClient.GetAsync($"/api/customer/id-photo?customerKey={customerKey}");
+            await _httpClient.GetAsync($"/api/customer/id-photo?customerKey={customerKey}", cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsByteArrayAsync();
     }
 
+    [Obsolete("Compatibility only. Use CreateCustomerAppNoteAsync.")]
     public async Task<JsonElement> AppendNoteXpdAsync(int customerKey, string note)
     {
         var request = new { customerKey, note };
         return await PostJsonAsync("/api/customers/append-note-xpd", request);
     }
 
-    public async Task<JsonElement> GetCustomerQualityAsync(int customerKey, string qualityMetric = "default")
+    public async Task<JsonElement> GetCustomerQualityAsync(
+        int customerKey,
+        string qualityMetric = "default",
+        CancellationToken cancellationToken = default)
     {
         var request = new { customerKey, qualityMetric };
-        return await PostJsonAsync("/api/customers/quality", request);
+        return await PostJsonAsync("/api/customers/quality", request, cancellationToken);
+    }
+
+    public async Task<JsonElement> GetCustomerAppNotesAsync(
+        int customerKey,
+        CancellationToken cancellationToken = default) =>
+        await GetJsonAsync($"/api/customers/{customerKey}/app-notes", cancellationToken);
+
+    public async Task<JsonElement> CreateCustomerAppNoteAsync(
+        int customerKey,
+        string content,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new { content };
+        return await PostJsonAsync(
+            $"/api/customers/{customerKey}/app-notes",
+            request,
+            cancellationToken);
     }
 
     public async Task<JsonElement> TestSqliteAsync(string? path = null)
@@ -678,17 +704,22 @@ public sealed class ApiClient : IDisposable
 
     // ── HTTP helpers ─────────────────────────────────────────────────
 
-    private async Task<JsonElement> GetJsonAsync(string url)
+    private async Task<JsonElement> GetJsonAsync(
+        string url,
+        CancellationToken cancellationToken = default)
     {
-        using HttpResponseMessage response = await _httpClient.GetAsync(url);
+        using HttpResponseMessage response = await _httpClient.GetAsync(url, cancellationToken);
         return await ProcessResponseAsync(response);
     }
 
-    private async Task<JsonElement> PostJsonAsync(string url, object? body = null)
+    private async Task<JsonElement> PostJsonAsync(
+        string url,
+        object? body = null,
+        CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response = body is null
-            ? await _httpClient.PostAsync(url, null)
-            : await _httpClient.PostAsJsonAsync(url, body, JsonOptions);
+            ? await _httpClient.PostAsync(url, null, cancellationToken)
+            : await _httpClient.PostAsJsonAsync(url, body, JsonOptions, cancellationToken);
         return await ProcessResponseAsync(response);
     }
 

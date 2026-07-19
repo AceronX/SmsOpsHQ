@@ -50,6 +50,7 @@ public class MessageRepositoryTests : IDisposable
         ThreadEntity thread = new ThreadEntity
         {
             StoreId = _storeId,
+            ContactPhoneE164 = "+17185550199",
             Status = "Open",
             UnreadCount = 0
         };
@@ -253,15 +254,22 @@ public class MessageRepositoryTests : IDisposable
     // ── CreateNoteAsync ──────────────────────────────────────────────
 
     [Fact]
-    public async Task CreateNoteAsync_CreatesInternalNote()
+    public async Task CreateNoteAsync_ReloadsInSameThread_WithoutChangingContactPhone()
     {
         Message note = await _repo.CreateNoteAsync(_storeId, _threadId, "Staff note here", _userId);
 
+        _db.ChangeTracker.Clear();
+        List<Message> reloaded = await _repo.GetByThreadAsync(_storeId, _threadId);
+        Message reloadedNote = Assert.Single(reloaded);
+        ThreadEntity thread = await _db.Threads.AsNoTracking().SingleAsync(t => t.ThreadId == _threadId);
+
         Assert.Equal("Note", note.Direction);
+        Assert.Equal("Note", reloadedNote.Direction);
         Assert.Equal("Internal", note.Status);
         Assert.Equal("Staff note here", note.Body);
         Assert.Equal(_userId, note.SentByUserId);
         Assert.Equal("system", note.FromE164);
         Assert.Equal("system", note.ToE164);
+        Assert.Equal("+17185550199", thread.ContactPhoneE164);
     }
 }

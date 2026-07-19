@@ -48,15 +48,28 @@ public sealed class AmbiguousCandidateRow
     public string DisplayText { get; init; } = string.Empty;
 }
 
+public sealed class CustomerAppNoteDisplayItem
+{
+    public int CustomerAppNoteId { get; init; }
+    public int CustomerKey { get; init; }
+    public string Content { get; init; } = string.Empty;
+    public string CreatedByUsername { get; init; } = string.Empty;
+    public DateTime CreatedAtUtc { get; init; }
+    public string Metadata => $"{CreatedByUsername} • {CreatedAtUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
+}
+
 // Right-hand panel: resolves conversation phone to customer via phone map, then shows full XPD context.
 public sealed partial class CustomerPanelViewModel : ViewModelBase
 {
-    private readonly ApiClient _apiClient;
+    private readonly ICustomerPanelApi _apiClient;
     private IPhoneDialer? _phoneDialer;
     private ISendSmsDialogService? _sendSmsDialogService;
     private CustomerQualityQueryService? _qualityQueryService;
     private readonly IPhonePickerService _phonePickerService;
     private string _lastPhoneForLookup = string.Empty;
+    private long _loadGeneration;
+    private CancellationTokenSource? _customerLoadCts;
+    private long _noteSaveGeneration;
 
     [ObservableProperty] private int? _customerKey;
     [ObservableProperty] private int? _customerId;
@@ -101,6 +114,9 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _itemNotes = "No item notes.";
     [ObservableProperty] private string _noteInput = string.Empty;
     [ObservableProperty] private bool _isSavingNote;
+    [ObservableProperty] private string _noteSaveStatus = string.Empty;
+    [ObservableProperty] private ObservableCollection<CustomerAppNoteDisplayItem> _appNotes = new();
+    [ObservableProperty] private bool _hasAppNotes;
 
     [ObservableProperty] private ObservableCollection<ActiveTicketDisplayItem> _activeTickets = new();
     [ObservableProperty] private string _closedTicketsText = string.Empty;
@@ -166,7 +182,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     partial void OnIsCustomerFoundChanged(bool value) => OnPropertyChanged(nameof(ShowFullRiskPanel));
 
     public CustomerPanelViewModel(
-        ApiClient apiClient,
+        ICustomerPanelApi apiClient,
         IPhoneDialer? phoneDialer = null,
         ISendSmsDialogService? sendSmsDialogService = null,
         CustomerQualityQueryService? qualityQueryService = null,
@@ -194,7 +210,17 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             return;
         }
 
+        long generation = Interlocked.Increment(ref _loadGeneration);
+        CancellationTokenSource loadCts = new();
+        CancellationTokenSource? previous = Interlocked.Exchange(ref _customerLoadCts, loadCts);
+        previous?.Cancel();
+        previous?.Dispose();
+        CancellationToken cancellationToken = loadCts.Token;
+
+        Interlocked.Increment(ref _noteSaveGeneration);
+        ClearCustomerState();
         IsBusy = true;
+        IsSavingNote = false;
         ClearError();
         CustomerPhone = PhoneUtils.NormalizeToE164(phone) ?? phone.Trim();
         PhoneChoices = new ObservableCollection<PhoneChoice>(
@@ -203,7 +229,13 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
 
         try
         {
-            JsonElement response = await _apiClient.GetCustomerByPhoneAsync(phone, selectedCustomerKey);
+            JsonElement response = await _apiClient.GetCustomerByPhoneAsync(
+                phone,
+                selectedCustomerKey,
+                cancellationToken);
+            if (!IsCurrentLoad(generation, cancellationToken))
+                return;
+
             bool found = response.TryGetProperty("found", out JsonElement foundElement) && foundElement.GetBoolean();
 
             if (!found)
@@ -254,19 +286,43 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             }
 
             IsCustomerFound = true;
-            await PopulateFromResponse(response, customerElement);
+            await PopulateFromResponse(response, customerElement, generation, cancellationToken);
+            if (!IsCurrentLoad(generation, cancellationToken))
+                return;
             OnPropertyChanged(nameof(ShowFullRiskPanel));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A newer customer selection owns the panel now.
         }
         catch (Exception ex)
         {
-            SetError($"Failed to load customer: {ex.Message}");
+            if (IsCurrentLoad(generation, cancellationToken))
+                SetError($"Failed to load customer: {ex.Message}");
         }
         finally
         {
-            IsBusy = false;
-            OnPropertyChanged(nameof(CanClickToCall));
+            if (IsCurrentLoad(generation, cancellationToken))
+            {
+                IsBusy = false;
+                OnPropertyChanged(nameof(CanClickToCall));
+            }
         }
     }
+
+    public void CancelPendingLoad()
+    {
+        Interlocked.Increment(ref _loadGeneration);
+        CancellationTokenSource? current = Interlocked.Exchange(ref _customerLoadCts, null);
+        current?.Cancel();
+        current?.Dispose();
+        Interlocked.Increment(ref _noteSaveGeneration);
+        IsBusy = false;
+        IsSavingNote = false;
+    }
+
+    private bool IsCurrentLoad(long generation, CancellationToken cancellationToken) =>
+        generation == Volatile.Read(ref _loadGeneration) && !cancellationToken.IsCancellationRequested;
 
     private void ApplyIdentityFlags(JsonElement response)
     {
@@ -348,7 +404,11 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     }
 
     // Map API response (customer, stats, quality, tickets, notes) to display properties.
-    private async Task PopulateFromResponse(JsonElement response, JsonElement customerElement)
+    private async Task PopulateFromResponse(
+        JsonElement response,
+        JsonElement customerElement,
+        long generation,
+        CancellationToken cancellationToken)
     {
         CustomerKey = GetIntOrNull(customerElement, "customer_key") ?? GetIntOrNull(customerElement, "key");
         if (response.TryGetProperty("customer_id", out JsonElement customerIdElement) && customerIdElement.ValueKind == JsonValueKind.Number)
@@ -423,7 +483,14 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             ClearExperienceAlert();
             TicketNotes = "No ticket notes.";
             ItemNotes = "No item notes.";
-            await TryLoadIdPhotoPreviewAsync(CustomerKey, idNumber, idPhotoAvailable);
+            if (CustomerKey.HasValue)
+                await LoadAppNotesAsync(CustomerKey.Value, generation, cancellationToken);
+            await TryLoadIdPhotoPreviewAsync(
+                CustomerKey,
+                idNumber,
+                idPhotoAvailable,
+                generation,
+                cancellationToken);
             return;
         }
 
@@ -476,9 +543,20 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         PopulateActiveTickets(response);
 
         if (CustomerKey.HasValue)
-            await LoadQualityMetricsAsync(CustomerKey.Value);
+        {
+            int loadedCustomerKey = CustomerKey.Value;
+            await LoadAppNotesAsync(loadedCustomerKey, generation, cancellationToken);
+            if (!IsCurrentLoad(generation, cancellationToken))
+                return;
+            await LoadQualityMetricsAsync(loadedCustomerKey, generation, cancellationToken);
+        }
 
-        await TryLoadIdPhotoPreviewAsync(CustomerKey, idNumber, idPhotoAvailable);
+        await TryLoadIdPhotoPreviewAsync(
+            CustomerKey,
+            idNumber,
+            idPhotoAvailable,
+            generation,
+            cancellationToken);
     }
 
     private void ClearExperienceAlert()
@@ -521,8 +599,16 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         HasIdPhotoPreview = false;
     }
 
-    private async Task TryLoadIdPhotoPreviewAsync(int? key, string idNumber, bool apiSaysAvailable)
+    private async Task TryLoadIdPhotoPreviewAsync(
+        int? key,
+        string idNumber,
+        bool apiSaysAvailable,
+        long generation,
+        CancellationToken cancellationToken)
     {
+        if (!IsCurrentLoad(generation, cancellationToken))
+            return;
+
         ClearIdPhotoPreview();
         if (key is null || string.IsNullOrWhiteSpace(idNumber) || !apiSaysAvailable)
             return;
@@ -530,13 +616,16 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         int customerKey = key.Value;
         try
         {
-            byte[]? bytes = await _apiClient.GetCustomerIdPhotoBytesAsync(customerKey);
-            if (bytes is null || bytes.Length == 0 || CustomerKey != customerKey)
+            byte[]? bytes = await _apiClient.GetCustomerIdPhotoBytesAsync(
+                customerKey,
+                cancellationToken);
+            if (bytes is null || bytes.Length == 0 || CustomerKey != customerKey ||
+                !IsCurrentLoad(generation, cancellationToken))
                 return;
 
             void ApplyPreview()
             {
-                if (CustomerKey != customerKey)
+                if (CustomerKey != customerKey || !IsCurrentLoad(generation, cancellationToken))
                     return;
                 try
                 {
@@ -561,9 +650,13 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             else
                 Application.Current?.Dispatcher.Invoke(ApplyPreview);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         catch
         {
-            ClearIdPhotoPreview();
+            if (IsCurrentLoad(generation, cancellationToken))
+                ClearIdPhotoPreview();
         }
     }
 
@@ -812,8 +905,14 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     }
 
     // Use when API does not return quality; derive risk from PFX count and late count from stats.
-    private async Task LoadQualityMetricsAsync(int customerKey)
+    private async Task LoadQualityMetricsAsync(
+        int customerKey,
+        long generation,
+        CancellationToken cancellationToken)
     {
+        if (!IsCurrentLoad(generation, cancellationToken))
+            return;
+
         QualityMetrics.Clear();
         HasQualityMetrics = false;
 
@@ -821,7 +920,12 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
 
         try
         {
-            JsonElement result = await _apiClient.GetCustomerQualityAsync(customerKey, "default");
+            JsonElement result = await _apiClient.GetCustomerQualityAsync(
+                customerKey,
+                "default",
+                cancellationToken);
+            if (!IsCurrentLoad(generation, cancellationToken) || CustomerKey != customerKey)
+                return;
 
             if (result.TryGetProperty("error", out JsonElement errorEl))
                 return;
@@ -862,10 +966,73 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
 
             ApplyQualityRiskLevel(avgDaysLate, pfxCount, lateTickets);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         catch
         {
-            HasQualityMetrics = false;
+            if (IsCurrentLoad(generation, cancellationToken))
+                HasQualityMetrics = false;
         }
+    }
+
+    private async Task LoadAppNotesAsync(
+        int customerKey,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            JsonElement response = await _apiClient.GetCustomerAppNotesAsync(
+                customerKey,
+                cancellationToken);
+            if (!IsCurrentLoad(generation, cancellationToken) || CustomerKey != customerKey)
+                return;
+
+            List<CustomerAppNoteDisplayItem> notes = new();
+            if (response.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement noteElement in response.EnumerateArray())
+                    notes.Add(ParseAppNote(noteElement));
+            }
+
+            AppNotes = new ObservableCollection<CustomerAppNoteDisplayItem>(notes);
+            HasAppNotes = notes.Count > 0;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (IsCurrentLoad(generation, cancellationToken) && CustomerKey == customerKey)
+                SetError("Failed to load app notes: " + ex.Message);
+        }
+    }
+
+    private static CustomerAppNoteDisplayItem ParseAppNote(JsonElement noteElement)
+    {
+        DateTime createdAtUtc = DateTime.MinValue;
+        string createdAt = GetString(noteElement, "createdAtUtc");
+        if (!DateTime.TryParse(
+                createdAt,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal |
+                System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out createdAtUtc))
+        {
+            createdAtUtc = DateTime.UtcNow;
+        }
+
+        return new CustomerAppNoteDisplayItem
+        {
+            CustomerAppNoteId = GetInt(noteElement, "customerAppNoteId"),
+            CustomerKey = GetInt(noteElement, "customerKey"),
+            Content = GetString(noteElement, "content"),
+            CreatedByUsername = DefaultIfEmpty(
+                GetString(noteElement, "createdByUsername"),
+                "Unknown user"),
+            CreatedAtUtc = createdAtUtc
+        };
     }
 
     private static string FormatMetricLabel(string columnName)
@@ -942,28 +1109,75 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         }
     }
 
-    // Append note to customer in SQLite (XPD mirror); then reload panel to show updated notes.
+    // App notes are stored separately from the read-only XPD customer mirror.
     [RelayCommand]
-    private async Task AppendNoteXpdAsync()
+    private async Task AddAppNoteAsync()
     {
         string trimmedNote = (NoteInput ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(trimmedNote) || !CustomerKey.HasValue) return;
+        if (IsBusy || string.IsNullOrEmpty(trimmedNote) || !CustomerKey.HasValue) return;
+        if (trimmedNote.Length > 4000)
+        {
+            SetError("Save failed: app notes are limited to 4000 characters.");
+            return;
+        }
+
+        int targetCustomerKey = CustomerKey.Value;
+        long targetLoadGeneration = Volatile.Read(ref _loadGeneration);
+        long saveGeneration = Interlocked.Increment(ref _noteSaveGeneration);
 
         IsSavingNote = true;
+        NoteSaveStatus = string.Empty;
+        ClearError();
         try
         {
-            await _apiClient.AppendNoteXpdAsync(CustomerKey.Value, trimmedNote);
+            JsonElement response = await _apiClient.CreateCustomerAppNoteAsync(
+                targetCustomerKey,
+                trimmedNote);
+
+            if (!IsCurrentCustomer(targetLoadGeneration, targetCustomerKey) ||
+                saveGeneration != Volatile.Read(ref _noteSaveGeneration))
+            {
+                return;
+            }
+
+            CustomerAppNoteDisplayItem savedNote = ParseAppNote(response);
             NoteInput = string.Empty;
-            if (!string.IsNullOrEmpty(CustomerPhone))
-                await LoadByPhoneAsync(CustomerPhone, CustomerKey);
+            AppNotes.Add(savedNote);
+            HasAppNotes = true;
+            NoteSaveStatus = "Saved";
+            _ = ClearSavedStatusAfterDelayAsync(
+                targetLoadGeneration,
+                targetCustomerKey,
+                saveGeneration);
         }
         catch (Exception ex)
         {
-            SetError("Save failed: " + ex.Message);
+            if (IsCurrentCustomer(targetLoadGeneration, targetCustomerKey) &&
+                saveGeneration == Volatile.Read(ref _noteSaveGeneration))
+            {
+                SetError("Save failed: " + ex.Message);
+            }
         }
         finally
         {
-            IsSavingNote = false;
+            if (saveGeneration == Volatile.Read(ref _noteSaveGeneration))
+                IsSavingNote = false;
+        }
+    }
+
+    private bool IsCurrentCustomer(long generation, int customerKey) =>
+        generation == Volatile.Read(ref _loadGeneration) && CustomerKey == customerKey;
+
+    private async Task ClearSavedStatusAfterDelayAsync(
+        long loadGeneration,
+        int customerKey,
+        long saveGeneration)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        if (IsCurrentCustomer(loadGeneration, customerKey) &&
+            saveGeneration == Volatile.Read(ref _noteSaveGeneration))
+        {
+            NoteSaveStatus = string.Empty;
         }
     }
 
@@ -1014,6 +1228,12 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     // Reset all display fields to empty or default so the panel shows no customer.
     private void Clear()
     {
+        CancelPendingLoad();
+        ClearCustomerState();
+    }
+
+    private void ClearCustomerState()
+    {
         IsCustomerFound = false;
         CustomerKey = null;
         CustomerId = null;
@@ -1041,6 +1261,9 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         TicketNotes = "No ticket notes.";
         ItemNotes = "No item notes.";
         NoteInput = string.Empty;
+        NoteSaveStatus = string.Empty;
+        AppNotes = new ObservableCollection<CustomerAppNoteDisplayItem>();
+        HasAppNotes = false;
         ActiveTickets = new ObservableCollection<ActiveTicketDisplayItem>();
         ClosedTicketsText = string.Empty;
         HasActiveTickets = false;

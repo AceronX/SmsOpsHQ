@@ -58,6 +58,8 @@ public sealed partial class ThreadViewModel : ViewModelBase
     private readonly Action<CustomerPanelViewModel?>? _setRightPanel;
     private readonly Action? _onCloseRequested;
     private readonly Action? _onMessagesLoaded;
+    private volatile bool _isDetached;
+    private long _customerPanelLoadGeneration;
 
     #region Observable Properties
 
@@ -118,6 +120,9 @@ public sealed partial class ThreadViewModel : ViewModelBase
     /// <summary>Unsubscribes SignalR handler; call when this VM is no longer the active thread.</summary>
     public void Detach()
     {
+        _isDetached = true;
+        Interlocked.Increment(ref _customerPanelLoadGeneration);
+        CustomerPanel?.CancelPendingLoad();
         _signalRClient.MessageReceived -= OnSignalRMessageReceived;
     }
 
@@ -500,10 +505,13 @@ public sealed partial class ThreadViewModel : ViewModelBase
 
     private async Task EnsureCustomerPanelAsync()
     {
-        if (string.IsNullOrEmpty(CustomerPhone))
+        if (_isDetached || string.IsNullOrEmpty(CustomerPhone))
             return;
         if (CustomerPanel is not null && CustomerPanel.CustomerPhone == CustomerPhone)
             return;
+
+        long generation = Interlocked.Increment(ref _customerPanelLoadGeneration);
+        string phone = CustomerPhone;
 
         var panel = new CustomerPanelViewModel(
             _apiClient,
@@ -511,9 +519,23 @@ public sealed partial class ThreadViewModel : ViewModelBase
             _sendSmsDialogService,
             _qualityQueryService,
             _phonePickerService);
+
+        if (_isDetached || generation != Volatile.Read(ref _customerPanelLoadGeneration))
+            return;
+
+        CustomerPanel?.CancelPendingLoad();
         CustomerPanel = panel;
         _setRightPanel?.Invoke(panel);
-        await panel.LoadByPhoneAsync(CustomerPhone);
+        await panel.LoadByPhoneAsync(phone);
+
+        if (_isDetached || generation != Volatile.Read(ref _customerPanelLoadGeneration) ||
+            !string.Equals(phone, CustomerPhone, StringComparison.Ordinal))
+        {
+            panel.CancelPendingLoad();
+            if (ReferenceEquals(CustomerPanel, panel))
+                CustomerPanel = null;
+            return;
+        }
     }
 
     private async Task LoadAndShowMediaAsync(string mediaUrl)
