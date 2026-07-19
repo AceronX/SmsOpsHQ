@@ -35,7 +35,10 @@ public sealed class LateCustomersQueryService
                      AND t2.HowClosed LIKE 'PFX%') AS ForfeitCount,
                     GROUP_CONCAT(i.PrintedDetail, ' | ') AS Items,
                     GROUP_CONCAT(i.Notes, ' | ') AS ItemNotes,
-                    GROUP_CONCAT(i.CategoryCode, ' | ') AS Category
+                    GROUP_CONCAT(
+                        CASE WHEN TRIM(COALESCE(i.CategoryCode, '')) != ''
+                             THEN TRIM(i.CategoryCode) END,
+                        ' | ') AS Category
                 FROM Tickets t
                 JOIN Customers c ON t.CustomerKey = c.CustomerKey
                 LEFT JOIN Items i ON i.TicketKey = t.Key

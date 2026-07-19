@@ -30,12 +30,20 @@ public sealed class LateCustomerItem
     public string ItemNotes { get; set; } = string.Empty;
     public string CustomerNotes { get; set; } = string.Empty;
     public string TicketNotes { get; set; } = string.Empty;
+    public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
+    /// <summary>Backward-compatible display value supplied by older API responses.</summary>
     public string Category { get; set; } = string.Empty;
     public int ForfeitCount { get; set; }
     public int RiskScore { get; set; }
     public string RiskBand { get; set; } = "LOW";
     public string RiskColor { get; set; } = "#34a853";
     public string FullName => $"{FirstName} {LastName}".Trim();
+    public IReadOnlyList<string> CategoryChips => Categories.Count > 0
+        ? Categories
+        : LatePawnCategoryRules.ParseAggregated(Category);
+    public string CategoryText => string.Join(" | ", CategoryChips);
+    public bool HasJewelry => LatePawnCategoryRules.Contains(CategoryChips, LatePawnCategoryRules.Jewelry);
+    public bool HasElectronics => LatePawnCategoryRules.Contains(CategoryChips, LatePawnCategoryRules.Electronics);
 
     /// <summary>Primary phone formatted for display on cards.</summary>
     public string DisplayPhone =>
@@ -118,6 +126,14 @@ public sealed class LateCustomerItem
 
 public sealed partial class LateCustomersViewModel : ViewModelBase
 {
+    public IReadOnlyList<string> CategoryFilters { get; } = new[]
+    {
+        "All",
+        "Jewelry",
+        "Electronics",
+        "Other"
+    };
+
     private readonly ApiClient _apiClient;
     private readonly LateCustomersQueryService _queryService;
     private readonly IPhoneDialer? _phoneDialer;
@@ -156,9 +172,17 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     [ObservableProperty]
     private string _searchText = string.Empty;
 
+    [ObservableProperty]
+    private string _selectedCategoryFilter = "All";
+
     partial void OnSearchTextChanged(string value)
     {
-        ApplySearchFilter();
+        ApplyFilters();
+    }
+
+    partial void OnSelectedCategoryFilterChanged(string value)
+    {
+        ApplyFilters();
     }
 
     public LateCustomersViewModel(
@@ -213,6 +237,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
                 string primaryPhone = phoneChoices.Count > 0
                     ? phoneChoices[0].PhoneE164
                     : string.Empty;
+                IReadOnlyList<string> categories = ReadCategories(c);
 
                 items.Add(new LateCustomerItem
                 {
@@ -232,7 +257,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
                     ItemNotes = c.TryGetProperty("item_notes", out JsonElement inE) ? inE.GetString() ?? "" : "",
                     CustomerNotes = c.TryGetProperty("customer_notes", out JsonElement cnE) ? cnE.GetString() ?? "" : "",
                     TicketNotes = c.TryGetProperty("ticket_notes", out JsonElement tnE2) ? tnE2.GetString() ?? "" : "",
-                    Category = c.TryGetProperty("category", out JsonElement catE) ? catE.GetString() ?? "" : "",
+                    Categories = categories,
+                    Category = string.Join(" | ", categories),
                     ForfeitCount = c.TryGetProperty("forfeit_count", out JsonElement fcE) ? fcE.GetInt32() : 0,
                     RiskScore = c.TryGetProperty("risk_score", out JsonElement rsE) ? rsE.GetInt32() : 0,
                     RiskBand = c.TryGetProperty("risk_band", out JsonElement rbE) ? rbE.GetString() ?? "LOW" : "LOW",
@@ -241,7 +267,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             }
 
             _allCustomers = items.OrderByDescending(i => i.DaysLate).ToList();
-            ApplySearchFilter();
+            ApplyFilters();
         }
         catch (Exception ex)
         {
@@ -274,24 +300,63 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         }
     }
 
-    private void ApplySearchFilter()
+    private static IReadOnlyList<string> ReadCategories(JsonElement customer)
     {
-        IEnumerable<LateCustomerItem> source = _allCustomers;
-        if (!string.IsNullOrWhiteSpace(SearchText))
+        List<string?> rawCategories = new();
+
+        if (customer.TryGetProperty("categories", out JsonElement categoriesElement)
+            && categoriesElement.ValueKind == JsonValueKind.Array)
         {
-            string searchLower = SearchText.ToLowerInvariant();
-            source = source.Where(c =>
-                c.FullName.ToLowerInvariant().Contains(searchLower) ||
-                c.PhoneChoices.Any(p => p.PhoneE164.Contains(searchLower)
-                                        || p.DisplayPhone.Contains(searchLower)) ||
-                c.TicketNo.ToString().Contains(searchLower) ||
-                c.Items.ToLowerInvariant().Contains(searchLower) ||
-                c.CustomerNotes.ToLowerInvariant().Contains(searchLower) ||
-                c.TicketNotes.ToLowerInvariant().Contains(searchLower)
-            );
+            foreach (JsonElement categoryElement in categoriesElement.EnumerateArray())
+            {
+                if (categoryElement.ValueKind == JsonValueKind.String)
+                    rawCategories.Add(categoryElement.GetString());
+            }
         }
 
-        List<LateCustomerItem> filtered = source.ToList();
+        if (rawCategories.Count == 0
+            && customer.TryGetProperty("category", out JsonElement legacyCategory)
+            && legacyCategory.ValueKind == JsonValueKind.String)
+        {
+            rawCategories.Add(legacyCategory.GetString());
+        }
+
+        return LatePawnCategoryRules.Normalize(rawCategories);
+    }
+
+    public static bool MatchesFilters(
+        LateCustomerItem customer,
+        string? categoryFilter,
+        string? searchText)
+    {
+        bool categoryMatches = categoryFilter switch
+        {
+            "Jewelry" => customer.HasJewelry,
+            "Electronics" => customer.HasElectronics,
+            "Other" => !customer.HasJewelry && !customer.HasElectronics,
+            _ => true
+        };
+
+        if (!categoryMatches || string.IsNullOrWhiteSpace(searchText))
+            return categoryMatches;
+
+        string search = searchText.Trim();
+        return customer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || customer.PhoneChoices.Any(phone =>
+                phone.PhoneE164.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || phone.DisplayPhone.Contains(search, StringComparison.OrdinalIgnoreCase))
+            || customer.TicketNo.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)
+            || customer.Items.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || customer.CustomerNotes.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || customer.TicketNotes.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || customer.CategoryText.Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyFilters()
+    {
+        List<LateCustomerItem> filtered = _allCustomers
+            .Where(customer => MatchesFilters(customer, SelectedCategoryFilter, SearchText))
+            .ToList();
         Customers = new ObservableCollection<LateCustomerItem>(filtered);
 
         TotalCount = filtered.Count;

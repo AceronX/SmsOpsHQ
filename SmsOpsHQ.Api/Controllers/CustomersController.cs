@@ -316,7 +316,10 @@ public sealed partial class CustomersController : ControllerBase
                      AND t2.HowClosed LIKE 'PFX%') AS ForfeitCount,
                     GROUP_CONCAT(i.PrintedDetail, ' | ') AS Items,
                     GROUP_CONCAT(i.Notes, ' | ') AS ItemNotes,
-                    GROUP_CONCAT(i.CategoryCode, ' | ') AS Category
+                    GROUP_CONCAT(
+                        CASE WHEN TRIM(COALESCE(i.CategoryCode, '')) != ''
+                             THEN TRIM(i.CategoryCode) END,
+                        ' | ') AS Category
                 FROM Tickets t
                 JOIN Customers c ON t.CustomerKey = c.CustomerKey
                 LEFT JOIN Items i ON i.TicketKey = t.Key
@@ -349,11 +352,13 @@ public sealed partial class CustomersController : ControllerBase
                 int forfeitCount = reader.IsDBNull(reader.GetOrdinal("ForfeitCount")) 
                     ? 0 : reader.GetInt32(reader.GetOrdinal("ForfeitCount"));
                 
-                string? category = ExtractFirstCategory(reader.IsDBNull(reader.GetOrdinal("Category")) 
-                    ? null : reader.GetString(reader.GetOrdinal("Category")));
+                IReadOnlyList<string> categories = LatePawnCategoryRules.ParseAggregated(
+                    reader.IsDBNull(reader.GetOrdinal("Category"))
+                        ? null
+                        : reader.GetString(reader.GetOrdinal("Category")));
                 
-                int riskScore = CalculateRiskScore(daysLate, forfeitCount, category);
-                object data = MapLateCustomerRow(reader, customerKey, dueDateStr, daysLate, forfeitCount, category, riskScore);
+                int riskScore = CalculateRiskScore(daysLate, forfeitCount, categories);
+                object data = MapLateCustomerRow(reader, customerKey, dueDateStr, daysLate, forfeitCount, categories, riskScore);
 
                 tempResults.Add((riskScore, data));
             }
@@ -383,22 +388,13 @@ public sealed partial class CustomersController : ControllerBase
         return TryParseDate(dueDateStr);
     }
 
-    private static string? ExtractFirstCategory(string? category)
-    {
-        if (string.IsNullOrEmpty(category))
-            return null;
-
-        return category.Split('|', StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault()?.Trim();
-    }
-
     private static object MapLateCustomerRow(
         DbDataReader reader,
         int customerKey,
         string? dueDateStr,
         int daysLate,
         int forfeitCount,
-        string? category,
+        IReadOnlyList<string> categories,
         int riskScore)
     {
         int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerId"))
@@ -430,7 +426,9 @@ public sealed partial class CustomersController : ControllerBase
             item_notes = reader.IsDBNull(reader.GetOrdinal("ItemNotes")) ? "" : reader.GetString(reader.GetOrdinal("ItemNotes")),
             customer_notes = reader.IsDBNull(reader.GetOrdinal("CustomerNotes")) ? "" : reader.GetString(reader.GetOrdinal("CustomerNotes")),
             ticket_notes = reader.IsDBNull(reader.GetOrdinal("TicketNotes")) ? "" : reader.GetString(reader.GetOrdinal("TicketNotes")),
-            category = category ?? "",
+            // Retain the display field while desktop clients transition to the collection.
+            category = string.Join(" | ", categories),
+            categories,
             forfeit_count = forfeitCount,
             risk_score = riskScore,
             risk_band = GetRiskBand(riskScore),
@@ -476,7 +474,7 @@ public sealed partial class CustomersController : ControllerBase
         return ordered;
     }
 
-    private static int CalculateRiskScore(int daysLate, int forfeitCount, string? category)
+    internal static int CalculateRiskScore(int daysLate, int forfeitCount, IEnumerable<string> categories)
     {
         int score = 0;
 
@@ -498,12 +496,8 @@ public sealed partial class CustomersController : ControllerBase
         else if (forfeitCount == 1)
             score += 20;
 
-        // Category risk (0-10 points)
-        string? categoryUpper = category?.ToUpperInvariant();
-        if (categoryUpper == "ELECTRONICS" || categoryUpper == "GENERAL")
-            score += 10;
-        else if (categoryUpper == "JEWELRY")
-            score += 5;
+        // Category risk (0-10 points), considering every item on the ticket.
+        score += LatePawnCategoryRules.GetRiskPoints(categories);
 
         return Math.Min(score, 100);
     }

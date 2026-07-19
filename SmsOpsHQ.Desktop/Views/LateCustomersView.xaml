@@ -52,47 +52,62 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Grid Grid.Column="1" Margin="24,0" HorizontalAlignment="Center" Width="280">
-                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
-                             Padding="36,10,12,10" VerticalContentAlignment="Center"
-                             FontSize="13">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox">
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="TextBox">
-                                            <Border Background="{StaticResource Surface}"
-                                                    BorderBrush="{StaticResource Border}"
-                                                    BorderThickness="1" CornerRadius="4"
-                                                    Padding="{TemplateBinding Padding}">
-                                                <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
-                                            </Border>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </TextBox.Style>
-                    </TextBox>
-                    <Border IsHitTestVisible="False" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
-                            Visibility="{Binding SearchText, Converter={StaticResource EmptyToVisible}}"
-                            Padding="12,0,12,0">
-                        <Grid VerticalAlignment="Center">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Width="20" Height="20" Margin="0,0,10,0"
-                                    VerticalAlignment="Center">
-                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}"
-                                           FontSize="16" Foreground="{StaticResource TextMuted}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="Search customers..."
-                                       FontSize="13" Foreground="{StaticResource TextMuted}"
-                                       VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
+                <Grid Grid.Column="1" Margin="24,0" HorizontalAlignment="Center" Width="450">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="280"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="158"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                                 Padding="36,10,12,10" VerticalContentAlignment="Center"
+                                 FontSize="13">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="TextBox">
+                                                <Border Background="{StaticResource Surface}"
+                                                        BorderBrush="{StaticResource Border}"
+                                                        BorderThickness="1" CornerRadius="4"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                        <Border IsHitTestVisible="False" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                                Visibility="{Binding SearchText, Converter={StaticResource EmptyToVisible}}"
+                                Padding="12,0,12,0">
+                            <Grid VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="20" Height="20" Margin="0,0,10,0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}"
+                                               FontSize="16" Foreground="{StaticResource TextMuted}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="Search customers..."
+                                           FontSize="13" Foreground="{StaticResource TextMuted}"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <ComboBox Grid.Column="2"
+                              ItemsSource="{Binding CategoryFilters}"
+                              SelectedItem="{Binding SelectedCategoryFilter, Mode=TwoWay}"
+                              VerticalContentAlignment="Center" Padding="10,8"
+                              ToolTip="Filter by pawn item category"
+                              AutomationProperties.Name="Category filter"/>
                 </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -195,6 +210,24 @@
                                         </Border>
                                         <TextBlock Text="{Binding TicketNo, StringFormat='# {0}'}"
                                                    FontSize="9" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                                        <ItemsControl ItemsSource="{Binding CategoryChips}" Margin="6,0,0,0"
+                                                      VerticalAlignment="Center">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#EEF2FF" BorderBrush="#C7D2FE"
+                                                            BorderThickness="1" CornerRadius="5"
+                                                            Padding="4,1" Margin="0,0,3,0">
+                                                        <TextBlock Text="{Binding}" FontSize="8" FontWeight="SemiBold"
+                                                                   Foreground="#3730A3"/>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                                         <Button Command="{Binding DataContext.SendSmsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
