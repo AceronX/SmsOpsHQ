@@ -4,7 +4,8 @@ using SmsOpsHQ.Infrastructure.Persistence.Entities;
 namespace SmsOpsHQ.Infrastructure.Persistence;
 
 // EF Core database context for the SmsOps HQ SQLite database.
-// Tables: Stores, Users, TwilioNumbers; Customers, Tickets, Items, PawnPayments, CustomerPhones; Threads, Messages, Templates; OptOuts, QuarantinedMessages; SmsReminders, SmsExcluded, SmsUnsubscribed.
+// Tables: Stores, Users, TwilioNumbers; Customers, Tickets, Items, PawnPayments, CustomerPhones,
+// CustomerAppNotes, LateTicketPulls; Threads, Messages, Templates; compliance, reminders, and reviews.
 // Schema is managed with EF Core migrations (see Persistence/Migrations).
 public sealed class AppDbContext : DbContext
 {
@@ -25,6 +26,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<PawnPaymentEntity> PawnPayments => Set<PawnPaymentEntity>();
     public DbSet<CustomerPhoneEntity> CustomerPhones => Set<CustomerPhoneEntity>();
     public DbSet<CustomerAppNoteEntity> CustomerAppNotes => Set<CustomerAppNoteEntity>();
+    public DbSet<LateTicketPullEntity> LateTicketPulls => Set<LateTicketPullEntity>();
 
     // Messaging (inbox, threads, templates)
     public DbSet<ThreadEntity> Threads => Set<ThreadEntity>();
@@ -63,6 +65,7 @@ public sealed class AppDbContext : DbContext
         ConfigurePawnPayments(modelBuilder);
         ConfigureCustomerPhones(modelBuilder);
         ConfigureCustomerAppNotes(modelBuilder);
+        ConfigureLateTicketPulls(modelBuilder);
         ConfigureSmsReminders(modelBuilder);
         ConfigureSmsExcluded(modelBuilder);
         ConfigureSmsUnsubscribed(modelBuilder);
@@ -97,6 +100,35 @@ public sealed class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(n => n.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureLateTicketPulls(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<LateTicketPullEntity>(pull =>
+        {
+            pull.ToTable("LateTicketPulls");
+            pull.HasKey(item => item.LateTicketPullId);
+
+            pull.Property(item => item.Reason).HasMaxLength(500);
+            pull.Property(item => item.PulledAtUtc).IsRequired();
+
+            pull.HasIndex(item => new { item.StoreId, item.TicketKey }).IsUnique();
+            pull.HasIndex(item => new { item.StoreId, item.CustomerKey });
+            pull.HasIndex(item => item.PulledAtUtc);
+
+            pull.HasOne<StoreEntity>()
+                .WithMany()
+                .HasForeignKey(item => item.StoreId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            pull.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(item => item.PulledByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Ticket/Customer are XPD mirror rows and may be replaced during sync,
+            // so their keys are intentionally stored without foreign-key constraints.
         });
     }
 

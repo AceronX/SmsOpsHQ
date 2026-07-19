@@ -131,15 +131,27 @@ public sealed class ApiClient : ICustomerPanelApi, IDisposable
     public async Task<JsonElement> UpdateCustomerAsync(int customerId, UpdateCustomerRequest request) =>
         await PostJsonAsync($"/api/customer/{customerId}/update", request);
 
-    public async Task<JsonElement> GetLateCustomersAsync(string? query = null)
+    public async Task<JsonElement> GetLateCustomersAsync(
+        string? query = null,
+        bool includePulled = false)
     {
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            var request = new { Query = query };
-            return await PostJsonAsync("/api/customers/late", request);
-        }
-        return await PostJsonAsync("/api/customers/late", new { });
+        var request = new { Query = query, IncludePulled = includePulled };
+        return await PostJsonAsync("/api/customers/late", request);
     }
+
+    public async Task<JsonElement> MoveLateTicketToPullListAsync(
+        int storeId,
+        int ticketKey,
+        int customerKey,
+        string? reason = null)
+    {
+        var request = new { storeId, ticketKey, customerKey, reason };
+        return await PostJsonAsync("/api/late-customers/pull-list", request);
+    }
+
+    public async Task RestoreLateTicketFromPullListAsync(int storeId, int ticketKey) =>
+        _ = await DeleteJsonAsync(
+            $"/api/late-customers/pull-list/{ticketKey}?storeId={storeId}");
 
     public async Task<JsonElement> GetPfxCustomersAsync(int days = 60) =>
         await GetJsonAsync($"/api/customers/pfx?days={days}");

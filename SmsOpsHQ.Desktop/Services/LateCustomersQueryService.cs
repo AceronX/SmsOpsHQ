@@ -18,6 +18,7 @@ public sealed class LateCustomersQueryService
     private const string DefaultQuery = @"
                 SELECT
                     c.CustomerKey AS Key,
+                    c.StoreId AS StoreId,
                     c.CustomerId,
                     c.FirstName,
                     c.LastName,

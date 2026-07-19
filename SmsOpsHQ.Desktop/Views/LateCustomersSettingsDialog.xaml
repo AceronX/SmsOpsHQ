@@ -24,7 +24,7 @@
                     <Run Text=" are returned (WHERE, JOIN, LIMIT, etc.)."/>
                 </TextBlock>
                 <TextBlock FontSize="11" Foreground="#9CA3AF" TextWrapping="Wrap">
-                    <Run Text="Required column names (use AS if needed): Key, CustomerId, FirstName, LastName, ResPhone, BusPhone, CustomerNotes, TicketKey, TransNo, DueDate, CurrentBalance, Amount, TicketNotes, ForfeitCount, Items, ItemNotes, Category."/>
+                    <Run Text="Required column names (use AS if needed): Key, CustomerId, FirstName, LastName, ResPhone, BusPhone, CustomerNotes, TicketKey, TransNo, DueDate, CurrentBalance, Amount, TicketNotes, ForfeitCount, Items, ItemNotes, Category. StoreId is recommended; legacy queries infer it from Key."/>
                 </TextBlock>
             </StackPanel>
 

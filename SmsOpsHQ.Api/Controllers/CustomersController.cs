@@ -12,6 +12,7 @@ using SmsOpsHQ.Core.Repositories;
 using SmsOpsHQ.Core.Services;
 using SmsOpsHQ.Core.Utilities;
 using SmsOpsHQ.Infrastructure.Persistence;
+using SmsOpsHQ.Infrastructure.Persistence.Entities;
 
 namespace SmsOpsHQ.Api.Controllers;
 
@@ -299,6 +300,7 @@ public sealed partial class CustomersController : ControllerBase
                 : @"
                 SELECT
                     c.CustomerKey AS Key,
+                    c.StoreId AS StoreId,
                     c.CustomerId,
                     c.FirstName,
                     c.LastName,
@@ -334,6 +336,33 @@ public sealed partial class CustomersController : ControllerBase
             using DbCommand command = connection.CreateCommand();
             command.CommandText = sqlQuery;
 
+            int? assignedStoreId = User.GetStoreId();
+            if (!User.IsHqUser() && assignedStoreId is null)
+                return Problem(statusCode: 403, detail: "No store assigned");
+
+            IQueryable<CustomerEntity> customerScope = _db.Customers.AsNoTracking();
+            IQueryable<LateTicketPullEntity> pullScope = _db.LateTicketPulls.AsNoTracking();
+            if (!User.IsHqUser())
+            {
+                customerScope = customerScope.Where(customer => customer.StoreId == assignedStoreId!.Value);
+                pullScope = pullScope.Where(pull => pull.StoreId == assignedStoreId!.Value);
+            }
+
+            var customerStoreRows = await customerScope
+                .Where(customer => customer.CustomerKey != null)
+                .Select(customer => new { CustomerKey = customer.CustomerKey!.Value, customer.StoreId })
+                .ToListAsync(cancellationToken);
+            Dictionary<int, int> customerStores = customerStoreRows
+                .GroupBy(customer => customer.CustomerKey)
+                .ToDictionary(group => group.Key, group => group.First().StoreId);
+
+            var pullRows = await pullScope
+                .Select(pull => new { pull.StoreId, pull.TicketKey })
+                .ToListAsync(cancellationToken);
+            HashSet<(int StoreId, int TicketKey)> pulledTickets = pullRows
+                .Select(pull => (pull.StoreId, pull.TicketKey))
+                .ToHashSet();
+
             using DbDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
             DateTime today = DateTime.Now.Date;
             var tempResults = new List<(int RiskScore, object Data)>();
@@ -349,6 +378,19 @@ public sealed partial class CustomersController : ControllerBase
 
                 int daysLate = (today - dueDate.Value.Date).Days;
                 int customerKey = reader.GetInt32(reader.GetOrdinal("Key"));
+                int ticketKey = reader.GetInt32(reader.GetOrdinal("TicketKey"));
+                int storeId = ReadOptionalInt32(reader, "StoreId")
+                    ?? (customerStores.TryGetValue(customerKey, out int customerStoreId)
+                        ? customerStoreId
+                        : assignedStoreId ?? 0);
+                if ((storeId <= 0 && !User.IsHqUser())
+                    || (storeId > 0 && !User.CanAccessStore(storeId)))
+                    continue;
+
+                bool isOnPullList = pulledTickets.Contains((storeId, ticketKey));
+                if (isOnPullList && request?.IncludePulled != true)
+                    continue;
+
                 int forfeitCount = reader.IsDBNull(reader.GetOrdinal("ForfeitCount")) 
                     ? 0 : reader.GetInt32(reader.GetOrdinal("ForfeitCount"));
                 
@@ -358,7 +400,17 @@ public sealed partial class CustomersController : ControllerBase
                         : reader.GetString(reader.GetOrdinal("Category")));
                 
                 int riskScore = CalculateRiskScore(daysLate, forfeitCount, categories);
-                object data = MapLateCustomerRow(reader, customerKey, dueDateStr, daysLate, forfeitCount, categories, riskScore);
+                object data = MapLateCustomerRow(
+                    reader,
+                    storeId,
+                    customerKey,
+                    ticketKey,
+                    dueDateStr,
+                    daysLate,
+                    forfeitCount,
+                    categories,
+                    riskScore,
+                    isOnPullList);
 
                 tempResults.Add((riskScore, data));
             }
@@ -390,12 +442,15 @@ public sealed partial class CustomersController : ControllerBase
 
     private static object MapLateCustomerRow(
         DbDataReader reader,
+        int storeId,
         int customerKey,
+        int ticketKey,
         string? dueDateStr,
         int daysLate,
         int forfeitCount,
         IReadOnlyList<string> categories,
-        int riskScore)
+        int riskScore,
+        bool isOnPullList)
     {
         int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerId"))
             ? null : reader.GetInt32(reader.GetOrdinal("CustomerId"));
@@ -409,13 +464,14 @@ public sealed partial class CustomersController : ControllerBase
 
         return new
         {
+            store_id = storeId,
             customer_id = customerId,
             customer_key = customerKey,
             first_name = reader.IsDBNull(reader.GetOrdinal("FirstName")) ? "" : reader.GetString(reader.GetOrdinal("FirstName")),
             last_name = reader.IsDBNull(reader.GetOrdinal("LastName")) ? "" : reader.GetString(reader.GetOrdinal("LastName")),
             phone = primaryPhone,
             phones = phones,
-            ticket_key = reader.GetInt32(reader.GetOrdinal("TicketKey")),
+            ticket_key = ticketKey,
             trans_no = transNo,
             ticket_no = transNo,
             due_date = dueDateStr,
@@ -432,8 +488,30 @@ public sealed partial class CustomersController : ControllerBase
             forfeit_count = forfeitCount,
             risk_score = riskScore,
             risk_band = GetRiskBand(riskScore),
-            risk_color = GetRiskColor(riskScore)
+            risk_color = GetRiskColor(riskScore),
+            is_on_pull_list = isOnPullList
         };
+    }
+
+    private static int? ReadOptionalInt32(DbDataReader reader, string columnName)
+    {
+        int ordinal;
+        try
+        {
+            ordinal = reader.GetOrdinal(columnName);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        return reader.IsDBNull(ordinal)
+            ? null
+            : Convert.ToInt32(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
     }
 
     private static List<string> GetCustomerPhones(DbDataReader reader)
@@ -940,6 +1018,7 @@ public sealed class AppendNoteXpdRequest
 public sealed class LateCustomersQueryRequest
 {
     public string? Query { get; set; }
+    public bool IncludePulled { get; set; }
 }
 
 // Request body for POST /api/customers/quality.

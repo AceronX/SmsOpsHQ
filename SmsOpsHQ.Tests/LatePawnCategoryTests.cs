@@ -80,6 +80,39 @@ public sealed class LatePawnCategoryTests
         Assert.False(LateCustomersViewModel.MatchesFilters(mixed, "Jewelry", "no-match"));
     }
 
+    [Fact]
+    public void PullListModeAndCounts_UpdateWhenTicketStateChanges()
+    {
+        LateCustomerItem first = Customer("Main Critical", "JEWELRY");
+        first.RiskScore = 75;
+        LateCustomerItem second = Customer("Main Low", "TOOLS");
+        second.RiskScore = 10;
+        LateCustomerItem pulled = Customer("Pulled High", "ELECTRONICS");
+        pulled.RiskScore = 55;
+        pulled.IsOnPullList = true;
+        LateCustomerItem[] all = { first, second, pulled };
+
+        IReadOnlyList<LateCustomerItem> main = LateCustomersViewModel.FilterCustomers(
+            all, "All", null, "Main");
+        IReadOnlyList<LateCustomerItem> pullList = LateCustomersViewModel.FilterCustomers(
+            all, "All", null, "Pull List");
+
+        Assert.Equal(2, main.Count);
+        Assert.Single(main, item => item.RiskScore >= 70);
+        Assert.Single(main, item => item.RiskScore < 30);
+        Assert.Single(pullList);
+        Assert.Equal(55, pullList[0].RiskScore);
+
+        first.IsOnPullList = true;
+        IReadOnlyList<LateCustomerItem> updatedMain = LateCustomersViewModel.FilterCustomers(
+            all, "All", null, "Main");
+        IReadOnlyList<LateCustomerItem> updatedPullList = LateCustomersViewModel.FilterCustomers(
+            all, "All", null, "Pull List");
+
+        Assert.Single(updatedMain);
+        Assert.Equal(2, updatedPullList.Count);
+    }
+
     private static LateCustomerItem Customer(string fullName, params string[] categories)
     {
         string[] names = fullName.Split(' ', 2);

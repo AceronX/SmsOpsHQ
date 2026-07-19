@@ -53,13 +53,17 @@
                 </StackPanel>
 
                 <Grid Grid.Column="1" Margin="24,0" HorizontalAlignment="Center" Width="450">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="280"/>
                         <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="158"/>
                     </Grid.ColumnDefinitions>
 
-                    <Grid Grid.Column="0">
+                    <Grid Grid.Row="0" Grid.Column="0">
                         <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                  VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
                                  Padding="36,10,12,10" VerticalContentAlignment="Center"
@@ -102,12 +106,25 @@
                         </Border>
                     </Grid>
 
-                    <ComboBox Grid.Column="2"
+                    <ComboBox Grid.Row="0" Grid.Column="2"
                               ItemsSource="{Binding CategoryFilters}"
                               SelectedItem="{Binding SelectedCategoryFilter, Mode=TwoWay}"
                               VerticalContentAlignment="Center" Padding="10,8"
                               ToolTip="Filter by pawn item category"
                               AutomationProperties.Name="Category filter"/>
+
+                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                Orientation="Horizontal" HorizontalAlignment="Center"
+                                Margin="0,7,0,0">
+                        <RadioButton Content="Main Late List"
+                                     IsChecked="{Binding IsMainListMode, Mode=TwoWay}"
+                                     GroupName="LateListMode" Margin="0,0,18,0"
+                                     FontSize="11" FontWeight="SemiBold"/>
+                        <RadioButton Content="Pull List"
+                                     IsChecked="{Binding IsPullListMode, Mode=TwoWay}"
+                                     GroupName="LateListMode"
+                                     FontSize="11" FontWeight="SemiBold"/>
+                    </StackPanel>
                 </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -230,6 +247,20 @@
                                         </ItemsControl>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button Command="{Binding DataContext.MoveToPullListCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding CanMoveToPullList, Converter={StaticResource BoolToVisibility}}"
+                                                ToolTip="Move this ticket to Pull List"
+                                                Style="{StaticResource GhostButton}" Padding="5,1" MinWidth="0">
+                                            <TextBlock Text="Pull" FontSize="9" FontWeight="SemiBold" Foreground="#7C3AED"/>
+                                        </Button>
+                                        <Button Command="{Binding DataContext.RestoreFromPullListCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsOnPullList, Converter={StaticResource BoolToVisibility}}"
+                                                ToolTip="Restore this ticket to the main late list"
+                                                Style="{StaticResource GhostButton}" Padding="5,1" MinWidth="0">
+                                            <TextBlock Text="Restore" FontSize="9" FontWeight="SemiBold" Foreground="#059669"/>
+                                        </Button>
                                         <Button Command="{Binding DataContext.SendSmsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTipService.ShowOnDisabled="True"

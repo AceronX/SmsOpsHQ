@@ -11,8 +11,9 @@ using SmsOpsHQ.Desktop.Views;
 
 namespace SmsOpsHQ.Desktop.ViewModels;
 
-public sealed class LateCustomerItem
+public sealed partial class LateCustomerItem : ObservableObject
 {
+    public int StoreId { get; set; }
     public int? CustomerId { get; set; }
     public int CustomerKey { get; set; }
     public string FirstName { get; set; } = string.Empty;
@@ -37,6 +38,11 @@ public sealed class LateCustomerItem
     public int RiskScore { get; set; }
     public string RiskBand { get; set; } = "LOW";
     public string RiskColor { get; set; } = "#34a853";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanMoveToPullList))]
+    private bool _isOnPullList;
+
+    public bool CanMoveToPullList => !IsOnPullList;
     public string FullName => $"{FirstName} {LastName}".Trim();
     public IReadOnlyList<string> CategoryChips => Categories.Count > 0
         ? Categories
@@ -140,6 +146,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     private readonly ISendSmsDialogService _sendSmsDialogService;
     private readonly CustomerQualityQueryService? _qualityQueryService;
     private readonly IPhonePickerService _phonePickerService;
+    private readonly ILateTicketPullConfirmationService _pullConfirmationService;
     private List<LateCustomerItem> _allCustomers = new();
 
     [ObservableProperty]
@@ -175,6 +182,29 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     [ObservableProperty]
     private string _selectedCategoryFilter = "All";
 
+    [ObservableProperty]
+    private string _selectedListMode = "Main";
+
+    public bool IsMainListMode
+    {
+        get => SelectedListMode == "Main";
+        set
+        {
+            if (value)
+                SelectedListMode = "Main";
+        }
+    }
+
+    public bool IsPullListMode
+    {
+        get => SelectedListMode == "Pull List";
+        set
+        {
+            if (value)
+                SelectedListMode = "Pull List";
+        }
+    }
+
     partial void OnSearchTextChanged(string value)
     {
         ApplyFilters();
@@ -185,13 +215,21 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         ApplyFilters();
     }
 
+    partial void OnSelectedListModeChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsMainListMode));
+        OnPropertyChanged(nameof(IsPullListMode));
+        ApplyFilters();
+    }
+
     public LateCustomersViewModel(
         ApiClient apiClient,
         LateCustomersQueryService queryService,
         IPhoneDialer? phoneDialer,
         ISendSmsDialogService sendSmsDialogService,
         CustomerQualityQueryService? qualityQueryService = null,
-        IPhonePickerService? phonePickerService = null)
+        IPhonePickerService? phonePickerService = null,
+        ILateTicketPullConfirmationService? pullConfirmationService = null)
     {
         _apiClient = apiClient;
         _queryService = queryService;
@@ -199,6 +237,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         _sendSmsDialogService = sendSmsDialogService;
         _qualityQueryService = qualityQueryService;
         _phonePickerService = phonePickerService ?? new PhonePickerService();
+        _pullConfirmationService = pullConfirmationService ?? new LateTicketPullConfirmationService();
     }
 
     [RelayCommand]
@@ -212,7 +251,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             await LoadLastSyncAsync();
 
             string query = _queryService.LoadQuery();
-            JsonElement result = await _apiClient.GetLateCustomersAsync(query);
+            // Load both sets once; list-mode switching and move/restore are then immediate.
+            JsonElement result = await _apiClient.GetLateCustomersAsync(query, includePulled: true);
             List<LateCustomerItem> items = new();
 
             foreach (JsonElement c in result.EnumerateArray())
@@ -241,6 +281,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 
                 items.Add(new LateCustomerItem
                 {
+                    StoreId = c.TryGetProperty("store_id", out JsonElement sidE) ? sidE.GetInt32() : 0,
                     CustomerId = c.TryGetProperty("customer_id", out JsonElement cidE) && cidE.ValueKind != JsonValueKind.Null ? cidE.GetInt32() : null,
                     CustomerKey = c.TryGetProperty("customer_key", out JsonElement ckE) ? ckE.GetInt32() : 0,
                     FirstName = c.TryGetProperty("first_name", out JsonElement fnE) ? fnE.GetString() ?? "" : "",
@@ -262,7 +303,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
                     ForfeitCount = c.TryGetProperty("forfeit_count", out JsonElement fcE) ? fcE.GetInt32() : 0,
                     RiskScore = c.TryGetProperty("risk_score", out JsonElement rsE) ? rsE.GetInt32() : 0,
                     RiskBand = c.TryGetProperty("risk_band", out JsonElement rbE) ? rbE.GetString() ?? "LOW" : "LOW",
-                    RiskColor = c.TryGetProperty("risk_color", out JsonElement rcE) ? rcE.GetString() ?? "#34a853" : "#34a853"
+                    RiskColor = c.TryGetProperty("risk_color", out JsonElement rcE) ? rcE.GetString() ?? "#34a853" : "#34a853",
+                    IsOnPullList = c.TryGetProperty("is_on_pull_list", out JsonElement pullE) && pullE.GetBoolean()
                 });
             }
 
@@ -327,8 +369,12 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     public static bool MatchesFilters(
         LateCustomerItem customer,
         string? categoryFilter,
-        string? searchText)
+        string? searchText,
+        string? listMode = "Main")
     {
+        bool listMatches = listMode == "Pull List"
+            ? customer.IsOnPullList
+            : !customer.IsOnPullList;
         bool categoryMatches = categoryFilter switch
         {
             "Jewelry" => customer.HasJewelry,
@@ -337,8 +383,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             _ => true
         };
 
-        if (!categoryMatches || string.IsNullOrWhiteSpace(searchText))
-            return categoryMatches;
+        if (!listMatches || !categoryMatches || string.IsNullOrWhiteSpace(searchText))
+            return listMatches && categoryMatches;
 
         string search = searchText.Trim();
         return customer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)
@@ -352,11 +398,22 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             || customer.CategoryText.Contains(search, StringComparison.OrdinalIgnoreCase);
     }
 
+    public static IReadOnlyList<LateCustomerItem> FilterCustomers(
+        IEnumerable<LateCustomerItem> customers,
+        string? categoryFilter,
+        string? searchText,
+        string? listMode) =>
+        customers
+            .Where(customer => MatchesFilters(customer, categoryFilter, searchText, listMode))
+            .ToList();
+
     private void ApplyFilters()
     {
-        List<LateCustomerItem> filtered = _allCustomers
-            .Where(customer => MatchesFilters(customer, SelectedCategoryFilter, SearchText))
-            .ToList();
+        IReadOnlyList<LateCustomerItem> filtered = FilterCustomers(
+            _allCustomers,
+            SelectedCategoryFilter,
+            SearchText,
+            SelectedListMode);
         Customers = new ObservableCollection<LateCustomerItem>(filtered);
 
         TotalCount = filtered.Count;
@@ -364,6 +421,54 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         HighCount = filtered.Count(c => c.RiskScore >= 50 && c.RiskScore < 70);
         MediumCount = filtered.Count(c => c.RiskScore >= 30 && c.RiskScore < 50);
         LowCount = filtered.Count(c => c.RiskScore < 30);
+    }
+
+    [RelayCommand]
+    private async Task MoveToPullListAsync(LateCustomerItem? item)
+    {
+        if (item is null || item.IsOnPullList)
+            return;
+        if (item.StoreId <= 0 || item.TicketKey <= 0 || item.CustomerKey <= 0)
+        {
+            SetError("This ticket is missing the store or ticket identity required for Pull List.");
+            return;
+        }
+        if (!_pullConfirmationService.ConfirmMove(item))
+            return;
+
+        ClearError();
+        try
+        {
+            await _apiClient.MoveLateTicketToPullListAsync(
+                item.StoreId,
+                item.TicketKey,
+                item.CustomerKey);
+            item.IsOnPullList = true;
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            SetError($"Could not move ticket to Pull List: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task RestoreFromPullListAsync(LateCustomerItem? item)
+    {
+        if (item is null || !item.IsOnPullList)
+            return;
+
+        ClearError();
+        try
+        {
+            await _apiClient.RestoreLateTicketFromPullListAsync(item.StoreId, item.TicketKey);
+            item.IsOnPullList = false;
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            SetError($"Could not restore ticket from Pull List: {ex.Message}");
+        }
     }
 
     [RelayCommand]
