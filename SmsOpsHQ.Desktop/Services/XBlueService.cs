@@ -13,7 +13,7 @@ public readonly record struct XBlueDialResult(bool Ok, int StatusCode, string Me
 
 // Fanvil X/U: remote dial via ConfigManApp keypad (one GET per digit, then ENTER or POUND per dial plan).
 // xmlService Dial often returns RetCode 0 without placing a call on some firmware.
-public sealed class XBlueService : IDisposable
+public sealed class XBlueService : IPhoneDialer, IDisposable
 {
     private readonly HttpClient _httpClient;
     private string _xblueIp = string.Empty;

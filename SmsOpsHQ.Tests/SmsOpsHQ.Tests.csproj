@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -28,6 +28,7 @@
     <ProjectReference Include="..\SmsOpsHQ.Api\SmsOpsHQ.Api.csproj" />
     <ProjectReference Include="..\SmsOpsHQ.Core\SmsOpsHQ.Core.csproj" />
     <ProjectReference Include="..\SmsOpsHQ.Infrastructure\SmsOpsHQ.Infrastructure.csproj" />
+    <ProjectReference Include="..\SmsOpsHQ.Desktop\SmsOpsHQ.Desktop.csproj" />
   </ItemGroup>
 
 </Project>

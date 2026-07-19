@@ -13,17 +13,24 @@
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="This customer has multiple phone numbers. Choose one to send SMS:"
+            <TextBlock x:Name="InstructionText" Grid.Row="0" Text="Choose a phone number"
                        TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#111827" FontSize="13"/>
             <ListBox x:Name="PhoneList" Grid.Row="1" Margin="0,0,0,16"
                      SelectionMode="Single" FontSize="14"
+                     DisplayMemberPath="DisplayText"
                      BorderBrush="#E5E7EB" BorderThickness="1"
                      Background="White"/>
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Cancel" Click="Cancel_Click" Padding="16,8" Margin="0,0,8,0"
                         Background="Transparent" BorderThickness="0" Cursor="Hand"/>
-                <Button Content="Send SMS" Click="Ok_Click" Padding="16,8"
-                        Background="#2563EB" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+                <Button x:Name="ConfirmButton" Click="Ok_Click" Padding="16,8"
+                        Background="#2563EB" Foreground="White" BorderThickness="0" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="ConfirmIcon" FontFamily="Segoe MDL2 Assets"
+                                   Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ConfirmLabel" Text="Continue" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
     </Border>

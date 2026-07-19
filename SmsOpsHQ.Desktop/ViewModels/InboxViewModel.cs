@@ -46,6 +46,7 @@ public sealed partial class InboxViewModel : ViewModelBase
     private readonly XBlueService? _xblueService;
     private readonly ISendSmsDialogService _sendSmsDialogService;
     private readonly CustomerQualityQueryService? _qualityQueryService;
+    private readonly IPhonePickerService _phonePickerService;
 
     private CancellationTokenSource? _searchDebounce;
 
@@ -75,7 +76,8 @@ public sealed partial class InboxViewModel : ViewModelBase
         SignalRClient signalRClient,
         XBlueService? xblueService,
         ISendSmsDialogService sendSmsDialogService,
-        CustomerQualityQueryService? qualityQueryService = null)
+        CustomerQualityQueryService? qualityQueryService = null,
+        IPhonePickerService? phonePickerService = null)
     {
         _apiClient = apiClient;
         _appState = appState;
@@ -84,6 +86,7 @@ public sealed partial class InboxViewModel : ViewModelBase
         _xblueService = xblueService;
         _sendSmsDialogService = sendSmsDialogService;
         _qualityQueryService = qualityQueryService;
+        _phonePickerService = phonePickerService ?? new PhonePickerService();
 
         _signalRClient.MessageReceived += OnSignalRMessageReceived;
     }
@@ -184,7 +187,12 @@ public sealed partial class InboxViewModel : ViewModelBase
                     CustomerPanel = null;
                     return;
                 }
-                var panel = new CustomerPanelViewModel(_apiClient, _xblueService, _sendSmsDialogService, _qualityQueryService);
+                var panel = new CustomerPanelViewModel(
+                    _apiClient,
+                    _xblueService,
+                    _sendSmsDialogService,
+                    _qualityQueryService,
+                    _phonePickerService);
                 CustomerPanel = panel;
                 _ = panel.LoadByPhoneAsync(phone);
             });
@@ -308,6 +316,7 @@ public sealed partial class InboxViewModel : ViewModelBase
             item.ThreadId, item.CustomerName, _xblueService,
             sendSmsDialogService: _sendSmsDialogService,
             qualityQueryService: _qualityQueryService,
+            phonePickerService: _phonePickerService,
             setRightPanel: p => CustomerPanel = p,
             onCloseRequested: () => { CurrentThreadViewModel = null; CustomerPanel = null; },
             onMessagesLoaded: () => { item.UnreadCount = 0; });

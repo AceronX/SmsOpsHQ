@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Core.Utilities;
+using SmsOpsHQ.Desktop.Models;
 using SmsOpsHQ.Desktop.Services;
 
 namespace SmsOpsHQ.Desktop.ViewModels;
@@ -51,9 +52,10 @@ public sealed class AmbiguousCandidateRow
 public sealed partial class CustomerPanelViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
-    private XBlueService? _xblueService;
+    private IPhoneDialer? _phoneDialer;
     private ISendSmsDialogService? _sendSmsDialogService;
     private CustomerQualityQueryService? _qualityQueryService;
+    private readonly IPhonePickerService _phonePickerService;
     private string _lastPhoneForLookup = string.Empty;
 
     [ObservableProperty] private int? _customerKey;
@@ -65,6 +67,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _cityStateZip = string.Empty;
     [ObservableProperty] private string _phoneDisplay = string.Empty;
     [ObservableProperty] private string _customerPhone = string.Empty;
+    [ObservableProperty] private ObservableCollection<PhoneChoice> _phoneChoices = new();
     [ObservableProperty] private string _idInfo = string.Empty;
     [ObservableProperty] private ImageSource? _idPhotoPreview;
     [ObservableProperty] private bool _hasIdPhotoPreview;
@@ -152,7 +155,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [ObservableProperty] private string _matchConfidence = string.Empty;
     [ObservableProperty] private string _identityMatchWarning = string.Empty;
 
-    public bool CanClickToCall => _xblueService is not null && _xblueService.IsConfigured;
+    public bool CanClickToCall => _phoneDialer is not null && _phoneDialer.IsConfigured;
 
     public bool ShowFullRiskPanel => IsCustomerFound && !IsAmbiguous && !RiskDataSuppressed;
 
@@ -162,18 +165,23 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
 
     partial void OnIsCustomerFoundChanged(bool value) => OnPropertyChanged(nameof(ShowFullRiskPanel));
 
-    public CustomerPanelViewModel(ApiClient apiClient, XBlueService? xblueService = null,
-        ISendSmsDialogService? sendSmsDialogService = null, CustomerQualityQueryService? qualityQueryService = null)
+    public CustomerPanelViewModel(
+        ApiClient apiClient,
+        IPhoneDialer? phoneDialer = null,
+        ISendSmsDialogService? sendSmsDialogService = null,
+        CustomerQualityQueryService? qualityQueryService = null,
+        IPhonePickerService? phonePickerService = null)
     {
         _apiClient = apiClient;
-        _xblueService = xblueService;
+        _phoneDialer = phoneDialer;
         _sendSmsDialogService = sendSmsDialogService;
         _qualityQueryService = qualityQueryService;
+        _phonePickerService = phonePickerService ?? new PhonePickerService();
     }
 
     public void SetXBlueService(XBlueService service)
     {
-        _xblueService = service;
+        _phoneDialer = service;
         OnPropertyChanged(nameof(CanClickToCall));
     }
 
@@ -188,7 +196,9 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
 
         IsBusy = true;
         ClearError();
-        CustomerPhone = phone;
+        CustomerPhone = PhoneUtils.NormalizeToE164(phone) ?? phone.Trim();
+        PhoneChoices = new ObservableCollection<PhoneChoice>(
+            PhoneChoiceBuilder.BuildCustomerChoices(null, null, null, phone));
         _lastPhoneForLookup = phone.Trim();
 
         try
@@ -256,20 +266,6 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             IsBusy = false;
             OnPropertyChanged(nameof(CanClickToCall));
         }
-    }
-
-    // Prefer API phones that actually contain digits; never replace a good thread number with an empty/garbage "phone" field.
-    private static string? PickFirstDialablePhone(string? apiPhone, string? resPhone, string? busPhone, string? lookupPhone)
-    {
-        foreach (string? candidate in new[] { apiPhone, resPhone, busPhone, lookupPhone })
-        {
-            if (string.IsNullOrWhiteSpace(candidate))
-                continue;
-            if (PhoneUtils.GetDialString(candidate) is not null)
-                return candidate.Trim();
-        }
-
-        return null;
     }
 
     private void ApplyIdentityFlags(JsonElement response)
@@ -376,27 +372,26 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
             ? (!string.IsNullOrEmpty(cityStateJoined) ? $"{cityStateJoined} {zipCode}" : zipCode)
             : cityStateJoined;
 
-        // All available nums: ResPhone, BusPhone, and phones parsed from Notes (same sources as phone index).
+        // Keep action sources as normalized, labeled choices. PhoneDisplay is
+        // presentation only and is never parsed back into an action target.
         string resPhone = GetString(customerElement, "res_phone");
         string busPhone = GetString(customerElement, "bus_phone");
         string notes = GetString(customerElement, "notes");
-        var phoneList = new List<string>();
-        if (!string.IsNullOrEmpty(resPhone)) phoneList.Add(resPhone);
-        if (!string.IsNullOrEmpty(busPhone) && busPhone != resPhone) phoneList.Add("W: " + busPhone);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        if (!string.IsNullOrEmpty(resPhone)) _ = seen.Add(PhoneUtils.ExtractLast10Digits(resPhone) ?? resPhone);
-        if (!string.IsNullOrEmpty(busPhone)) _ = seen.Add(PhoneUtils.ExtractLast10Digits(busPhone) ?? busPhone);
-        foreach (string p in PhoneUtils.ExtractPhonesFromText(notes))
-        {
-            if (p is not null && seen.Add(p))
-                phoneList.Add("Notes: " + p);
-        }
-        PhoneDisplay = phoneList.Count > 0 ? string.Join(" | ", phoneList) : "No phone";
-
         string primaryPhone = GetString(customerElement, "phone");
-        string? dialPhone = PickFirstDialablePhone(primaryPhone, resPhone, busPhone, _lastPhoneForLookup);
-        if (!string.IsNullOrEmpty(dialPhone))
-            CustomerPhone = dialPhone;
+        string fallbackPhone = PhoneUtils.NormalizeToE164(primaryPhone) is not null
+            ? primaryPhone
+            : _lastPhoneForLookup;
+        IReadOnlyList<PhoneChoice> choices = PhoneChoiceBuilder.BuildCustomerChoices(
+            resPhone, busPhone, notes, fallbackPhone);
+        PhoneChoices = new ObservableCollection<PhoneChoice>(choices);
+        PhoneDisplay = choices.Count > 0
+            ? string.Join(" | ", choices.Select(choice => choice.DisplayText))
+            : "No phone";
+
+        string? lookupPhone = PhoneUtils.NormalizeToE164(_lastPhoneForLookup);
+        CustomerPhone = choices.FirstOrDefault(choice => choice.PhoneE164 == lookupPhone)?.PhoneE164
+                        ?? choices.FirstOrDefault()?.PhoneE164
+                        ?? CustomerPhone;
 
         string idNumber = GetString(customerElement, "id_no");
         string idIssueState = GetString(customerElement, "id_issue_state");
@@ -975,33 +970,45 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
     [RelayCommand]
     private void SendSms()
     {
-        if (_sendSmsDialogService is null || string.IsNullOrEmpty(CustomerPhone))
+        if (_sendSmsDialogService is null)
             return;
 
-        _sendSmsDialogService.ShowDialog(prefillPhone: CustomerPhone);
+        string? phone = PickPhoneForAction(PhonePickerAction.SendSms);
+        if (phone is not null)
+            _sendSmsDialogService.ShowDialog(prefillPhone: phone);
     }
 
     [RelayCommand]
     private async Task ClickToCallAsync()
     {
-        if (_xblueService is null || !_xblueService.IsConfigured)
+        if (_phoneDialer is null || !_phoneDialer.IsConfigured)
         {
             CallStatus = "XBlue VoIP not configured.";
             return;
         }
-        if (string.IsNullOrEmpty(CustomerPhone))
+
+        string? phone = PickPhoneForAction(PhonePickerAction.Call);
+        if (phone is null)
         {
             CallStatus = "No phone number.";
             return;
         }
 
         CallStatus = "Dialing...";
-        XBlueDialResult result = await _xblueService.DialAsync(CustomerPhone);
+        XBlueDialResult result = await _phoneDialer.DialAsync(phone);
         CallStatus = result.Ok
             ? $"Call sent — {result.Message}"
             : (result.StatusCode > 0
                 ? $"Dial failed (HTTP {result.StatusCode}): {result.Message}"
                 : result.Message);
+    }
+
+    private string? PickPhoneForAction(PhonePickerAction action)
+    {
+        if (PhoneChoices.Count == 0)
+            return PhoneUtils.NormalizeToE164(CustomerPhone);
+
+        return _phonePickerService.PickPhone(PhoneChoices, action);
     }
 
     // Reset all display fields to empty or default so the panel shows no customer.
@@ -1015,6 +1022,7 @@ public sealed partial class CustomerPanelViewModel : ViewModelBase
         CityStateZip = string.Empty;
         PhoneDisplay = string.Empty;
         CustomerPhone = string.Empty;
+        PhoneChoices = new ObservableCollection<PhoneChoice>();
         IdInfo = string.Empty;
         ClearIdPhotoPreview();
         SinceDate = string.Empty;

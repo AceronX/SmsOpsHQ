@@ -54,6 +54,7 @@ public sealed partial class ThreadViewModel : ViewModelBase
     private readonly XBlueService? _xblueService;
     private readonly ISendSmsDialogService? _sendSmsDialogService;
     private readonly CustomerQualityQueryService? _qualityQueryService;
+    private readonly IPhonePickerService _phonePickerService;
     private readonly Action<CustomerPanelViewModel?>? _setRightPanel;
     private readonly Action? _onCloseRequested;
     private readonly Action? _onMessagesLoaded;
@@ -86,6 +87,7 @@ public sealed partial class ThreadViewModel : ViewModelBase
         XBlueService? xblueService = null,
         ISendSmsDialogService? sendSmsDialogService = null,
         CustomerQualityQueryService? qualityQueryService = null,
+        IPhonePickerService? phonePickerService = null,
         Action<CustomerPanelViewModel?>? setRightPanel = null,
         Action? onCloseRequested = null,
         Action? onMessagesLoaded = null)
@@ -97,6 +99,7 @@ public sealed partial class ThreadViewModel : ViewModelBase
         _xblueService = xblueService;
         _sendSmsDialogService = sendSmsDialogService;
         _qualityQueryService = qualityQueryService;
+        _phonePickerService = phonePickerService ?? new PhonePickerService();
         _setRightPanel = setRightPanel;
         _onCloseRequested = onCloseRequested;
         _onMessagesLoaded = onMessagesLoaded;
@@ -502,7 +505,12 @@ public sealed partial class ThreadViewModel : ViewModelBase
         if (CustomerPanel is not null && CustomerPanel.CustomerPhone == CustomerPhone)
             return;
 
-        var panel = new CustomerPanelViewModel(_apiClient, _xblueService, _sendSmsDialogService, _qualityQueryService);
+        var panel = new CustomerPanelViewModel(
+            _apiClient,
+            _xblueService,
+            _sendSmsDialogService,
+            _qualityQueryService,
+            _phonePickerService);
         CustomerPanel = panel;
         _setRightPanel?.Invoke(panel);
         await panel.LoadByPhoneAsync(CustomerPhone);

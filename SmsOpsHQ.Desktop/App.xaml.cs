@@ -101,6 +101,7 @@ public partial class App : Application
         services.AddSingleton<LateCustomersQueryService>();
         services.AddSingleton<CustomerQualityQueryService>();
         services.AddSingleton<XBlueService>();
+        services.AddSingleton<IPhonePickerService, PhonePickerService>();
         services.AddSingleton(sp =>
         {
             AppState appState = sp.GetRequiredService<AppState>();
@@ -122,7 +123,8 @@ public partial class App : Application
             sp.GetRequiredService<SignalRClient>(),
             sp.GetRequiredService<XBlueService>(),
             sp.GetRequiredService<ISendSmsDialogService>(),
-            sp.GetRequiredService<CustomerQualityQueryService>()));
+            sp.GetRequiredService<CustomerQualityQueryService>(),
+            sp.GetRequiredService<IPhonePickerService>()));
 
         services.AddTransient<TemplatesViewModel>(sp => new TemplatesViewModel(
             sp.GetRequiredService<ApiClient>(),
@@ -143,7 +145,8 @@ public partial class App : Application
             sp.GetRequiredService<LateCustomersQueryService>(),
             sp.GetRequiredService<XBlueService>(),
             sp.GetRequiredService<ISendSmsDialogService>(),
-            sp.GetRequiredService<CustomerQualityQueryService>()));
+            sp.GetRequiredService<CustomerQualityQueryService>(),
+            sp.GetRequiredService<IPhonePickerService>()));
 
         services.AddTransient<RemindersViewModel>(sp => new RemindersViewModel(
             sp.GetRequiredService<ApiClient>(),

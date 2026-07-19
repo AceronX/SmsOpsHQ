@@ -1,20 +1,29 @@
-using System.Collections.Generic;
 using System.Windows;
-using SmsOpsHQ.Desktop.ViewModels;
+using System.Windows.Media;
+using SmsOpsHQ.Desktop.Models;
 
 namespace SmsOpsHQ.Desktop.Views;
 
 public partial class PhonePickerDialog : Window
 {
     public string? SelectedPhone { get; private set; }
-    private readonly List<string> _phoneNumbers;
+    private readonly IReadOnlyList<PhoneChoice> _choices;
 
-    public PhonePickerDialog(List<string> phoneNumbers)
+    public PhonePickerDialog(IReadOnlyList<PhoneChoice> choices, PhonePickerAction action)
     {
         InitializeComponent();
-        _phoneNumbers = new List<string>(phoneNumbers);
-        foreach (string p in _phoneNumbers)
-            PhoneList.Items.Add(LateCustomerItem.FormatPhoneForDisplay(p));
+        _choices = choices.ToList();
+
+        PhonePickerPresentation presentation = PhonePickerPresentations.For(action);
+        Title = presentation.WindowTitle;
+        InstructionText.Text = presentation.InstructionText;
+        ConfirmLabel.Text = presentation.ConfirmationText;
+        ConfirmIcon.Text = presentation.ConfirmationIcon;
+        ConfirmButton.Background = (Brush)new BrushConverter().ConvertFromString(
+            presentation.ConfirmationColor)!;
+
+        foreach (PhoneChoice choice in _choices)
+            PhoneList.Items.Add(choice);
         if (PhoneList.Items.Count > 0)
             PhoneList.SelectedIndex = 0;
     }
@@ -22,9 +31,10 @@ public partial class PhonePickerDialog : Window
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         int idx = PhoneList.SelectedIndex;
-        if (idx >= 0 && idx < _phoneNumbers.Count)
+        string? selectedPhone = PhoneChoiceBuilder.SelectPhone(_choices, idx);
+        if (selectedPhone is not null)
         {
-            SelectedPhone = _phoneNumbers[idx];
+            SelectedPhone = selectedPhone;
             DialogResult = true;
             Close();
         }

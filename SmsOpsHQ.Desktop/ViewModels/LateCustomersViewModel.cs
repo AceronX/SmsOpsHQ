@@ -5,6 +5,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SmsOpsHQ.Core.Utilities;
+using SmsOpsHQ.Desktop.Models;
 using SmsOpsHQ.Desktop.Services;
 using SmsOpsHQ.Desktop.Views;
 
@@ -17,7 +18,7 @@ public sealed class LateCustomerItem
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
-    public List<string> PhoneNumbers { get; set; } = new List<string>();
+    public IReadOnlyList<PhoneChoice> PhoneChoices { get; set; } = Array.Empty<PhoneChoice>();
     public int TicketKey { get; set; }
     public int TransNo { get; set; }
     public int TicketNo => TransNo;
@@ -111,10 +112,7 @@ public sealed class LateCustomerItem
     public static string FormatPhoneForDisplay(string digitsOnly)
     {
         if (string.IsNullOrWhiteSpace(digitsOnly)) return "";
-        string digits = new string(digitsOnly.Where(char.IsDigit).ToArray());
-        if (digits.Length == 10)
-            return $"({digits.Substring(0, 3)}) {digits.Substring(3, 3)}-{digits.Substring(6)}";
-        return digitsOnly;
+        return PhoneChoiceBuilder.FormatPhone(digitsOnly);
     }
 }
 
@@ -122,9 +120,10 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 {
     private readonly ApiClient _apiClient;
     private readonly LateCustomersQueryService _queryService;
-    private readonly XBlueService? _xblueService;
+    private readonly IPhoneDialer? _phoneDialer;
     private readonly ISendSmsDialogService _sendSmsDialogService;
     private readonly CustomerQualityQueryService? _qualityQueryService;
+    private readonly IPhonePickerService _phonePickerService;
     private List<LateCustomerItem> _allCustomers = new();
 
     [ObservableProperty]
@@ -165,15 +164,17 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
     public LateCustomersViewModel(
         ApiClient apiClient,
         LateCustomersQueryService queryService,
-        XBlueService? xblueService,
+        IPhoneDialer? phoneDialer,
         ISendSmsDialogService sendSmsDialogService,
-        CustomerQualityQueryService? qualityQueryService = null)
+        CustomerQualityQueryService? qualityQueryService = null,
+        IPhonePickerService? phonePickerService = null)
     {
         _apiClient = apiClient;
         _queryService = queryService;
-        _xblueService = xblueService;
+        _phoneDialer = phoneDialer;
         _sendSmsDialogService = sendSmsDialogService;
         _qualityQueryService = qualityQueryService;
+        _phonePickerService = phonePickerService ?? new PhonePickerService();
     }
 
     [RelayCommand]
@@ -192,23 +193,26 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 
             foreach (JsonElement c in result.EnumerateArray())
             {
-                List<string> phones = new List<string>();
+                List<string> rawPhones = new();
                 if (c.TryGetProperty("phones", out JsonElement phonesE) && phonesE.ValueKind == JsonValueKind.Array)
                 {
                     foreach (JsonElement pe in phonesE.EnumerateArray())
                     {
                         string? p = pe.GetString();
                         if (!string.IsNullOrWhiteSpace(p))
-                            phones.Add(p);
+                            rawPhones.Add(p);
                     }
                 }
-                if (phones.Count == 0 && c.TryGetProperty("phone", out JsonElement phE))
+                if (rawPhones.Count == 0 && c.TryGetProperty("phone", out JsonElement phE))
                 {
                     string? single = phE.GetString();
                     if (!string.IsNullOrWhiteSpace(single))
-                        phones.Add(single);
+                        rawPhones.Add(single);
                 }
-                string primaryPhone = phones.Count > 0 ? phones[0] : string.Empty;
+                IReadOnlyList<PhoneChoice> phoneChoices = PhoneChoiceBuilder.BuildUnlabeled(rawPhones);
+                string primaryPhone = phoneChoices.Count > 0
+                    ? phoneChoices[0].PhoneE164
+                    : string.Empty;
 
                 items.Add(new LateCustomerItem
                 {
@@ -217,7 +221,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
                     FirstName = c.TryGetProperty("first_name", out JsonElement fnE) ? fnE.GetString() ?? "" : "",
                     LastName = c.TryGetProperty("last_name", out JsonElement lnE) ? lnE.GetString() ?? "" : "",
                     Phone = primaryPhone,
-                    PhoneNumbers = phones,
+                    PhoneChoices = phoneChoices,
                     TicketKey = c.TryGetProperty("ticket_key", out JsonElement tkE) ? tkE.GetInt32() : 0,
                     TransNo = c.TryGetProperty("trans_no", out JsonElement tnE) ? tnE.GetInt32() : 0,
                     DueDate = c.TryGetProperty("due_date", out JsonElement ddE) ? ddE.GetString() ?? "" : "",
@@ -278,7 +282,8 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             string searchLower = SearchText.ToLowerInvariant();
             source = source.Where(c =>
                 c.FullName.ToLowerInvariant().Contains(searchLower) ||
-                c.PhoneNumbers.Any(p => p.Contains(searchLower) || LateCustomerItem.FormatPhoneForDisplay(p).Contains(searchLower)) ||
+                c.PhoneChoices.Any(p => p.PhoneE164.Contains(searchLower)
+                                        || p.DisplayPhone.Contains(searchLower)) ||
                 c.TicketNo.ToString().Contains(searchLower) ||
                 c.Items.ToLowerInvariant().Contains(searchLower) ||
                 c.CustomerNotes.ToLowerInvariant().Contains(searchLower) ||
@@ -302,7 +307,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         if (item is null)
             return;
 
-        string? phone = PickPhone(item, "Customer profile");
+        string? phone = PickPhone(item, PhonePickerAction.OpenCustomer);
         if (string.IsNullOrEmpty(phone))
             return;
 
@@ -310,9 +315,10 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
 
         CustomerPanel ??= new CustomerPanelViewModel(
             _apiClient,
-            _xblueService,
+            _phoneDialer,
             _sendSmsDialogService,
-            _qualityQueryService);
+            _qualityQueryService,
+            _phonePickerService);
 
         int? key = item.CustomerKey != 0 ? item.CustomerKey : null;
         await CustomerPanel.LoadByPhoneAsync(phone, key);
@@ -324,7 +330,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         if (item is null)
             return;
 
-        string? phone = PickPhone(item, "Send SMS");
+        string? phone = PickPhone(item, PhonePickerAction.SendSms);
         if (string.IsNullOrEmpty(phone))
             return;
 
@@ -338,13 +344,13 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         if (item is null)
             return;
 
-        string? phone = PickPhone(item, "Call");
+        string? phone = PickPhone(item, PhonePickerAction.Call);
         if (string.IsNullOrEmpty(phone))
             return;
 
         ClearError();
 
-        if (_xblueService is null || !_xblueService.IsConfigured)
+        if (_phoneDialer is null || !_phoneDialer.IsConfigured)
         {
             SetError("XBlue VoIP is not configured. Enable it under Settings → VoIP and set the phone IP.");
             return;
@@ -356,7 +362,7 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
             return;
         }
 
-        XBlueDialResult result = await _xblueService.DialAsync(phone);
+        XBlueDialResult result = await _phoneDialer.DialAsync(phone);
         if (!result.Ok)
         {
             SetError(result.StatusCode > 0
@@ -365,19 +371,14 @@ public sealed partial class LateCustomersViewModel : ViewModelBase
         }
     }
 
-    private string? PickPhone(LateCustomerItem item, string action)
+    private string? PickPhone(LateCustomerItem item, PhonePickerAction action)
     {
-        if (item.PhoneNumbers.Count == 0)
+        if (item.PhoneChoices.Count == 0)
         {
             SetError("No phone number available for this customer.");
             return null;
         }
-        if (item.PhoneNumbers.Count == 1) return item.PhoneNumbers[0];
-        PhonePickerDialog dialog = new PhonePickerDialog(item.PhoneNumbers);
-        if (Application.Current.MainWindow is Window owner)
-            dialog.Owner = owner;
-        dialog.Title = $"{action} — Choose Number";
-        return dialog.ShowDialog() == true ? dialog.SelectedPhone : null;
+        return _phonePickerService.PickPhone(item.PhoneChoices, action);
     }
 
     [RelayCommand]
