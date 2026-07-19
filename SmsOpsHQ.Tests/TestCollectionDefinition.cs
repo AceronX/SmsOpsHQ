@@ -1,9 +1,11 @@
 using Xunit;
 
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+
 namespace SmsOpsHQ.Tests;
 
-// All integration tests that share the IntegrationTestFixture run serially
-// to prevent shared database state race conditions.
+// Integration tests share one SQLite WebApplicationFactory database. Keep all test
+// collections serial so unrelated classes cannot race authentication or database setup.
 [CollectionDefinition("Integration")]
 public class IntegrationCollection : ICollectionFixture<IntegrationTestFixture>
 {
